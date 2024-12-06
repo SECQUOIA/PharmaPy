@@ -1884,5 +1884,165 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         self.heat_duty = np.array([0, trapezoidal_rule(time, q_ht)])
         self.duty_type = [0, -2]
 
-class SemibatchRC(_BaseReactiveCryst):
-    pass
+class SemibatchRC(ReactiveMSMPR):
+    """
+        Assumes:
+            constant solid density
+            metric units
+        
+    """
+    def __init__(self, target_comp, mask_params_rxn=None,mask_params_cryst=None, temp_ref=298.15, isothermal=True,
+                  reset_states=False, controls=None, h_conv=1000, ht_mode='jacket',
+                  return_sens=True, state_events=None, method='1D-FVM',
+                  scale=1, vol_tank=None, adiabatic=False, rad_zero=0, vol_ht=None,
+                  basis='mass_conc', jac_type=None, param_wrapper=None, num_interp_points=3, grid_size=500):
+        super().__init__(target_comp,mask_params_rxn,mask_params_cryst, temp_ref, isothermal, reset_states, controls, h_conv, ht_mode, return_sens, state_events, method, scale, vol_tank, adiabatic, rad_zero, vol_ht, basis, jac_type, param_wrapper)
+        self.is_continuous = False
+        self.oper_mode = 'Semibatch'
+        self.vol_ht = vol_tank*0.15
+        self._Inlet = None
+        # self.vol_offset = 0.75
+        # self.num_interp_points = num_interp_points
+        self.mydistrib = np.zeros(grid_size)
+        self.checker = progress_checker(flag='Solver')
+        self.kin_array = {}
+ 
+    def material_balances(self, time, params, u_inputs, rhos, mu_n,
+                          distrib, mass_conc, mole_conc, temp, temp_ht, vol, phi_in):
+
+        rho_sol = rhos[0][1]
+        self.checker.check(time)
+
+        input_flow = u_inputs['Inlet']['vol_flow']
+
+        input_conc = u_inputs['Liquid_1']['mass_conc']
+        # input_mole = u_inputs['Inlet']['mole_conc']
+        
+        if self.method == 'moments':
+            input_distrib = u_inputs['Inlet']['mu_n'] * (1e6)**np.arange(self.num_distr)#* self.scale
+            ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
+                                                       params, rho_sol)
+        elif self.method == '1D-FVM':
+            input_distrib = u_inputs['Inlet']['distrib'] * self.scale
+            if True:#time < 5200:
+                ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
+                                                    params, rho_sol)
+                nuclp,sec, growth, dissol = self.CrystKinetics.get_kinetics(mass_conc, temp,
+                                                            self.Solid_1.kv, mu_n,nucl_sec_out=True)
+                # self.oldparams = nuclp,sec,growth,dissol,ddistr_dt,transf
+            else:
+                nuclp,sec,growth,dissol,ddistr_dt,transf = self.oldparams
+            self.kin_array[time] = [nuclp,sec,growth,float(transf)]
+            
+
+
+            self.Solid_1.moments[[2, 3]] = mu_n[[2, 3]]
+        ## Reactive terms:
+        if self.RxnKinetics.keq_params is None:
+            rate = self.RxnKinetics.get_rxn_rates(mole_conc[self.mask_species],temp)
+        else:
+            deltah_rxn = self.Liquid_1.getHeatOfRxn(temp,
+                                                    self.Kinetics.tref_hrxn)
+
+            rate = self.RxnKinetics.get_rxn_rates(mole_conc[self.mask_species],
+                                               temp,
+                                               deltah_rxn)
+        rates = np.zeros_like(mole_conc)
+        rates[self.mask_species] = rate
+        # ---------- Add flow terms
+        # Distribution
+        tau_inv = input_flow / vol #theta in many nomenclatures
+        flow_distrib = tau_inv * (input_distrib - distrib)
+
+        ddistr_dt = ddistr_dt + flow_distrib
+        # Liquid phase
+        phi = 1 - self.Solid_1.kv * mu_n[3] #epsilon in documentation
+
+        c_tank = mass_conc
+        # Re derive MSMPR to match basis and add reaction here
+        #check how handle multiple species (if not array follows)
+        # check how incorporate stoichs
+        # check if need stoichs in mom
+        # check if handles multiple cryst species # needed
+        
+        flow_term = tau_inv * (input_conc*phi_in[0] - c_tank*phi) #check phi_in[0] or just phi_in
+        transf_term = transf * (self.kron_jtg - c_tank / rho_sol)
+        # check if units right
+        rxn_term = rates*self.Liquid_1.mw #calc rates as moles convert to mass (mol/t to kg/t) zzz
+        dcomp_dt = 1 / phi * (flow_term - transf_term + rxn_term)
+        dvol_dt = (phi_in[0] * input_flow * rho_in_liq - transf) / rho_liq ## TODO $$ check
+        dliq_dt = np.append(dcomp_dt,dvol_dt)
+        if self.basis == 'mass_frac':
+            rho_liq = self.Liquid_1.getDensity()
+            dcomp_dt *= 1 / rho_liq
+
+        dmaterial_dt = np.concatenate((ddistr_dt, dliq_dt))
+        self.mydistrib = np.append(self.mydistrib,self.mydistrib[-1]+ddistr_dt).reshape(-1,ddistr_dt.shape[0])
+        # self.mass_flow_out = self.Solid_1.mass_flow
+        return dmaterial_dt, transf
+    def energy_balances(self, time,params, cryst_rate, u_inputs, rhos, mu_n,
+                        distrib, mass_conc,mole_conc, temp, temp_ht, vol,
+                        h_in, heat_prof=False):
+
+        temp = np.atleast_1d(temp)
+        rho_susp, rho_in = rhos
+
+        input_flow = u_inputs['Inlet']['vol_flow']
+        input_conc = u_inputs['Inlet']['mole_conc']
+        input_temp = u_inputs['Inlet']['temp']
+        # Thermodynamic properties (basis: slurry volume)
+        phi_liq = 1 - self.Solid_1.kv * mu_n[3]
+
+        phis = [phi_liq, 1 - phi_liq]
+        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)
+        capacitance = self.Slurry.getCp(temp, phis, rho_susp)  # J/m**3/K
+        # Heat of rxn
+        deltah_ref = self.RxnKinetics.delta_hrxn
+        tref_dh = self.RxnKinetics.tref_hrxn
+
+        deltah_rxn = self.Liquid_1.getHeatOfRxn(
+            self.RxnKinetics.stoich_matrix, temp, self.mask_species,
+            deltah_ref, tref_dh) 
+        rates = self.RxnKinetics.get_rxn_rates(mole_conc.T[self.mask_species].T,
+                                            temp, overall_rates=False,
+                                            delta_hrxn=deltah_rxn)
+        # Renaming
+        dh_cryst = -1.46e4  # J/kg  # TODO: read this from json file
+        # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
+        #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
+
+        height_liq = vol / (np.pi/4 * self.diam_tank**2)
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
+
+        # Energy terms (W)
+        flow_term = input_flow * (h_in - h_sp)
+        cryst_term = dh_cryst*cryst_rate * vol
+        rxn_term = -(deltah_rxn * rates).sum(axis=1) * vol * 1000  # mol/Ls * J/mol * vol(m3) * 1000L/m3 -> J/s
+
+        if 'temp' in self.controls.keys():
+            ht_term = capacitance * vol  # return capacitance TODO check if works with RC
+        elif 'temp' in self.states_uo:
+            ht_term = self.u_ht*area_ht*(temp - temp_ht) if not self.isothermal else -(flow_term + rxn_term - cryst_term)
+        if heat_prof:
+            heat_components = np.hstack([cryst_term, ht_term, flow_term, rxn_term])
+            return heat_components
+        else:
+            # Balance inside the tank
+            dtemp_dt = (flow_term + rxn_term - cryst_term - ht_term) / vol / capacitance
+
+            # Balance in the jacket
+            ht_media = self.Utility.get_inputs(time)
+            flow_ht = ht_media['vol_flow']
+            tht_in = ht_media['temp_in']
+
+            cp_ht = self.Utility.cp
+            rho_ht = self.Utility.rho
+
+            vol_ht = self.vol_tank*0.14  # m**3
+
+            dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
+                self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
+
+            return dtemp_dt, dtht_dt
+        
+   
