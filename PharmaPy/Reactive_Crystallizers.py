@@ -1436,6 +1436,8 @@ class _BaseReactiveCryst():
         fig_mu.tight_layout()
         return fig_mu,ax_mu
     def plot_profiles(self,pick_comp=None,directory = None,fig_kwargs={},show=True):
+        if pick_comp is None:
+            pick_comp = np.arange(len(self.mask_species))[self.mask_species]
         fig_rxn,ax_rxn = self.plot_rxn_profiles(pick_comp,**fig_kwargs)
         if directory is not None:
             fig_rxn.savefig(os.path.join(directory,'rxn_profiles.png'),dpi=600)
@@ -1714,7 +1716,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         if self.method == 'moments':
             dp['mu_n'] = dp['mu_n'] * (1e-6)**np.arange(self.num_distr)
 
-        if self.__class__.__name__ == 'SemibatchCryst':
+        if 'semi' in self.__class__.__name__.lower() :
             dp['total_distrib'] = dp['distrib']
 
         self.profiles_runs.append(dp)
@@ -1758,7 +1760,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
 
 
             vol_slurry = vol_solid + vol_liq
-
+            
             if self.method == '1D-FVM':
                 distrib_tilde = dp['total_distrib'][-1]
                 self.Solid_1.updatePhase(distrib=distrib_tilde,
@@ -1907,117 +1909,132 @@ class SemibatchRC(ReactiveMSMPR):
         self.checker = progress_checker(flag='Solver')
         self.kin_array = {}
  
+    
+        
     def material_balances(self, time, params, u_inputs, rhos, mu_n,
-                          distrib, mass_conc, mole_conc, temp, temp_ht, vol, phi_in):
+                          distrib, mass_conc, temp, temp_ht, vol, phi_in, mole_conc):
 
-        rho_sol = rhos[0][1]
-        self.checker.check(time)
+        rho_susp, rho_in = rhos
+
+        rho_liq, rho_sol = rho_susp
+        rho_in_liq, _ = rho_in
 
         input_flow = u_inputs['Inlet']['vol_flow']
+        input_flow = np.max([eps, input_flow])
 
+        # TODO: generalize dictionary iteration ('Inlet', 'Liquid_1', ...)?
+        input_distrib = u_inputs['Inlet']['distrib'] * self.scale
         input_conc = u_inputs['Liquid_1']['mass_conc']
-        # input_mole = u_inputs['Inlet']['mole_conc']
-        
+
+        # print('time = %.2f, vol = %.2e, flowrate = %.2e' % (time, vol, input_flow))
+
+        vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
+        vol_slurry = vol + vol_solid
+
+        self.Liquid_1.updatePhase(mass_conc=mass_conc)
+
         if self.method == 'moments':
-            input_distrib = u_inputs['Inlet']['mu_n'] * (1e6)**np.arange(self.num_distr)#* self.scale
             ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
-                                                       params, rho_sol)
+                                                       params, rho_sol,
+                                                       vol=vol_slurry)
+
         elif self.method == '1D-FVM':
-            input_distrib = u_inputs['Inlet']['distrib'] * self.scale
-            if True:#time < 5200:
-                ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
-                                                    params, rho_sol)
-                nuclp,sec, growth, dissol = self.CrystKinetics.get_kinetics(mass_conc, temp,
-                                                            self.Solid_1.kv, mu_n,nucl_sec_out=True)
-                # self.oldparams = nuclp,sec,growth,dissol,ddistr_dt,transf
-            else:
-                nuclp,sec,growth,dissol,ddistr_dt,transf = self.oldparams
-            self.kin_array[time] = [nuclp,sec,growth,float(transf)]
-            
+            ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
+                                                params, rho_sol,
+                                                vol=vol_slurry)
 
-
-            self.Solid_1.moments[[2, 3]] = mu_n[[2, 3]]
-        ## Reactive terms:
-        if self.RxnKinetics.keq_params is None:
-            rate = self.RxnKinetics.get_rxn_rates(mole_conc[self.mask_species],temp)
-        else:
-            deltah_rxn = self.Liquid_1.getHeatOfRxn(temp,
-                                                    self.Kinetics.tref_hrxn)
-
-            rate = self.RxnKinetics.get_rxn_rates(mole_conc[self.mask_species],
-                                               temp,
-                                               deltah_rxn)
-        rates = np.zeros_like(mole_conc)
-        rates[self.mask_species] = rate
         # ---------- Add flow terms
         # Distribution
-        tau_inv = input_flow / vol #theta in many nomenclatures
-        flow_distrib = tau_inv * (input_distrib - distrib)
+        flow_distrib = input_flow * input_distrib
 
         ddistr_dt = ddistr_dt + flow_distrib
-        # Liquid phase
-        phi = 1 - self.Solid_1.kv * mu_n[3] #epsilon in documentation
 
+        # Liquid phase
         c_tank = mass_conc
-        # Re derive MSMPR to match basis and add reaction here
-        #check how handle multiple species (if not array follows)
-        # check how incorporate stoichs
-        # check if need stoichs in mom
-        # check if handles multiple cryst species # needed
-        
-        flow_term = tau_inv * (input_conc*phi_in[0] - c_tank*phi) #check phi_in[0] or just phi_in
-        transf_term = transf * (self.kron_jtg - c_tank / rho_sol)
-        # check if units right
-        rxn_term = rates*self.Liquid_1.mw #calc rates as moles convert to mass (mol/t to kg/t) zzz
-        dcomp_dt = 1 / phi * (flow_term - transf_term + rxn_term)
-        dvol_dt = (phi_in[0] * input_flow * rho_in_liq - transf) / rho_liq ## TODO $$ check
-        dliq_dt = np.append(dcomp_dt,dvol_dt)
+        # mole_conc = mass_conc /self.Liquid_1.mw
+        #### From Reactor ####
+        if self.RxnKinetics.keq_params is None:
+            rate = self.RxnKinetics.get_rxn_rates(mole_conc[self.mask_species], temp) 
+        else:
+            concentr = np.zeros(len(self.name_species))
+            concentr[self.mask_species] = mole_conc[self.mask_species]
+            concentr[~self.mask_species] = self.conc_inert
+            deltah_rxn = self.Liquid_1.getHeatOfRxn(
+                self.RxnKinetics.stoich_matrix, temp, self.mask_species,
+                self.RxnKinetics.delta_hrxn, self.RxnKinetics.tref_hrxn)
+
+            rate = self.RxnKinetics.get_rxn_rates(mole_conc[self.mask_species], temp,
+                                               delta_hrxn=deltah_rxn)
+            rate*=self.Liquid_1.mw
+        rates = np.zeros_like(mole_conc)
+        rates[self.mask_species] = rate
+        #### End from Reactor ####
+
+        flow_term = phi_in[0]*input_flow * (
+            input_conc - mass_conc * rho_in_liq/rho_liq)
+        transf_term = transf * (self.kron_jtg - c_tank/rho_liq)
+
+        dcomp_dt = 1/vol * (flow_term - transf_term + rates) #might be - rate
+        dvol_dt = (phi_in[0] * input_flow * rho_in_liq - transf) / rho_liq # assumes reaction does not change liquid volume
+
+        dliq_dt = np.append(dcomp_dt, dvol_dt)
+
         if self.basis == 'mass_frac':
-            rho_liq = self.Liquid_1.getDensity()
             dcomp_dt *= 1 / rho_liq
 
         dmaterial_dt = np.concatenate((ddistr_dt, dliq_dt))
-        self.mydistrib = np.append(self.mydistrib,self.mydistrib[-1]+ddistr_dt).reshape(-1,ddistr_dt.shape[0])
-        # self.mass_flow_out = self.Solid_1.mass_flow
-        return dmaterial_dt, transf
-    def energy_balances(self, time,params, cryst_rate, u_inputs, rhos, mu_n,
-                        distrib, mass_conc,mole_conc, temp, temp_ht, vol,
-                        h_in, heat_prof=False):
 
-        temp = np.atleast_1d(temp)
+        return dmaterial_dt, transf
+
+    def energy_balances(self, time, params, cryst_rate, u_inputs, rhos,
+                        distrib, mass_conc, temp, temp_ht, vol, mu_n, h_in,mole_conc,heat_prof=False):
+
         rho_susp, rho_in = rhos
 
+        # Input properties
         input_flow = u_inputs['Inlet']['vol_flow']
-        input_conc = u_inputs['Inlet']['mole_conc']
-        input_temp = u_inputs['Inlet']['temp']
-        # Thermodynamic properties (basis: slurry volume)
-        phi_liq = 1 - self.Solid_1.kv * mu_n[3]
+        input_flow = np.max([eps, input_flow])
 
-        phis = [phi_liq, 1 - phi_liq]
+        vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
+        vol_total = vol + vol_solid
+
+        phi = vol / vol_total
+        phis = [phi, 1 - phi]
+        dens_slurry = np.dot(rho_susp, phis)
+
+        # Suspension properties
+        capacitance = self.Slurry.getCp(temp, phis, rho_susp,
+                                        times_vliq=True)
         h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)
-        capacitance = self.Slurry.getCp(temp, phis, rho_susp)  # J/m**3/K
-        # Heat of rxn
-        deltah_ref = self.RxnKinetics.delta_hrxn
-        tref_dh = self.RxnKinetics.tref_hrxn
 
-        deltah_rxn = self.Liquid_1.getHeatOfRxn(
-            self.RxnKinetics.stoich_matrix, temp, self.mask_species,
-            deltah_ref, tref_dh) 
-        rates = self.RxnKinetics.get_rxn_rates(mole_conc.T[self.mask_species].T,
-                                            temp, overall_rates=False,
-                                            delta_hrxn=deltah_rxn)
         # Renaming
-        dh_cryst = -1.46e4  # J/kg  # TODO: read this from json file
+        dh_cryst = -1.46e4  # J/kg
+        ##### From Reaction#####
+        delta_href = self.RxnKinetics.delta_hrxn
+        stoich = self.RxnKinetics.stoich_matrix
+        tref_hrxn = self.RxnKinetics.tref_hrxn
+        deltah_rxn = self.Liquid_1.getHeatOfRxn(
+            stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
+
+        rxn_rates = self.RxnKinetics.get_rxn_rates(mole_conc.T[self.mask_species].T, temp,
+                                            overall_rates=False,
+                                            delta_hrxn=deltah_rxn)
+        rxn_term = -(deltah_rxn * rxn_rates).sum() *vol*1000 # TODO check if need mult by vol
+        ###### End Reaction terms #####
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
+        # Terms
+        dens_in_liq = rho_in[0]
+        dmass_dt = input_flow * dens_in_liq
+
+        accum_term = dmass_dt * h_sp/dens_slurry
+        flow_term = input_flow * h_in
+
+        cryst_term = dh_cryst * cryst_rate*vol
+
         height_liq = vol / (np.pi/4 * self.diam_tank**2)
         area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
-
-        # Energy terms (W)
-        flow_term = input_flow * (h_in - h_sp)
-        cryst_term = dh_cryst*cryst_rate * vol
-        rxn_term = -(deltah_rxn * rates).sum(axis=1) * vol * 1000  # mol/Ls * J/mol * vol(m3) * 1000L/m3 -> J/s
 
         if 'temp' in self.controls.keys():
             ht_term = capacitance * vol  # return capacitance TODO check if works with RC
@@ -2044,5 +2061,3 @@ class SemibatchRC(ReactiveMSMPR):
                 self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
 
             return dtemp_dt, dtht_dt
-        
-   
