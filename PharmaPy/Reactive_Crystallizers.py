@@ -1549,26 +1549,6 @@ class ReactiveMSMPR(_BaseReactiveCryst):
 
         input_conc = u_inputs['Liquid_1']['mass_conc']
         # input_mole = u_inputs['Inlet']['mole_conc']
-        
-        if self.method == 'moments':
-            input_distrib = u_inputs['Inlet']['mu_n'] * (1e6)**np.arange(self.num_distr)#* self.scale
-            ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
-                                                       params, rho_sol)
-        elif self.method == '1D-FVM':
-            input_distrib = u_inputs['Inlet']['distrib'] * self.scale
-            if True:#time < 5200:
-                ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
-                                                    params, rho_sol)
-                nuclp,sec, growth, dissol = self.CrystKinetics.get_kinetics(mass_conc, temp,
-                                                            self.Solid_1.kv, mu_n,nucl_sec_out=True)
-                # self.oldparams = nuclp,sec,growth,dissol,ddistr_dt,transf
-            else:
-                nuclp,sec,growth,dissol,ddistr_dt,transf = self.oldparams
-            self.kin_array[time] = [nuclp,sec,growth,float(transf)]
-            
-
-
-            self.Solid_1.moments[[2, 3]] = mu_n[[2, 3]]
         ## Reactive terms:
         if self.RxnKinetics.keq_params is None:
             rate = self.RxnKinetics.get_rxn_rates(mole_conc[self.mask_species],temp)
@@ -1581,6 +1561,29 @@ class ReactiveMSMPR(_BaseReactiveCryst):
                                                deltah_rxn)
         rates = np.zeros_like(mole_conc)
         rates[self.mask_species] = rate
+        rxn_term = rates*self.Liquid_1.mw #calc rates as moles convert to mass (mol/t to kg/t) zzz
+        new_mass_conc = np.clip(mass_conc + rxn_term, 0, None)
+        
+        if self.method == 'moments':
+            input_distrib = u_inputs['Inlet']['mu_n'] * (1e6)**np.arange(self.num_distr)#* self.scale
+            ddistr_dt, transf = self.method_of_moments(distrib, new_mass_conc, temp,
+                                                       params, rho_sol)
+        elif self.method == '1D-FVM':
+            input_distrib = u_inputs['Inlet']['distrib'] * self.scale
+            if True:#time < 5200:
+                ddistr_dt, transf = self.fvm_method(distrib, mu_n, new_mass_conc, temp,
+                                                    params, rho_sol)
+                nuclp,sec, growth, dissol = self.CrystKinetics.get_kinetics(new_mass_conc, temp,
+                                                            self.Solid_1.kv, mu_n,nucl_sec_out=True)
+                # self.oldparams = nuclp,sec,growth,dissol,ddistr_dt,transf
+            else:
+                nuclp,sec,growth,dissol,ddistr_dt,transf = self.oldparams
+            self.kin_array[time] = [nuclp,sec,growth,float(transf)]
+            
+
+
+            self.Solid_1.moments[[2, 3]] = mu_n[[2, 3]]
+        
         # ---------- Add flow terms
         # Distribution
         tau_inv = input_flow / vol #theta in many nomenclatures
@@ -1590,7 +1593,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         # Liquid phase
         phi = 1 - self.Solid_1.kv * mu_n[3] #epsilon in documentation
 
-        c_tank = mass_conc
+        c_tank = new_mass_conc
         # Re derive MSMPR to match basis and add reaction here
         #check how handle multiple species (if not array follows)
         # check how incorporate stoichs
@@ -1600,7 +1603,6 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         flow_term = tau_inv * (input_conc*phi_in[0] - c_tank*phi) #check phi_in[0] or just phi_in
         transf_term = transf * (self.kron_jtg - c_tank / rho_sol)
         # check if units right
-        rxn_term = rates*self.Liquid_1.mw #calc rates as moles convert to mass (mol/t to kg/t) zzz
         dcomp_dt = 1 / phi * (flow_term - transf_term + rxn_term)
 
         if self.basis == 'mass_frac':
