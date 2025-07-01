@@ -1081,7 +1081,7 @@ class _BaseReactiveCryst():
         states_init = np.append(init_solid, init_susp)
 
         if self.vol_tank is None:
-            if isinstance(self, SemibatchRC):
+            if isinstance(self, ReactiveSemibatchCrystallizer):
                 time_vec = np.linspace(self.elapsed_time, final_time)
                 vol_flow = self.get_inputs(time_vec)['Inlet']['vol_flow']
 
@@ -1888,7 +1888,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         self.heat_duty = np.array([0, trapezoidal_rule(time, q_ht)])
         self.duty_type = [0, -2]
 
-class SemibatchRC(ReactiveMSMPR):
+class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
     """
         Assumes:
             constant solid density
