@@ -1655,7 +1655,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         if 'temp' in self.controls.keys():
             ht_term = capacitance * vol  # return capacitance TODO check if works with RC
         elif 'temp' in self.states_uo:
-            ht_term = self.u_ht*area_ht*(temp - temp_ht) if not self.isothermal else -(flow_term + rxn_term - cryst_term)
+            ht_term = self.u_ht*area_ht*(temp - temp_ht) if not self.isothermal else (flow_term + rxn_term - cryst_term)
         if heat_prof:
             heat_components = np.hstack([cryst_term, ht_term, flow_term, rxn_term])
             return heat_components
@@ -1903,7 +1903,7 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         super().__init__(target_comp,mask_params_rxn,mask_params_cryst, temp_ref, isothermal, reset_states, controls, h_conv, ht_mode, return_sens, state_events, method, scale, vol_tank, adiabatic, rad_zero, vol_ht, basis, jac_type, param_wrapper)
         self.is_continuous = False
         self.oper_mode = 'Semibatch'
-        self.vol_ht = vol_tank*0.15
+        self.vol_ht = vol_tank*0.15 # this is hard-coded geometry
         self._Inlet = None
         # self.vol_offset = 0.75
         # self.num_interp_points = num_interp_points
@@ -2041,7 +2041,7 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         if 'temp' in self.controls.keys():
             ht_term = capacitance * vol  # return capacitance TODO check if works with RC
         elif 'temp' in self.states_uo:
-            ht_term = self.u_ht*area_ht*(temp - temp_ht) if not self.isothermal else -(flow_term + rxn_term - cryst_term)
+            ht_term = self.u_ht*area_ht*(temp - temp_ht) if not self.isothermal else (flow_term + rxn_term - cryst_term)
         if heat_prof:
             heat_components = np.hstack([cryst_term, ht_term, flow_term, rxn_term])
             return heat_components
