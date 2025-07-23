@@ -188,7 +188,7 @@ class LiquidStream(LiquidPhase):
 
     def updatePhase(self, concentr=None, mass_conc=None,
                     mass_frac=None, mole_frac=None,
-                    vol_flow=None, mass_flow=None, mole_flow=None):
+                    vol_flow=None, mass_flow=None, mole_flow=None, solvent_pass=False):
 
         if vol_flow is None:
             vol_flow = self.vol_flow
@@ -200,7 +200,7 @@ class LiquidStream(LiquidPhase):
             mole_flow = self.mole_flow
 
         super().updatePhase(concentr, mass_conc, mass_frac, mole_frac,
-                            vol_flow, mass_flow, mole_flow)
+                            vol_flow, mass_flow, mole_flow, solvent_pass=solvent_pass)
 
         self.mass_flow = self.mass
         self.vol_flow = self.vol

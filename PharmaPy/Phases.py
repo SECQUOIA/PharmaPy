@@ -220,8 +220,8 @@ class LiquidPhase(ThermoPhysicalManager):
         self._name = name
 
     def __set_amounts(self, mass, vol, moles, massfrac, molefrac,
-                      conc, mass_conc):
-        densMass = self.getDensityMix(massfrac)
+                      conc, mass_conc,solvent_pass=False):
+        densMass = self.getDensityMix(massfrac) if not solvent_pass else sum(mass_conc)
         mw_av = np.dot(molefrac, self.mw)
         if mass > 0:
             self.mass = mass
@@ -256,7 +256,7 @@ class LiquidPhase(ThermoPhysicalManager):
             else:
                 mass_frac, mole_frac, mole_conc = frac_out
 
-            mass_conc = mole_conc * self.mw  # kg / m3 
+            mass_conc = mole_conc * self.mw  # kg / m3_solvent 
 
         elif self.mass_conc is not None:
             frac_out = self.mass_conc_to_frac(self.mass_conc,
@@ -268,7 +268,7 @@ class LiquidPhase(ThermoPhysicalManager):
             else:
                 mass_frac, mole_frac, mass_conc = frac_out
 
-            mole_conc = mass_conc / self.mw  # mol/L
+            mole_conc = mass_conc / self.mw  # mol/L_solvent
 
         elif self.mass_frac is not None:
             mole_conc = self.frac_to_conc(self.mass_frac)
@@ -289,7 +289,7 @@ class LiquidPhase(ThermoPhysicalManager):
 
     def updatePhase(self, mole_conc=None, mass_conc=None,
                     mass_frac=None, mole_frac=None,
-                    vol=0, mass=0, moles=0, temp=None, pres=None):
+                    vol=0, mass=0, moles=0, temp=None, pres=None,solvent_pass=False):
 
         if mole_conc is not None:
             frac_out = self.conc_to_frac(mole_conc,
@@ -302,10 +302,14 @@ class LiquidPhase(ThermoPhysicalManager):
             mass_conc = mole_conc * self.mw
 
         elif mass_conc is not None:
-            frac_out = self.mass_conc_to_frac(mass_conc,
-                                              solvent_ind=self.ind_solv)
+            if not solvent_pass:
+                frac_out = self.mass_conc_to_frac(mass_conc,
+                                                solvent_ind=self.ind_solv)
+            else:
+                frac_out = self.mass_conc_to_frac(mass_conc,
+                                                solvent_ind=None)
 
-            if self.ind_solv:
+            if self.ind_solv and not solvent_pass:
                 mass_frac, mole_frac, mass_conc = frac_out
             else:
                 mass_frac, mole_frac = frac_out
@@ -335,7 +339,7 @@ class LiquidPhase(ThermoPhysicalManager):
             self.pres = pres
 
         self.__set_amounts(mass, vol, moles, mass_frac, mole_frac,
-                           mole_conc, mass_conc)
+                           mole_conc, mass_conc,solvent_pass)
 
     def getDensity(self, mass_frac=None, mole_frac=None, temp=None,
                    basis='mass'):

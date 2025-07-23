@@ -9,10 +9,14 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 # from autograd import numpy as np
 import numpy as np
-from scipy.integrate import simps
+from scipy.integrate import simpson
 from itertools import cycle
-
-from assimulo.exception import TerminateSimulation
+import io
+import contextlib
+import sys
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()): # o|-<( this muting line was taken from chatgpt 20250717
+    
+    from assimulo.exception import TerminateSimulation
 
 linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
@@ -583,7 +587,7 @@ def integration(states, time):
 
     integral = np.zeros(states.shape[1])
     for ind, row in enumerate(states.T):
-        integral[ind] = simps(row, time)
+        integral[ind] = simpson(row, time) # TODO add logic to handle even length arrays
 
     return integral
 

@@ -1057,17 +1057,17 @@ class _BaseCryst:
         def get_mu_labels(mu_idx, msmpr=False):
             out = []
             for idx in mu_idx:
-                name = '$\mu_{%i}$' % idx
+                name = r'$\mu_{%i}$' % idx
 
                 if idx == 0:
                     unit = '#'
                 elif idx == 1:
                     unit = 'm'
                 else:
-                    unit = '$\mathrm{m^{%i}}$' % idx
+                    unit = r'$\mathrm{m^{%i}}$' % idx
 
                 if msmpr:
-                    unit += ' $\mathrm{m^{-3}}$'
+                    unit += r' $\mathrm{m^{-3}}$'
 
                 unit = r' (%s)' % unit
 
@@ -1131,7 +1131,7 @@ class _BaseCryst:
         axis.set_xscale('log')
 
         fig.texts[0].remove()
-        axis.set_xlabel('$x$ ($\mathregular{\mu m}$)')
+        axis.set_xlabel(r'$x$ ($\mathregular{\mu m}$)')
 
         return fig, axis
 
@@ -1187,7 +1187,7 @@ class _BaseCryst:
             sens_data = reorder_sens(self.sensit, separate_sens=True)
 
         # Name states
-        name_mom = ['\mu_%i' % i for i in range(self.num_distr)]
+        name_mom = [r'\mu_%i' % i for i in range(self.num_distr)]
         name_conc = ["C_{" + self.name_species[ind] + "}"
                      for ind in range(len(self.Liquid_1.name_species))]
 
@@ -1305,7 +1305,7 @@ class BatchCryst(_BaseCryst):
                  controls=None, adiabatic=False,
                  rad_zero=0, reset_states=False,
                  h_conv=1000, vol_ht=None, basis='mass_conc',
-                 jac_type=None, state_events=None, param_wrapper=None):
+                 jac_type=None, state_events=None, param_wrapper=None, isothermal=False):
 
 
         super().__init__(mask_params, method, target_comp, scale, vol_tank,
@@ -1315,7 +1315,7 @@ class BatchCryst(_BaseCryst):
 
         self.is_continuous = False
         self.oper_mode = 'Batch'
-
+        self.isothermal=isothermal
         self.vol_offset = 0.75
 
     def jac_states(self, time, states, params, return_only=True):
@@ -1563,8 +1563,9 @@ class BatchCryst(_BaseCryst):
             return heat_components
         else:
             # Balance inside the tank
-            dtemp_dt = (-source_term - ht_term) / capacitance / vol
-
+            if not self.isothermal:
+                dtemp_dt = (-source_term - ht_term) / capacitance / vol
+            else: dtemp_dt = 0
             if temp_ht is not None:
                 ht_dict = self.Utility.get_inputs(time)
                 tht_in = ht_dict['temp_in']
