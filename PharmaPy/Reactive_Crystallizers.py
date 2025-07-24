@@ -2011,7 +2011,7 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         ####old
         if True:
             flow_term = phi_in[0]*input_flow*input_conc
-            transf_term = transf * (self.kron_jtg - mass_conc/rho_liq)
+            transf_term = transf * (self.kron_jtg - mass_conc/rho_sol)
             dvol_dt = (phi_in[0] * input_flow * rho_in_liq - transf) / rho_liq 
             dcomp_dt = 1/vol * (flow_term - transf_term + rates*vol-mass_conc*dvol_dt) 
             
