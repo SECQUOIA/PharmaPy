@@ -277,6 +277,7 @@ class _BaseReactiveCryst():
         # ---------- Names
         # TODO need states_uo, switch to mass on rxn side and convert
         self.states_uo = ['mass_conc'] 
+        self.states_uo.append('mass_j') #z o|-<( used to switch to mass basis for odes if desired
         self.names_states_in = ['mass_conc']
 
        
@@ -446,7 +447,7 @@ class _BaseReactiveCryst():
             if self.name_species is None:
                 num_sp = len(self.Liquid_1.mass_frac)
                 self.name_species = list(string.ascii_uppercase[:num_sp])
-
+            #TODO check if mass_j needs in here z
             self.states_in_dict = {
                 'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
                 'Inlet': {'vol_flow': 1, 'temp': 1,'mole_conc': len(self.Liquid_1.name_species)}}
@@ -587,16 +588,22 @@ class _BaseReactiveCryst():
             else:
                 self.states_uo.insert(0, 'total_distrib')
                 di_distr['units'] = '#/um'
-
-        states_di['mass_conc'] = {'dim': len(self.name_species),
-                                  'index': self.name_species,
-                                  'units': 'kg/m**3', 'type': 'diff',
-                                  'depends_on': ['time']}
+        if self.basis != 'mass_j':
+            states_di['mass_conc'] = {'dim': len(self.name_species),
+                                    'index': self.name_species,
+                                    'units': 'kg/m**3', 'type': 'diff',
+                                    'depends_on': ['time']}
+        
          
-        if 'msmpr' not in name_class.lower():
-            states_di['vol'] = {'dim': 1, 'units': 'm**3', 'type': 'diff',
-                                'depends_on': ['time']}
-            self.states_uo.append('vol')
+            if 'msmpr' not in name_class.lower():
+                states_di['vol'] = {'dim': 1, 'units': 'm**3', 'type': 'diff',
+                                    'depends_on': ['time']}
+                self.states_uo.append('vol')
+        else:
+            states_di['mass_j'] = {'dim': len(self.name_species),
+                                  'index': self.name_species,
+                                  'units': 'kg', 'type': 'diff',
+                                  'depends_on': ['time']}
 
         if self.adiabatic:
             self.states_uo.append('temp')
@@ -625,7 +632,7 @@ class _BaseReactiveCryst():
             'q_ht': {'units': 'W', 'dim': 1},
             'm_flow':{'units':'kg/s', 'dim':1},
             'tot_mass_cryst': {'units':'kg','dim':1}
-            }
+            }# TODO check if needs mass_j or mole_conc when mass_j=basis
 
         if 'temp' in self.controls:
             self.fstates_di['temp'] = {'dim': 1, 'units': 'K'}
@@ -639,7 +646,7 @@ class _BaseReactiveCryst():
                 'index': list(range(self.num_distr)),
                 'units': 'm**3/m**3'}
     def set_names(self):
-        ## ------reactor set_names implementation
+        ## ------reactor set_names implementation ## may need to remove mole_conc from states_di and push to fstates
         name_class = self.__class__.__name__ #wasnt
         mask_species = [True] * self.num_species
         if self.name_species is not None:
@@ -647,9 +654,10 @@ class _BaseReactiveCryst():
         self.mask_species = np.asarray(mask_species) #wasnt self
         index_conc = self.RxnKinetics.partic_species if 'batch' in name_class.lower()\
                     and 'semi' not in name_class.lower() else self.name_species
+        if self.basis != 'mass_j':
+            self.states_di['mole_conc']= {'index': index_conc, 'dim': len(index_conc),
+                            'units': 'mol/L', 'type': 'diff'}
         
-        self.states_di['mole_conc']= {'index': index_conc, 'dim': len(index_conc),
-                          'units': 'mol/L', 'type': 'diff'}
         if self.isothermal:
             self.fstates_di['temp'] = {'units': 'K', 'dim': 1, 'type': 'diff'}
         else:
@@ -765,22 +773,39 @@ class _BaseReactiveCryst():
                     mat_bce=False, enrgy_bce=False):
         # TODO reconcile with RC
         di_states = unpack_states(states, self.dim_states, self.name_states)
-        di_states['mole_conc'] = di_states['mass_conc']/self.Liquid_1.mw 
+        if self.basis!='mass_j':
+            di_states['mole_conc'] = di_states['mass_conc']/self.Liquid_1.mw 
+            di_states = complete_dict_states(time, di_states,
+                                            ('temp', 'temp_ht', 'vol'),
+                                            self.Slurry, self.controls) # this is used to update when there are controls
+                # ---------- Physical properties
+            # self.Liquid_1.updatePhase(vol=di_states['vol'])
+            self.Liquid_1.updatePhase(mass_conc=di_states['mass_conc'],vol=di_states['vol'], solvent_pass=True)
+            self.Liquid_1.temp = di_states['temp']
+            self.Solid_1.temp = di_states['temp']
+
+            rhos_susp = self.Slurry.getDensity(temp=di_states['temp'])
+            rhos_susp[0] = sum(di_states['mass_conc'])
+        else:
+            di_states = complete_dict_states(time, di_states,
+                                            ('temp', 'temp_ht'),
+                                            self.Slurry, self.controls) # this is used to update when there are controls
+            # ---------- Physical properties
+            # self.Liquid_1.updatePhase(vol=di_states['vol'])
+            tot_mass = sum(di_states['mass_j'])
+            mass_frac = di_states['mass_j']/tot_mass
+            self.Liquid_1.updatePhase(mass_frac=mass_frac,mass=tot_mass, solvent_pass=True)
+            self.Liquid_1.temp = di_states['temp']
+            self.Solid_1.temp = di_states['temp']
+            # di_states['mole_conc']
+
+            rhos_susp = self.Slurry.getDensity(temp=di_states['temp'])
+            # rhos_susp[0] = sum(di_states['mass_conc'])
         # Inputs
         u_input = self.get_inputs(time,solvent_pass=True)
 
-        di_states = complete_dict_states(time, di_states,
-                                        ('temp', 'temp_ht', 'vol'),
-                                        self.Slurry, self.controls)
 
-        # ---------- Physical properties
-        # self.Liquid_1.updatePhase(vol=di_states['vol'])
-        self.Liquid_1.updatePhase(mass_conc=di_states['mass_conc'],vol=di_states['vol'], solvent_pass=True)
-        self.Liquid_1.temp = di_states['temp']
-        self.Solid_1.temp = di_states['temp']
-
-        rhos_susp = self.Slurry.getDensity(temp=di_states['temp'])
-        rhos_susp[0] = sum(di_states['mass_conc'])
+        
         name_unit = self.__class__.__name__
 
         if self.method == 'moments':
@@ -1033,17 +1058,17 @@ class _BaseReactiveCryst():
             TODO
         """
         self.set_names()
-        if self.__class__.__name__ != 'BatchRC':
-            if self.method == 'moments':
-                pass  # TODO: MSMPR MoM should be addressed?
-            else:
-                x_distr = getattr(self.Solid_1, 'x_distrib', [])
-                self.states_in_dict['Inlet']['distrib'] = len(x_distr)
+
+        if self.method == 'moments':
+            pass  # TODO: MSMPR MoM should be addressed?
+        else:
+            x_distr = getattr(self.Solid_1, 'x_distrib', [])
+            self.states_in_dict['Inlet']['distrib'] = len(x_distr)
 
         self.CrystKinetics.target_idx = self.target_ind
 
         # ---------- Solid phase states
-        if 'vol' in self.states_uo:
+        if 'vol' in self.states_uo or 'mass_j' in self.states_uo:
             if self.method == 'moments':
                 init_solid = self.Solid_1.moments
                 # exp = np.arange(0, self.Solid_1.num_mom) # TODO: problematic line for seeded crystallization.
@@ -1068,6 +1093,8 @@ class _BaseReactiveCryst():
 
         # ---------- Liquid phase states
         init_liquid = self.Liquid_1.mass_conc.copy()
+        if self.basis == 'mass_j':
+            init_liquid*= self.Liquid_1.vol
 
         self.num_species = len(init_liquid)
 
@@ -1781,8 +1808,8 @@ class ReactiveMSMPR(_BaseReactiveCryst):
 
         else:
             vol_liq = dp['vol'][-1]
-            self.Liquid_1.updatePhase(mole_conc=dp['mole_conc'][-1],
-                                  vol=dp['vol'][-1])
+            self.Liquid_1.updatePhase(mass_conc=dp['mass_conc'][-1],
+                                  vol=dp['vol'][-1], solvent_pass=True)
             
             rho_solid = self.Solid_1.getDensity()
             vol_solid = dp['mu_n'][-1, 3] * self.Solid_1.kv
@@ -1928,7 +1955,7 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
                   reset_states=False, controls=None, h_conv=1000, ht_mode='jacket',
                   return_sens=True, state_events=None, method='1D-FVM',
                   scale=1, vol_tank=None, adiabatic=False, rad_zero=0, vol_ht=None,
-                  basis='mass_conc', jac_type=None, param_wrapper=None, num_interp_points=3, grid_size=500,param_estimation_run=False):
+                  basis='mass_j', jac_type=None, param_wrapper=None, num_interp_points=3, grid_size=500,param_estimation_run=False):
         super().__init__(target_comp,mask_params_rxn,mask_params_cryst, temp_ref, isothermal, reset_states, controls, h_conv, ht_mode, return_sens, state_events, method, scale, vol_tank, adiabatic, rad_zero, vol_ht, basis, jac_type, param_wrapper,param_estimation_run=param_estimation_run)
         self.is_continuous = False
         self.oper_mode = 'Semibatch'
@@ -1947,38 +1974,45 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         else:
             return alt
     def material_balances(self, time, params, u_inputs, rhos, mu_n,
-                          distrib, mass_conc, temp, temp_ht, vol, phi_in, mole_conc):
+                          distrib, mass_j, temp, temp_ht, phi_in):
 
         rho_susp, rho_in = rhos 
         self.checker.check(time)
         rho_liq, rho_sol = rho_susp
         rho_in_liq, _ = rho_in
-        rho_liq = sum(mass_conc)
+        
         
         input_flow = u_inputs['Inlet']['vol_flow']
         input_flow = self.quickflow(np.max([eps, input_flow]))
 
         # TODO: generalize dictionary iteration ('Inlet', 'Liquid_1', ...)?
         input_distrib = self.quickflow(u_inputs['Inlet']['distrib'] * self.scale, np.zeros_like(distrib))
-        input_conc = self.quickflow(u_inputs['Liquid_1']['mass_conc'], np.zeros_like(mass_conc))
+        input_conc = self.quickflow(u_inputs['Liquid_1']['mass_conc'], np.zeros_like(u_inputs['Liquid_1']['mass_conc']))
 
         # print('time = %.2f, vol = %.2e, flowrate = %.2e' % (time, vol, input_flow))
 
         vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
-        vol_slurry = vol + vol_solid
+        mole_j = mass_j/self.Liquid_1.mw
+        tot_mass = sum(mass_j)
+        tot_moles = sum(mole_j)
+        mass_frac = mass_j/tot_mass
+        mole_frac = mole_j/tot_moles
         # print(time)
         # print(vol*rho_liq, vol, rho_liq, sum(mass_conc)*vol)
         # print(self.Liquid_1.mass,self.Liquid_1.vol, self.Liquid_1.getDensity(),sum(self.Liquid_1.mass_frac)*self.Liquid_1.vol)
         # print()
-        self.Liquid_1.updatePhase(mass_conc=mass_conc,vol=vol,solvent_pass=True)
+        self.Liquid_1.updatePhase(mass_frac=mass_frac,mass=tot_mass,solvent_pass=True)
+        mole_conc = mole_j/self.Liquid_1.vol
+        vol_slurry = self.Liquid_1.vol + vol_solid
+        # mass_conc_per_solvent_vol = 
         # note that transf is mass of liquid transferred in kg
         if self.method == 'moments':
-            ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
+            ddistr_dt, transf = self.method_of_moments(distrib, self.Liquid_1.mass_conc, temp,
                                                        params, rho_sol,
                                                        vol=vol_slurry)
 
         elif self.method == '1D-FVM':
-            ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
+            ddistr_dt, transf = self.fvm_method(distrib, mu_n, self.Liquid_1.mass_conc, temp,
                                                 params, rho_sol,
                                                 vol=vol_slurry)
 
@@ -2009,43 +2043,14 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         rates*=self.Liquid_1.mw #from kmol_j/m^3_reactor_liquid to kg_j/m^3_reactor_liquid
         #### End from Reactor ####
         ####old
-        if True:
-            flow_term = phi_in[0]*input_flow*input_conc
-            transf_term = transf * (self.kron_jtg - mass_conc/rho_liq)
-            dvol_dt = (phi_in[0] * input_flow * rho_in_liq - transf) / rho_liq 
-            dcomp_dt = 1/vol * (flow_term - transf_term + rates*vol-mass_conc*dvol_dt) 
-            
-            
-        ##### end_old
-        ### convert to mass basis because volume changes are complicated
-        ###old2
-        if False:
-            reactor_mass_conc_per_mass = mass_conc/rho_liq #mass_conc is kg_j/m^3_reactor_liq, mass_conc_permass is kg_j/kg_reactor_liquid
-            input_conc_mass_per_mass = self.quickflow(input_conc/rho_in_liq, np.zeros_like(input_conc)) #input_conc is kg_j/m^3flow_in, input_cnc_per_mass is kg_j/kg_flow_in
-            rates_per_mass = rates/rho_liq # rates_per_mass is in kg_j/kg_reactor_liquid
-            transf_term = transf * (self.kron_jtg - mass_conc/rho_liq) #
-            input_flow_liquid_mass = input_flow*phi_in[0]*rho_in_liq
-            mass_reactor = vol*rho_liq
+        dmj_dt = phi_in[0]*input_flow*input_conc + rates*self.Liquid_1.vol - transf*self.kron_jtg
 
-            dmdt = phi_in[0]*input_flow*rho_in_liq - transf # mass balance on liquid phase phi*Fdot_in-tr
-            dcompmass_dt = 1/mass_reactor*(input_flow_liquid_mass*input_conc_mass_per_mass
-                                    + rates_per_mass*mass_reactor
-                                    -transf_term-reactor_mass_conc_per_mass*dmdt)
-            #convert back to volume basis
-            dcomp_dt = dcompmass_dt*rho_liq
-            dvol_dt = dmdt/rho_liq
-
-        dliq_dt = np.append(dcomp_dt, dvol_dt)
-
-        if self.basis == 'mass_frac':
-            dcomp_dt *= 1 / rho_liq
-
-        dmaterial_dt = np.concatenate((ddistr_dt, dliq_dt))
+        dmaterial_dt = np.concatenate((ddistr_dt, dmj_dt))
 
         return dmaterial_dt, transf
 
     def energy_balances(self, time, params, cryst_rate, u_inputs, rhos,
-                        distrib, mass_conc, temp, temp_ht, vol, mu_n, h_in,mole_conc,heat_prof=False):
+                        distrib, mass_j, temp, temp_ht, mu_n, h_in,heat_prof=False):
 
         rho_susp, rho_in = rhos
 
@@ -2074,7 +2079,7 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         deltah_rxn = self.Liquid_1.getHeatOfRxn(
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
-        rxn_rates = self.RxnKinetics.get_rxn_rates(mole_conc.T[self.mask_species].T, temp,
+        rxn_rates = self.RxnKinetics.get_rxn_rates(self.Liquid_1.mole_conc.T[self.mask_species].T, temp,
                                             overall_rates=False,
                                             delta_hrxn=deltah_rxn)
         rxn_term = -(deltah_rxn * rxn_rates).sum() *vol*1000 # TODO check if need mult by vol
