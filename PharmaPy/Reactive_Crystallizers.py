@@ -1736,7 +1736,16 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         volflow = inputs['Inlet']['vol_flow']
 
         dp = unpack_states(states, self.dim_states, self.name_states)
-        
+        if self.basis == 'mass_j':
+            dp['mole_j'] = dp['mass_j']/self.Liquid_1.mw*1000
+            dp['liq_mass_tot'] = np.sum(dp['mass_j'],axis=1)
+            dp['liq_moles_tot'] = np.sum(dp['mole_j'],axis=1)
+            dp['mass_frac'] = dp['mass_j']/dp['liq_mass_tot'][:,None]
+            dp['mole_frac'] = dp['mole_j']/dp['liq_moles_tot'][:,None]
+            dp['vol'] = np.sum(dp['mass_j'] / self.Liquid_1.getDensityPure()[0],axis=1)
+            dp['rho'] = dp['liq_mass_tot']/dp['vol']
+            dp['mass_conc'] = dp['mass_j']/dp['vol'][:,None]
+
         dp['time'] = time
         dp['vol_flow'] = volflow
         dp['x_cryst'] = self.x_grid
@@ -1745,10 +1754,10 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         if 'temp' in self.controls:
             control = self.controls['temp']
             dp['temp'] = control['fun'](time, *control['args'], **control['kwargs'])
+        mass_conc_sat = dp['mass_conc'] if self.basis!='mass_j' else dp['mass_j']/dp['mass_j'][self.Liquid_1.ind_solv]*self.Liquid_1.getDensityPure()[0][self.Liquid_1.ind_solv]
+        sat_conc = self.CrystKinetics.get_solubility(dp['temp'], mass_conc_sat)
 
-        sat_conc = self.CrystKinetics.get_solubility(dp['temp'], dp['mass_conc'])
-
-        supersat = dp['mass_conc'][:, self.target_ind] - sat_conc 
+        supersat = mass_conc_sat[:, self.target_ind] - sat_conc 
         if self.CrystKinetics.sup_sat_type == 'relative':
             supersat = supersat / sat_conc
 
@@ -1808,8 +1817,13 @@ class ReactiveMSMPR(_BaseReactiveCryst):
 
         else:
             vol_liq = dp['vol'][-1]
-            self.Liquid_1.updatePhase(mass_conc=dp['mass_conc'][-1],
-                                  vol=dp['vol'][-1], solvent_pass=True)
+            if self.basis!='mass_j':
+                self.Liquid_1.updatePhase(mass_conc=dp['mass_conc'][-1],
+                                    vol=dp['vol'][-1], solvent_pass=True)
+            else:
+                self.Liquid_1.updatePhase(mass=dp['liq_mass_tot'][-1],
+                                          mass_frac=dp['mass_frac'][-1],
+                                          solvent_pass=True)
             
             rho_solid = self.Solid_1.getDensity()
             vol_solid = dp['mu_n'][-1, 3] * self.Solid_1.kv
@@ -1992,27 +2006,31 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         # print('time = %.2f, vol = %.2e, flowrate = %.2e' % (time, vol, input_flow))
 
         vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
-        mole_j = mass_j/self.Liquid_1.mw
+        mole_j = mass_j/self.Liquid_1.mw*1000 # moles
         tot_mass = sum(mass_j)
         tot_moles = sum(mole_j)
         mass_frac = mass_j/tot_mass
         mole_frac = mole_j/tot_moles
+        ## for debugging
+        raw_vol = np.sum(mass_j / self.Liquid_1.getDensityPure()[0])
+        raw_rho =mass_j.sum() / np.sum(mass_j / self.Liquid_1.getDensityPure()[0])
+
         # print(time)
         # print(vol*rho_liq, vol, rho_liq, sum(mass_conc)*vol)
         # print(self.Liquid_1.mass,self.Liquid_1.vol, self.Liquid_1.getDensity(),sum(self.Liquid_1.mass_frac)*self.Liquid_1.vol)
         # print()
         self.Liquid_1.updatePhase(mass_frac=mass_frac,mass=tot_mass,solvent_pass=True)
-        mole_conc = mole_j/self.Liquid_1.vol
+        mole_conc = mole_j/self.Liquid_1.vol/1000 #kgmol/m3  mole/L
         vol_slurry = self.Liquid_1.vol + vol_solid
-        # mass_conc_per_solvent_vol = 
+        mass_conc_per_solvent_vol = mass_j/mass_j[self.Liquid_1.ind_solv]*self.Liquid_1.getDensityPure()[0][self.Liquid_1.ind_solv]
         # note that transf is mass of liquid transferred in kg
         if self.method == 'moments':
-            ddistr_dt, transf = self.method_of_moments(distrib, self.Liquid_1.mass_conc, temp,
+            ddistr_dt, transf = self.method_of_moments(distrib, mass_conc_per_solvent_vol, temp,
                                                        params, rho_sol,
                                                        vol=vol_slurry)
 
         elif self.method == '1D-FVM':
-            ddistr_dt, transf = self.fvm_method(distrib, mu_n, self.Liquid_1.mass_conc, temp,
+            ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc_per_solvent_vol, temp,
                                                 params, rho_sol,
                                                 vol=vol_slurry)
 
@@ -2042,8 +2060,10 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         rates[self.mask_species] = rate
         rates*=self.Liquid_1.mw #from kmol_j/m^3_reactor_liquid to kg_j/m^3_reactor_liquid
         #### End from Reactor ####
-        ####old
-        dmj_dt = phi_in[0]*input_flow*input_conc + rates*self.Liquid_1.vol - transf*self.kron_jtg
+        ####
+        rxnterm= rates*self.Liquid_1.vol
+        dmj_dt = phi_in[0]*input_flow*input_conc + rxnterm - transf*self.kron_jtg
+        
 
         dmaterial_dt = np.concatenate((ddistr_dt, dmj_dt))
 
@@ -2057,7 +2077,7 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         # Input properties
         input_flow = u_inputs['Inlet']['vol_flow']
         input_flow = self.quickflow(np.max([eps, input_flow]))
-
+        vol = self.Liquid_1.vol
         vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_total = vol + vol_solid
 
@@ -2079,10 +2099,10 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         deltah_rxn = self.Liquid_1.getHeatOfRxn(
             stoich, temp, self.mask_species, delta_href, tref_hrxn)  # J/mol
 
-        rxn_rates = self.RxnKinetics.get_rxn_rates(self.Liquid_1.mole_conc.T[self.mask_species].T, temp,
+        rxn_rates = self.RxnKinetics.get_rxn_rates(self.Liquid_1.mole_conc[self.mask_species], temp,
                                             overall_rates=False,
                                             delta_hrxn=deltah_rxn)
-        rxn_term = -(deltah_rxn * rxn_rates).sum() *vol*1000 # TODO check if need mult by vol
+        rxn_term = -(deltah_rxn * rxn_rates).sum() *vol*1000 # TODO check if need mult by 1000
         ###### End Reaction terms #####
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
