@@ -227,6 +227,8 @@ class _BaseReactiveCryst():
 
         if isothermal:
             assert adiabatic != 1, "Cannot be isothermal and adiabatic with a reaction present"
+            if controls is not None:
+                assert 'temp' not in controls.keys(), "Cannot change the temperature of an isothermal unit"
         
 
 
@@ -658,7 +660,7 @@ class _BaseReactiveCryst():
             self.states_di['mole_conc']= {'index': index_conc, 'dim': len(index_conc),
                             'units': 'mol/L', 'type': 'diff'}
         
-        if self.isothermal:
+        if self.isothermal or (self.controls is not None and 'temp' in self.controls.keys()):
             self.fstates_di['temp'] = {'units': 'K', 'dim': 1, 'type': 'diff'}
         else:
             self.states_di['temp'] = {'units': 'K', 'dim': 1, 'type': 'diff'}
