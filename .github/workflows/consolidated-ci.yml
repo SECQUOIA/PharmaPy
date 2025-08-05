@@ -37,6 +37,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Debug environment.yml
+      run: |
+        echo "=== environment.yml content ==="
+        cat environment.yml
+        echo "=== YAML syntax check ==="
+        python -c "import yaml; yaml.safe_load(open('environment.yml')); print('✅ YAML syntax OK')"
+
     - name: Set up Miniconda
       uses: conda-incubator/setup-miniconda@v3
       with:
@@ -46,6 +53,8 @@ jobs:
         python-version: ${{ matrix.python-version }}
         auto-activate-base: false
         auto-update-conda: true
+        mamba-version: "*"
+        use-mamba: true
 
     - name: Install system dependencies (Ubuntu)
       if: matrix.os == 'ubuntu-latest'
@@ -64,6 +73,7 @@ jobs:
         conda info
         conda list
         python --version
+        echo "Environment setup successful"
 
     - name: Install PharmaPy
       shell: bash -l {0}
