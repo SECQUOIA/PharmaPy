@@ -10,8 +10,26 @@ import subprocess
 import platform
 from pathlib import Path
 
-def run_command(cmd, cwd=None, timeout=300, shell=None):
-    """Run a command and return success status and output."""
+def run_command(
+    cmd: list[str],
+    cwd: str | None = None,
+    timeout: int = 300,
+    shell: bool | None = None
+) -> tuple[bool, str, str]:
+    """
+    Run a command and return success status and output.
+
+    Parameters:
+        cmd (list[str]): The command to run as a list of arguments.
+        cwd (str | None): The working directory to run the command in.
+        timeout (int): Timeout in seconds for the command.
+        shell (bool | None): Whether to run the command through the shell.
+            If None (default), uses True on Windows and False otherwise.
+            This is determined by: shell = platform.system() == "Windows"
+
+    Returns:
+        tuple[bool, str, str]: (success, stdout, stderr)
+    """
     if shell is None:
         shell = platform.system() == "Windows"
         
