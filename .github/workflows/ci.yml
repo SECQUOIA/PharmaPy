@@ -1,4 +1,4 @@
-name: PharmaPy Consolidated CI
+name: PharmaPy CI/CD Pipeline
 
 on:
   push:
