@@ -1,12 +1,56 @@
+# Core documentation and metadata
 include README.md
 include LICENSE.md
+include INSTALLATION.md
+include TESTING.md
+include SETUP_MODERNIZATION.md
+
+# Configuration files
+include .readthedocs.yaml
+include environment.yml
+include pytest.ini
+include Makefile
+include make.bat
+
+# Root Python files
+include __init__.py
+
+# Requirements files
 include requirements.txt
+include requirements-*.txt
 include install_instructions.txt
+
+# Installation scripts
 include InstallOnWindows.bat
 include InstallOnMac.sh
+
+# Test and development scripts
+include *.py
+include *.bat
+
+# Documentation
+recursive-include doc *
+recursive-include docs *.md
+
+# Data files
 recursive-include data *
 recursive-include PharmaPy/data *
-recursive-include doc *
+
+# Test files and data
+recursive-include tests *.py
+recursive-include tests *.json
+recursive-include tests *.csv
+
+# Workshop and example data
+recursive-include workshop_data *.json
+recursive-include workshop_data *.csv
+recursive-include workshop_data *.png
+
+# Exclude compiled and cache files
 recursive-exclude * __pycache__
 recursive-exclude * *.py[co]
 recursive-exclude * .DS_Store
+
+# Exclude build artifacts
+recursive-exclude * *.egg-info
+exclude *.egg-info/*
