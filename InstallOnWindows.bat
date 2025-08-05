@@ -6,11 +6,27 @@ set /p env_name=Enter environment name:
 echo ------------------------------
 echo Creating conda environment...
 echo ------------------------------
-call conda create -n %env_name% python=3.9 --file requirements.txt -c conda-forge -y
+call conda create -n %env_name% python=3.9 -c conda-forge -y
 echo ------------------------------
 echo Activating environment...
 echo ------------------------------
 call conda activate %env_name%
+echo ------------------------------
+echo Installing core dependencies...
+echo ------------------------------
+call conda install -c conda-forge numpy scipy matplotlib pandas cython -y
+echo ------------------------------
+echo Installing system dependencies for assimulo...
+echo --------------------------------
+echo Installing core dependencies...
+echo --------------------------------
+call pip install -r requirements.txt
+echo ------------------------------
+call conda install -c conda-forge sundials=5.8.0 superlu=5.2.2 openblas -y
+echo ------------------------------
+echo Attempting to install assimulo...
+echo ------------------------------
+call pip install -r requirements-assimulo.txt || echo "Assimulo installation failed - PharmaPy will work with limited functionality"
 echo ----------------------
 echo Installing PharmaPy...
 echo ----------------------
@@ -21,6 +37,12 @@ if %ERRORLEVEL% neq 0 (
     echo Pip install failed, trying legacy method...
     call python setup.py develop
 )
+echo ------------------------------
+echo Testing installation...
+echo ------------------------------
+python -c "import PharmaPy; print('✅ PharmaPy installed successfully')"
+python -c "from PharmaPy import Utilities; print('✅ Core modules working')"
+python -c "from PharmaPy import Reactors; print('✅ Simulation modules working')" || echo "⚠️ Simulation modules require assimulo"
 echo ------------------------------
 echo Installation complete!
 echo ------------------------------

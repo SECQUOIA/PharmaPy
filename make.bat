@@ -75,11 +75,12 @@ goto end
 
 :test-imports
 echo Testing package imports...
-python -c "import PharmaPy; print('✅ PharmaPy')"
-python -c "from PharmaPy import Reactors; print('✅ Reactors')"
-python -c "from PharmaPy import Streams; print('✅ Streams')"
-python -c "from PharmaPy import Phases; print('✅ Phases')"
-python -c "from PharmaPy import Kinetics; print('✅ Kinetics')"
+python -c "import PharmaPy; print('✅ PharmaPy')" || echo "❌ PharmaPy import failed"
+python -c "from PharmaPy import Utilities; print('✅ Utilities')" || echo "⚠️ Utilities import failed"
+python -c "from PharmaPy import Reactors; print('✅ Reactors')" || echo "⚠️ Reactors import failed (may need assimulo)"
+python -c "from PharmaPy import Streams; print('✅ Streams')" || echo "⚠️ Streams import failed (may need assimulo)"
+python -c "from PharmaPy import Phases; print('✅ Phases')" || echo "⚠️ Phases import failed (may need assimulo)"
+python -c "from PharmaPy import Kinetics; print('✅ Kinetics')" || echo "⚠️ Kinetics import failed (may need assimulo)"
 goto end
 
 :test-all

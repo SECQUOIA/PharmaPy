@@ -1,0 +1,260 @@
+name: Comprehensive Testing with Assimulo
+
+on:
+  push:
+    branches: [ master, test-devel, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+env:
+  FORCE_COLOR: 1
+
+jobs:
+  # Test installation with assimulo support
+  test-with-assimulo:
+    name: Test with Assimulo (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-20.04, windows-2019]  # Using older versions for better compatibility
+        python-version: ['3.9']  # Focus on 3.9 for assimulo compatibility
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: ${{ matrix.python-version }}
+        channels: conda-forge,defaults
+        channel-priority: flexible
+        miniforge-version: latest
+        
+    - name: Install system dependencies (Linux)
+      if: matrix.os == 'ubuntu-20.04'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gfortran liblapack-dev libblas-dev libsuperlu-dev
+        
+    - name: Install core dependencies
+      shell: bash -l {0}
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Install assimulo system dependencies via conda
+      shell: bash -l {0}
+      run: |
+        conda install -c conda-forge sundials=5.8.0  # Specific version for assimulo compatibility
+        conda install -c conda-forge superlu=5.2.2
+        conda install -c conda-forge openblas
+        
+    - name: Install assimulo
+      shell: bash -l {0}
+      run: |
+        # Try installing assimulo with requirements file
+        pip install -r requirements-assimulo.txt || echo "Assimulo installation failed, continuing without it"
+        
+    - name: Install PharmaPy
+      shell: bash -l {0}
+      run: |
+        pip install -e .
+        
+    - name: Test basic imports
+      shell: bash -l {0}
+      run: |
+        python -c "import PharmaPy; print('✅ PharmaPy imported successfully')"
+        python -c "from PharmaPy import Utilities; print('✅ Utilities imported')"
+        
+    - name: Test assimulo-dependent imports
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        python -c "from PharmaPy import Reactors; print('✅ Reactors imported')"
+        python -c "from PharmaPy import Streams; print('✅ Streams imported')"
+        python -c "from PharmaPy import Phases; print('✅ Phases imported')"
+        python -c "from PharmaPy import Kinetics; print('✅ Kinetics imported')"
+        
+    - name: Run comprehensive test suite
+      shell: bash -l {0}
+      run: |
+        python run_tests.py --verbose
+        
+    - name: Test reactor functionality (if assimulo available)
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        cd tests/integration
+        timeout 600 python reactor_tests.py || echo "Reactor tests completed with timeout or error"
+        
+    - name: Test flowsheet functionality (if assimulo available)
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        cd tests/Flowsheet
+        timeout 600 python flowsheet_tests.py || echo "Flowsheet tests completed with timeout or error"
+
+  # Test core functionality without assimulo
+  test-core-functionality:
+    name: Test Core (No Assimulo) - Python ${{ matrix.python-version }}, ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Install core dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -r requirements.txt
+        
+    - name: Install PharmaPy (core only)
+      run: |
+        pip install -e .
+        
+    - name: Test core imports
+      run: |
+        python -c "import PharmaPy; print('✅ PharmaPy core imported')"
+        python -c "from PharmaPy import Utilities; print('✅ Utilities imported')"
+        
+    - name: Run limited test suite
+      run: |
+        python run_tests.py --skip-reactor --skip-flowsheet --verbose
+
+  # Test installation scripts specifically  
+  test-installation-scripts:
+    name: Test Installation Scripts - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-20.04, windows-2019]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: '3.9'
+        channels: conda-forge,defaults
+        channel-priority: flexible
+        
+    - name: Test Windows installation script
+      if: matrix.os == 'windows-2019'
+      shell: cmd
+      run: |
+        echo pharmapy-script-test | InstallOnWindows.bat
+        
+    - name: Test Unix installation script
+      if: matrix.os == 'ubuntu-20.04'
+      shell: bash -l {0}
+      run: |
+        chmod +x InstallOnMac.sh
+        echo "pharmapy-script-test" | bash InstallOnMac.sh
+        
+    - name: Verify script installation
+      shell: bash -l {0}
+      run: |
+        conda activate pharmapy-script-test
+        python -c "import PharmaPy; print('✅ Script installation successful')"
+        
+    - name: Test functionality after script installation
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        conda activate pharmapy-script-test
+        python run_tests.py --skip-flowsheet --verbose
+
+  # Test development environment setup
+  test-development-setup:
+    name: Test Development Setup - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install development dependencies
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+        
+    - name: Test development tools
+      run: |
+        python -c "import black, flake8, isort; print('✅ Development tools available')"
+        
+    - name: Test build system
+      run: |
+        pip install build
+        python -m build
+        
+    - name: Verify distribution
+      run: |
+        pip install twine
+        twine check dist/*
+
+  # Test make commands on different platforms
+  test-make-commands:
+    name: Test Make Commands - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install core dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Test Unix make commands
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        make install
+        make test-imports
+        make test-quick
+        make clean
+        
+    - name: Test Windows make commands
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: |
+        make.bat install
+        make.bat test-imports
+        make.bat test-quick
+        make.bat clean

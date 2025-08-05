@@ -1,0 +1,16 @@
+# Optional simulation dependencies for full PharmaPy functionality
+# Install this AFTER setting up system dependencies via conda:
+# conda install -c conda-forge sundials=5.8.0 superlu=5.2.2 openblas
+
+# Simulation engine for dynamic modeling
+assimulo>=3.0,<4
+
+# Note: assimulo installation requirements:
+# - Python 3.9 recommended (compatibility issues with 3.10+)
+# - System dependencies: sundials, superlu, blas/lapack
+# - Specific compiler setup on Windows
+# 
+# Installation order:
+# 1. pip install -r requirements.txt
+# 2. conda install -c conda-forge sundials=5.8.0 superlu=5.2.2 openblas
+# 3. pip install -r requirements-assimulo.txt

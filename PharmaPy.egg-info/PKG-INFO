@@ -110,8 +110,36 @@ pip install -e ".[dev]"
 
 ### Testing the Installation
 ```bash
+# Quick test
 cd tests
 python reactor_tests.py
+
+# Comprehensive test suite
+python run_tests.py
+
+# Windows users can also use:
+run_tests.bat
+
+# Or with make:
+make test          # Full test suite
+make test-quick    # Basic functionality only
+```
+
+### Development and Testing
+PharmaPy includes a comprehensive testing infrastructure:
+- **Cross-platform testing**: Windows, macOS, Linux
+- **Multi-Python support**: Python 3.9-3.12
+- **CI/CD pipeline**: Automated testing via GitHub Actions
+- **Multiple test runners**: Python scripts, batch files, Makefile targets
+
+For developers:
+```bash
+# Install with development tools
+pip install -e ".[dev]"
+
+# Run code quality checks
+make lint          # Code linting
+make format        # Code formatting
 ```
 
 Read our [documentation](https://pharmapy.readthedocs.io/en/latest/) or chat with the [PharmaPy Simulation Assistant](https://chatgpt.com/g/g-679bb3b5c5188191b26680b147a4f4a2-pharmapy-simulation-assistant) for more information on how to install and how to use PharmaPy.
