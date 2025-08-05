@@ -4,24 +4,16 @@ channels:
   - defaults
 dependencies:
   - python>=3.9,<3.13
-  # Core scientific stack from conda-forge
-  - numpy>=2.0
-  - scipy>=1.11
-  - matplotlib>=3.9
-  - pandas>=2.3
-  - cython<3
-  # Optional simulation dependency
-  - assimulo>=3.7.1
+  # Core scientific stack
+  - numpy
+  - scipy
+  - matplotlib
+  - pandas
+  - cython
   # Development and testing tools
   - pytest>=6.0
-  - pytest-cov>=4.0
-  - pytest-xdist  # For parallel test execution
-  - pytest-timeout  # For test timeouts
-  - pytest-mock  # For mocking in tests
-  - coverage>=6.0
-  - build
+  - pytest-cov
+  - coverage
   - pip
-  # Additional dependencies that may be needed
   - setuptools
   - wheel
-  - packaging  # For version comparisons

@@ -9,7 +9,11 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 # from autograd import numpy as np
 import numpy as np
-from scipy.integrate import simps
+try:
+    from scipy.integrate import simpson as simps
+except ImportError:
+    # For older scipy versions
+    from scipy.integrate import simps
 from itertools import cycle
 
 from assimulo.exception import TerminateSimulation

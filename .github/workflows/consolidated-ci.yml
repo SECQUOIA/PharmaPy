@@ -68,11 +68,19 @@ jobs:
         python --version
         echo "✅ Environment setup successful"
         
+    - name: Install assimulo (optional)
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        echo "Attempting to install assimulo..."
+        conda install -c conda-forge assimulo --yes || pip install assimulo || echo "Assimulo installation failed, continuing without it"
+        
     - name: Validate environment setup
       shell: bash -l {0}
       run: |
         python -c "import numpy, scipy, matplotlib, pandas; print('✅ Core scientific packages available')"
         python -c "import pytest; print('✅ Testing framework available')"
+        python -c "try: import assimulo; print('✅ Assimulo available'); except ImportError: print('⚠️ Assimulo not available')"
 
     - name: Install PharmaPy
       shell: bash -l {0}
