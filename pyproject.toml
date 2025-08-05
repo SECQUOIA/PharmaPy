@@ -25,15 +25,17 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "numpy<2",
-    "cython<3",
-    "scipy<1.14",
-    "assimulo==3.4.3",
-    "matplotlib",
-    "pandas",
+    "numpy>=1.20,<2",
+    "cython>=0.29,<4",
+    "scipy>=1.7,<2",
+    "matplotlib>=3.0",
+    "pandas>=1.3",
 ]
 
 [project.optional-dependencies]
+simulation = [
+    "assimulo>=3.0,<4",
+]
 dev = [
     "pytest>=6.0",
     "pytest-cov",
@@ -44,12 +46,22 @@ dev = [
     "isort",
 ]
 test = [
-    "pytest>=6.0",
+    "pytest>=6.0", 
     "pytest-cov",
 ]
 docs = [
     "sphinx",
     "sphinx-rtd-theme",
+]
+all = [
+    "assimulo>=3.0,<4",
+    "pytest>=6.0",
+    "pytest-cov",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "black",
+    "flake8",
+    "isort",
 ]
 
 [project.urls]

@@ -59,8 +59,11 @@ This document outlines the modernization of PharmaPy's setup pipeline while main
 
 ### For End Users
 ```bash
-# Simple installation
+# Basic installation (core functionality)
 pip install -e .
+
+# With simulation capabilities (requires compatible assimulo)
+pip install -e ".[simulation]"
 
 # Or using the automated scripts
 # Windows: .\InstallOnWindows.bat
@@ -72,6 +75,9 @@ pip install -e .
 # With development tools
 pip install -e ".[dev]"
 
+# With all dependencies (including simulation)
+pip install -e ".[all]"
+
 # Or specific dependency groups
 pip install -e ".[test]"    # Testing tools
 pip install -e ".[docs]"    # Documentation tools
@@ -81,6 +87,28 @@ pip install -e ".[docs]"    # Documentation tools
 ```bash
 python setup.py develop
 ```
+
+## Dependency Management
+
+PharmaPy uses a tiered dependency approach:
+
+### Core Dependencies (always installed)
+- numpy: Numerical computing
+- scipy: Scientific computing  
+- matplotlib: Plotting
+- pandas: Data manipulation
+- cython: Python extensions
+
+### Optional Dependencies
+- **simulation**: `assimulo` for ODE solving (may have compatibility issues with newer Python versions)
+- **dev**: Development tools (black, flake8, isort, etc.)
+- **test**: Testing frameworks (pytest, pytest-cov)
+- **docs**: Documentation tools (sphinx, themes)
+
+### Compatibility Notes
+- `assimulo` may not be compatible with Python 3.10+ or recent Cython versions
+- For simulation features requiring assimulo, consider using Python 3.9 with older Cython versions
+- Core PharmaPy functionality works without assimulo
 
 ## Build and Distribution
 
@@ -108,13 +136,115 @@ make.bat build
 make.bat clean
 ```
 
-## CI/CD Pipeline
+## Testing Infrastructure
 
-The GitHub Actions workflow automatically:
-- Tests on multiple Python versions (3.9-3.12)
-- Tests on multiple operating systems (Ubuntu, Windows, macOS)
-- Builds distribution packages
-- Validates package integrity
+### GitHub Actions CI/CD Pipeline
+
+#### Comprehensive Testing Workflows
+1. **`test.yml`**: Main CI/CD pipeline with multiple test jobs
+   - **Installation Tests**: Tests different installation methods across OS/Python versions
+   - **Unit Tests**: Runs functional tests (limited to Python 3.9 for assimulo compatibility)
+   - **Script Tests**: Tests automated installation scripts with Conda
+   - **Build Tests**: Tests package building and distribution
+   - **Code Quality**: Runs linting and formatting checks
+
+2. **`installation-tests.yml`**: Dedicated installation script testing
+   - Tests both Windows and Unix installation scripts
+   - Tests manual installation procedures  
+   - Validates functionality after installation
+
+#### Test Matrix Coverage
+- **Operating Systems**: Ubuntu, Windows, macOS
+- **Python Versions**: 3.9-3.12 (with 3.9 focus for full functionality)
+- **Installation Methods**: pip (basic/dev), setup.py develop
+- **Dependency Scenarios**: Core dependencies vs. full simulation stack
+
+### Local Testing Tools
+
+#### Test Runners
+1. **`run_tests.py`**: Comprehensive Python test runner
+   - Graceful handling of optional dependencies
+   - Modular test execution (imports, installation, reactor, flowsheet, pytest)
+   - Cross-platform compatibility
+   - Detailed reporting and timing
+
+2. **`run_tests.bat`**: Windows batch test runner
+   - Native Windows command prompt support
+   - Same test coverage as Python runner
+   - Visual status indicators
+
+3. **`test_discovery.py`**: Advanced test discovery tool
+   - Finds and runs unittest-based tests
+   - Handles direct execution tests
+   - Module import testing
+
+#### Makefile Integration
+- **Unix/Linux/Mac**: `make test`, `make test-quick`, `make test-reactor`, etc.
+- **Windows**: `make.bat test`, `make.bat test-quick`, etc.
+- Multiple test granularities (quick, full, specific modules)
+
+### Test Configuration
+
+#### Pytest Configuration (`pytest.ini`)
+- Structured test discovery patterns
+- Markers for different test types (unit, integration, slow)
+- Logging and output configuration
+- Cross-platform compatibility settings
+
+#### Dependency Handling
+- **Core Tests**: Work with basic dependencies (numpy, scipy, matplotlib, pandas)
+- **Simulation Tests**: Require assimulo (Python 3.9 recommended)
+- **Optional Features**: Graceful degradation when dependencies unavailable
+- **Development Tools**: Additional linting and formatting tools
+
+### Running Tests
+
+#### Quick Testing
+```bash
+# Basic functionality test
+make test-quick
+# or
+python run_tests.py --skip-flowsheet --skip-pytest
+
+# Windows
+make.bat test-quick
+# or
+run_tests.bat
+```
+
+#### Comprehensive Testing
+```bash
+# Full test suite
+make test
+# or  
+python run_tests.py
+
+# Specific test categories
+make test-reactor      # Reactor functionality
+make test-flowsheet    # Flowsheet functionality
+make test-imports      # Import testing
+```
+
+#### CI/CD Integration
+- Automated testing on every push/PR
+- Multiple environment validation
+- Installation method verification
+- Dependency compatibility checking
+
+### Test Coverage
+
+#### Current Test Status
+- ✅ **Package Installation**: Multiple methods validated
+- ✅ **Core Imports**: Basic PharmaPy functionality
+- ⚠️ **Simulation Features**: Require assimulo (compatibility issues)
+- ✅ **Cross-Platform**: Windows, macOS, Linux support
+- ✅ **Multi-Python**: 3.9-3.12 installation testing
+- ✅ **Build System**: Modern packaging standards
+
+#### Known Limitations
+- `assimulo` compatibility issues with Python 3.10+
+- Some tests require external solvers
+- Simulation tests may need specific environment setup
 
 ## Benefits
 

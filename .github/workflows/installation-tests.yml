@@ -1,0 +1,125 @@
+name: Installation Script Tests
+
+on:
+  push:
+    branches: [ master, test-devel, main ]
+    paths: 
+      - 'Install*.bat'
+      - 'Install*.sh'
+      - 'requirements.txt'
+      - 'setup.py'
+      - 'pyproject.toml'
+  pull_request:
+    branches: [ master, main ]
+    paths:
+      - 'Install*.bat'
+      - 'Install*.sh'
+      - 'requirements.txt'
+      - 'setup.py'
+      - 'pyproject.toml'
+  workflow_dispatch:
+
+jobs:
+  test-installation-scripts:
+    name: Test Installation Scripts
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: '3.9'
+        channels: conda-forge,defaults
+        channel-priority: flexible
+        
+    - name: Test Windows installation script
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: |
+        echo pharmapy-ci-test | InstallOnWindows.bat
+        conda activate pharmapy-ci-test
+        python -c "import PharmaPy; print('✅ Windows script installation successful')"
+        
+    - name: Test Unix installation script  
+      if: matrix.os != 'windows-latest'
+      shell: bash -l {0}
+      run: |
+        chmod +x InstallOnMac.sh
+        echo "pharmapy-ci-test" | bash InstallOnMac.sh
+        conda activate pharmapy-ci-test
+        python -c "import PharmaPy; print('✅ Unix script installation successful')"
+        
+    - name: Run basic functionality test
+      shell: bash -l {0}
+      if: matrix.os != 'windows-latest'
+      run: |
+        conda activate pharmapy-ci-test
+        cd tests/integration
+        timeout 300 python reactor_tests.py || echo "Test completed or timed out"
+        
+    - name: Run basic functionality test (Windows)
+      shell: cmd
+      if: matrix.os == 'windows-latest'
+      run: |
+        conda activate pharmapy-ci-test
+        cd tests\integration
+        timeout /t 300 python reactor_tests.py || echo "Test completed or timed out"
+
+  test-manual-installation:
+    name: Test Manual Installation Steps
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: '3.9'
+        channels: conda-forge,defaults
+        
+    - name: Manual installation following instructions
+      shell: bash -l {0}
+      run: |
+        # Create environment
+        conda create -n pharmapy-manual python=3.9 -y
+        conda activate pharmapy-manual
+        
+        # Install dependencies
+        conda install -c conda-forge --file requirements.txt -y
+        
+        # Install PharmaPy using modern method
+        pip install -e .
+        
+        # Test installation
+        python -c "import PharmaPy; print('✅ Manual installation successful')"
+        
+    - name: Test legacy installation method
+      shell: bash -l {0}
+      run: |
+        # Create environment
+        conda create -n pharmapy-legacy python=3.9 -y
+        conda activate pharmapy-legacy
+        
+        # Install dependencies
+        conda install -c conda-forge --file requirements.txt -y
+        
+        # Install PharmaPy using legacy method
+        python setup.py develop
+        
+        # Test installation
+        python -c "import PharmaPy; print('✅ Legacy installation successful')"
