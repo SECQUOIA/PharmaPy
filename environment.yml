@@ -13,13 +13,18 @@ dependencies:
   # Optional simulation dependency
   - assimulo>=3.7.1
   # Development and testing tools
-  - pytest
-  - pytest-cov
+  - pytest>=6.0
+  - pytest-cov>=4.0
+  - pytest-xdist  # For parallel test execution
+  - pytest-timeout  # For test timeouts
+  - pytest-mock  # For mocking in tests
+  - coverage>=6.0
   - build
   - pip
   # Additional dependencies that may be needed
   - setuptools
   - wheel
+  - packaging  # For version comparisons
   # Pip dependencies (if any packages not available in conda-forge)
   - pip:
     - []  # Add pip-only packages here if needed

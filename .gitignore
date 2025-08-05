@@ -1,5 +1,59 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+.ruff_cache/
+
+# Translations
+*.mo
+*.pot
+
 # Sphinx documentation
 docs/_build/
+doc/_build/
 
 # PyBuilder
 target/
@@ -7,30 +61,71 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# IPython
+profile_default/
+ipython_config.py
+
 # pyenv
+.python-version
 *.python-version
 *.pyc
+
+# pipenv
+Pipfile.lock
 
 # celery beat schedule file
 celerybeat-schedule
 
-# dotenv
-.env
+# SageMath parsed files
+*.sage.py
 
-# virtualenv
-.venv/
+# Environments
+.env
+.venv
+env/
 venv/
 ENV/
+env.bak/
+venv.bak/
 
 # Spyder project settings
 .spyderproject
+.spyproject
 
 # Rope project settings
 .ropeproject
 
-# Vim files
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# IDE and Editor files
+.vscode/
+.idea/
 *.swp
+*.swo
 *.swa
+*.project.vim
+
+# OS specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Conda environments
+*.conda
+.conda/
 
 # Latex auxiliary files
 *.aux
@@ -45,9 +140,7 @@ ENV/
 *.nlo
 *.nls
 *.synctex.gz
-*.project.vim
 *.run.xml
-# *.pdf
 *.bib
 *.nlg
 .~lock*
@@ -63,7 +156,7 @@ ENV/
 *.toc
 *.vrb
 
-# Some output files
+# Output files
 *.pdf
 *.png
 *.wav
@@ -71,8 +164,6 @@ ENV/
 *.mp4
 
 # MS Office files
-#*.doc
-#*.docx
 *.ppt
 *.pptx
 
@@ -81,4 +172,17 @@ ENV/
 *.tar.gz
 *.rar
 
+# Project specific
 source/crystallization/
+
+# PharmaPy specific output files
+*.results
+*.sim
+*.dat
+simulation_results/
+output/
+
+# Temporary files
+*.tmp
+*.temp
+*~
