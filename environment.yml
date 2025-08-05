@@ -1,0 +1,25 @@
+name: pharmapy
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.9,<3.13
+  # Core scientific stack from conda-forge
+  - numpy>=2.0
+  - scipy>=1.11
+  - matplotlib>=3.9
+  - pandas>=2.3
+  - cython<3
+  # Optional simulation dependency
+  - assimulo>=3.7.1
+  # Development and testing tools
+  - pytest
+  - pytest-cov
+  - build
+  - pip
+  # Additional dependencies that may be needed
+  - setuptools
+  - wheel
+  # Pip dependencies (if any packages not available in conda-forge)
+  - pip:
+    - []  # Add pip-only packages here if needed

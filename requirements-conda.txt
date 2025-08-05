@@ -1,0 +1,19 @@
+# PharmaPy conda-forge requirements
+# Install with: conda install -c conda-forge --file requirements-conda.txt
+
+# Core scientific stack - all from conda-forge for maximum compatibility
+numpy>=2.0
+scipy>=1.11
+matplotlib>=3.9
+pandas>=2.3
+cython<3
+
+# Optional simulation dependency - conda-forge only
+assimulo>=3.7.1
+
+# Development tools
+pytest
+pytest-cov
+build
+setuptools
+wheel

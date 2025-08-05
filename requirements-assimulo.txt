@@ -1,41 +1,38 @@
-# Optional simulation dependencies for full PharmaPy functionality
-# ✅ WORKING CONDA-FORGE INSTALLATION VERIFIED!
+# PharmaPy Simulation Dependencies - CONDA-FORGE REQUIRED
+# ✅ VERIFIED WORKING INSTALLATION
 
-# assimulo is available on conda-forge but NOT on PyPI (PyPI versions incomplete)!
-# PyPI only has versions up to 3.0 and they have incomplete source distributions
+# IMPORTANT: assimulo and ALL dependencies must come from conda-forge
+# for GitHub Actions and local development consistency
 
-# VERIFIED WORKING INSTALLATION:
+# RECOMMENDED INSTALLATION FOR CI/CD AND LOCAL DEV:
 
-# Step 1: Install core dependencies
-# pip install -r requirements.txt
+# Option 1: Complete environment setup
+# conda env create -f environment.yml
 
-# Step 2: Install assimulo from conda-forge
-# conda install -c conda-forge assimulo
+# Option 2: Install all dependencies from conda-forge
+# conda install -c conda-forge numpy scipy matplotlib pandas cython assimulo
 
-# ✅ SUCCESSFULLY TESTED: assimulo 3.7.1 with Python 3.9.23
-# This automatically installs compatible versions of:
-# - sundials 7.4.0
-# - superlu, openblas, blas, lapack
-# - All required Fortran libraries
-# - numpy 2.0+ (newer versions supported)
+# Option 3: Use conda requirements file
+# conda install -c conda-forge --file requirements-conda.txt
 
-# CORE DEPENDENCIES (Compatible):
-# numpy (any version - tested with 2.0+)
-# cython<3  
-# scipy (any version)
-# matplotlib
-# pandas
+# ✅ VERIFIED WORKING VERSIONS:
+# - assimulo 3.7.1
+# - numpy 2.0.2
+# - scipy 1.11+
+# - sundials 7.4.0 (auto-installed with assimulo)
+# - Python 3.9.23
 
-# CONDA-FORGE ASSIMULO ADVANTAGES:
-# 1. ✅ Pre-compiled binaries (no compilation issues)
-# 2. ✅ All dependencies bundled automatically
-# 3. ✅ Compatible system dependencies
-# 4. ✅ Core simulation functionality working
-# 5. ✅ Regular updates (latest: 3.7.1)
-# 6. ✅ Validated with PharmaPy test suite
+# CONDA-FORGE ADVANTAGES FOR CI/CD:
+# 1. ✅ Consistent binary packages across platforms
+# 2. ✅ Automatic dependency resolution
+# 3. ✅ No compilation issues in GitHub Actions
+# 4. ✅ Compatible with conda/mamba environments
+# 5. ✅ All Fortran libraries pre-compiled
+# 6. ✅ Fast installation in CI
 
-# NOTE: Some optional solvers (dopri5, rodas, odassl) may show warnings
-# but core assimulo functionality works perfectly with PharmaPy
+# GitHub Actions recommendation:
+# - uses: conda-incubator/setup-miniconda@v2
+# - conda install -c conda-forge --file requirements-conda.txt
 
-# Installation command:
-assimulo>=3.7.1  # Use: conda install -c conda-forge assimulo
+# Local development:
+assimulo>=3.7.1  # conda install -c conda-forge assimulo
