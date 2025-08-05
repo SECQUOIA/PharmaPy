@@ -7,6 +7,16 @@ import sys
 import warnings
 from pathlib import Path
 
+
+def pytest_addoption(parser):
+    """Add custom command line options for pytest."""
+    parser.addoption(
+        "--run-network-tests",
+        action="store_true",
+        default=False,
+        help="Run tests that require network access"
+    )
+
 # Add the PharmaPy package to the Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -84,9 +94,10 @@ def sample_liquid_stream():
     from PharmaPy.Streams import LiquidStream
     from PharmaPy.Phases import LiquidPhase
     
-    # Create a simple test stream
-    phase = LiquidPhase(["water", "ethanol"], [0.7, 0.3])
-    stream = LiquidStream(phase, flow_rate=100.0, temperature=298.15)
+    # Create a simple test stream using proper API with data file
+    datapath = 'tests/integration/data/pfr_test_pure_comp.json'
+    phase = LiquidPhase(datapath, mole_conc=[0.7, 0.3, 0.0, 0.0], temp=298.15, vol=0.001)
+    stream = LiquidStream(datapath, mole_conc=[0.7, 0.3, 0.0, 0.0], temp=298.15, vol_flow=100.0)
     return stream
 
 
@@ -96,14 +107,21 @@ def sample_reaction_kinetics():
     if not PHARMAPY_AVAILABLE:
         pytest.skip("PharmaPy not available")
     
+    import json
     from PharmaPy.Kinetics import RxnKinetics
     
-    # Create simple kinetics (A -> B)
-    kinetics = RxnKinetics(
-        components=["A", "B"],
-        reactions=["A -> B"],
-        rate_constants=[1.0]
-    )
+    # Load kinetics data from test file (same pattern as reactor tests)
+    datapath = 'tests/integration/data/pfr_test_pure_comp.json'
+    with open('tests/integration/data/pfr_test_constructor_kwargs.json') as f:
+        data_objects = json.load(f)
+    
+    # Set up kinetics parameters 
+    kinetics_data = data_objects['kinetics'].copy()
+    kinetics_data['k_params'] *= 1/60  # Same processing as reactor tests
+    kinetics_data['path'] = datapath
+    
+    # Create real kinetics object
+    kinetics = RxnKinetics(**kinetics_data)
     return kinetics
 
 

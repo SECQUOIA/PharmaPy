@@ -23,9 +23,9 @@ class PlugFlowReactorTests(unittest.TestCase):
 
     def setUp(self):
         # Data
-        datapath = 'data/pfr_test_pure_comp.json'
+        datapath = 'tests/integration/data/pfr_test_pure_comp.json'
 
-        with open('data/pfr_test_constructor_kwargs.json') as f:
+        with open('tests/integration/data/pfr_test_constructor_kwargs.json') as f:
             data_objects = json.load(f)
 
         tau = data_objects['inlet'].pop('tau')
@@ -34,7 +34,7 @@ class PlugFlowReactorTests(unittest.TestCase):
         data_objects['kinetics']['k_params'] *= 1/60
         data_objects['kinetics']['path'] = datapath
 
-        time_integration = genfromtxt('data/pfr_test_expected_times.csv',
+        time_integration = genfromtxt('tests/integration/data/pfr_test_expected_times.csv',
                                       delimiter=',')
 
         data_objects['solve_unit']['time_grid'] = time_integration
@@ -56,7 +56,7 @@ class PlugFlowReactorTests(unittest.TestCase):
         reactor.solve_unit(**data_objects['solve_unit'])
 
     def test_mole_conc(self):
-        filenames = glob('data/pfr_test_expected_conc*')
+        filenames = glob('tests/integration/data/pfr_test_expected_conc*')
         filenames.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
 
         flags = []
