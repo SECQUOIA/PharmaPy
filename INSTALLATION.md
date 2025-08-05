@@ -28,9 +28,9 @@ conda install -c conda-forge --file requirements-conda.txt
 
 | Method | Use Case | Assimulo Support | CI/CD Ready |
 |--------|----------|------------------|-------------|
-| `environment.yml` | New development setup | ✓ Full | ✓ Yes |
-| `requirements-conda.txt` | Conda environments | ✓ Full | ✓ Yes |
-| `requirements.txt` | pip-only environments | X Manual | ! Limited |
+| `environment.yml` | New development setup | [OK] Full | [OK] Yes |
+| `requirements-conda.txt` | Conda environments | [OK] Full | [OK] Yes |
+| `requirements.txt` | pip-only environments | [FAIL] Manual | [WARN] Limited |
 
 ## For GitHub Actions
 
@@ -55,8 +55,8 @@ Or install packages directly:
 
 Assimulo is required for PharmaPy's simulation features but has complex dependencies:
 
-- ✓ **Available on conda-forge** (recommended)
-- X **NOT reliable on PyPI** (incomplete source distributions)
+- [OK] **Available on conda-forge** (recommended)
+- [FAIL] **NOT reliable on PyPI** (incomplete source distributions)
 -  **Requires Fortran libraries** (pre-compiled in conda-forge)
 
 ### Working Versions

@@ -11,6 +11,7 @@ import sys
 import subprocess
 import argparse
 import time
+import importlib
 from pathlib import Path
 
 
@@ -53,38 +54,20 @@ def test_import():
 
     for test, required in import_tests:
         try:
-            # Parse the import statement and use importlib
-            if test.startswith("import "):
-                # e.g., "import PharmaPy"
-                module_name = test.split("import ")[1].strip()
-                importlib.import_module(module_name)
-            elif test.startswith("from "):
-                # e.g., "from PharmaPy import Utilities"
-                parts = test.split()
-                module = parts[1]
-                imported = parts[3]
-                # Handle multiple imports separated by commas
-                imported_names = [name.strip() for name in imported.split(",")]
-                mod = importlib.import_module(module)
-                for name in imported_names:
-                    if not hasattr(mod, name):
-                        raise ImportError(
-                            f"Module '{module}' has no attribute '{name}'"
-                        )
-            else:
-                raise ValueError(f"Unknown import statement: {test}")
-            print(f"  ✓ {test}")
+            # Use exec to execute the import statement directly
+            exec(test)
+            print(f"  [OK] {test}")
         except Exception as e:
             if required:
-                print(f"  X {test} - {e}")
+                print(f"  [FAIL] {test} - {e}")
                 failed_imports.append((test, str(e)))
             else:
-                print(f"  !  {test} - {e} (optional)")
+                print(f"  [WARN]  {test} - {e} (optional)")
                 optional_failed += 1
 
     if optional_failed > 0:
         print(
-            f"  ℹ️  {optional_failed} optional imports failed (likely missing assimulo)"
+            f"  [INFO] {optional_failed} optional imports failed (likely missing assimulo)"
         )
 
     return len(failed_imports) == 0, failed_imports
@@ -96,7 +79,7 @@ def run_reactor_tests():
 
     test_dir = Path("tests/integration")
     if not test_dir.exists():
-        print(f"  X Test directory {test_dir} not found")
+        print(f"  [FAIL] Test directory {test_dir} not found")
         return False, "Test directory not found"
 
     success, stdout, stderr = run_command(
@@ -104,10 +87,10 @@ def run_reactor_tests():
     )
 
     if success:
-        print("  ✓ Reactor tests passed")
+        print("  [OK] Reactor tests passed")
         return True, stdout
     else:
-        print("  X Reactor tests failed")
+        print("  [FAIL] Reactor tests failed")
         print(f"  Error: {stderr}")
         return False, stderr
 
@@ -118,7 +101,7 @@ def run_flowsheet_tests():
 
     test_dir = Path("tests/Flowsheet")
     if not test_dir.exists():
-        print(f"  X Test directory {test_dir} not found")
+        print(f"  [FAIL] Test directory {test_dir} not found")
         return False, "Test directory not found"
 
     success, stdout, stderr = run_command(
@@ -126,10 +109,10 @@ def run_flowsheet_tests():
     )
 
     if success:
-        print("  ✓ Flowsheet tests passed")
+        print("  [OK] Flowsheet tests passed")
         return True, stdout
     else:
-        print("  X Flowsheet tests failed")
+        print("  [FAIL] Flowsheet tests failed")
         print(f"  Error: {stderr}")
         return False, stderr
 
@@ -142,7 +125,7 @@ def run_pytest_tests():
     try:
         import pytest
     except ImportError:
-        print("  !  pytest not available, skipping pytest tests")
+        print("  [WARN]  pytest not available, skipping pytest tests")
         return True, "pytest not available"
 
     success, stdout, stderr = run_command(
@@ -150,10 +133,10 @@ def run_pytest_tests():
     )
 
     if success:
-        print("  ✓ Pytest tests passed")
+        print("  [OK] Pytest tests passed")
         return True, stdout
     else:
-        print("  X Pytest tests failed")
+        print("  [FAIL] Pytest tests failed")
         return False, stderr
 
 
@@ -162,13 +145,13 @@ def test_installation():
     print("\n Testing package installation...")
 
     try:
-        import pkg_resources
-
-        pkg = pkg_resources.get_distribution("PharmaPy")
-        print(f"  ✓ Package installed: {pkg.project_name} v{pkg.version}")
+        import importlib.metadata
+        
+        pkg = importlib.metadata.distribution("PharmaPy")
+        print(f"  [OK] Package installed: {pkg.metadata['name']} v{pkg.version}")
         return True, f"PharmaPy v{pkg.version}"
     except Exception as e:
-        print(f"  X Package installation check failed: {e}")
+        print(f"  [FAIL] Package installation check failed: {e}")
         return False, str(e)
 
 
@@ -228,7 +211,7 @@ def main():
     failed_tests = total_tests - passed_tests
 
     for test_name, (success, details) in results.items():
-        status = "✓ PASS" if success else "X FAIL"
+        status = "[OK] PASS" if success else "[FAIL] FAIL"
         print(f"  {test_name.upper():<12} {status}")
 
         if not success and args.verbose:
@@ -237,7 +220,7 @@ def main():
     print(f"\nResults: {passed_tests}/{total_tests} tests passed")
 
     if failed_tests > 0:
-        print(f"X {failed_tests} test(s) failed")
+        print(f"[FAIL] {failed_tests} test(s) failed")
         sys.exit(1)
     else:
         print(" All tests passed!")

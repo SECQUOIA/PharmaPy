@@ -628,7 +628,7 @@ class _BaseReactor:
 
 
 class BatchReactor(_BaseReactor):
-    """Inherited constructor for the Batch reactor class.
+    r"""Inherited constructor for the Batch reactor class.
 
     Parameters
     ---------
@@ -1005,7 +1005,7 @@ class BatchReactor(_BaseReactor):
 
 
 class CSTR(_BaseReactor):
-    """
+    r"""
     Inherited constructor for the continuous stirred-tank reactor (CSTR) class.
 
     Parameters
@@ -1337,7 +1337,7 @@ class CSTR(_BaseReactor):
 
 
 class SemibatchReactor(CSTR):
-    """
+    r"""
     Inherited constructor for the semibatch stirred-tank reactor class. This method inherits from the CSTR constructor.
 
     Parameters
@@ -1557,7 +1557,7 @@ class SemibatchReactor(CSTR):
 
 
 class PlugFlowReactor(_BaseReactor):
-    """
+    r"""
     Inherited constructor for the plug-flow (PFR) reactor class.
 
     Parameters

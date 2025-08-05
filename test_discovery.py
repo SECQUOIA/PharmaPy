@@ -18,7 +18,7 @@ def discover_test_modules():
     tests_dir = Path("tests")
 
     if not tests_dir.exists():
-        print("X Tests directory not found")
+        print("[FAIL] Tests directory not found")
         return test_modules
 
     # Find all Python files that look like tests
@@ -59,16 +59,16 @@ def run_module_tests(module_path, test_file):
 
         # Check if tests passed
         if result.wasSuccessful():
-            print(f"✓ {module_path}: All tests passed")
+            print(f"[OK] {module_path}: All tests passed")
             return True, result
         else:
             print(
-                f"X {module_path}: {len(result.failures)} failures, {len(result.errors)} errors"
+                f"[FAIL] {module_path}: {len(result.failures)} failures, {len(result.errors)} errors"
             )
             return False, result
 
     except Exception as e:
-        print(f"X {module_path}: Failed to run - {e}")
+        print(f"[FAIL] {module_path}: Failed to run - {e}")
         traceback.print_exc()
         return False, None
 
@@ -85,10 +85,10 @@ def run_direct_execution_tests():
     results = []
     for test_file in direct_test_files:
         if not Path(test_file).exists():
-            print(f"!  {test_file} not found, skipping")
+            print(f"[WARN]  {test_file} not found, skipping")
             continue
 
-        print(f"\n▶️  Executing {test_file}")
+        print(f"\n[RUN] Executing {test_file}")
         try:
             # Change to the test directory
             old_cwd = os.getcwd()
@@ -100,17 +100,17 @@ def run_direct_execution_tests():
                 [sys.executable, Path(test_file).name], capture_output=True, text=True
             )
             if result.returncode == 0:
-                print(f"✓ {test_file} executed successfully")
+                print(f"[OK] {test_file} executed successfully")
                 print(result.stdout)
                 results.append((test_file, True, None))
             else:
-                print(f"X {test_file} failed with return code {result.returncode}")
+                print(f"[FAIL] {test_file} failed with return code {result.returncode}")
                 print(result.stdout)
                 print(result.stderr)
                 results.append((test_file, False, result.stderr))
 
         except Exception as e:
-            print(f"X {test_file} failed: {e}")
+            print(f"[FAIL] {test_file} failed: {e}")
             traceback.print_exc()
             results.append((test_file, False, e))
         finally:
@@ -129,9 +129,9 @@ def main():
     try:
         import PharmaPy
 
-        print("✓ PharmaPy imported successfully")
+        print("[OK] PharmaPy imported successfully")
     except Exception as e:
-        print(f"X Failed to import PharmaPy: {e}")
+        print(f"[FAIL] Failed to import PharmaPy: {e}")
         return 1
 
     # Discover and run unittest-based tests
@@ -139,7 +139,7 @@ def main():
     test_modules = discover_test_modules()
 
     if not test_modules:
-        print("!  No test modules discovered")
+        print("[WARN]  No test modules discovered")
     else:
         print(f"Found {len(test_modules)} test modules:")
         for module_path, test_file in test_modules:
@@ -162,7 +162,7 @@ def main():
 
     print("\nUnittest-based tests:")
     for module_path, success, result in unittest_results:
-        status = "✓ PASS" if success else "X FAIL"
+        status = "[OK] PASS" if success else "[FAIL] FAIL"
         print(f"  {module_path:<40} {status}")
         total_tests += 1
         if success:
@@ -170,7 +170,7 @@ def main():
 
     print("\nDirect execution tests:")
     for test_file, success, error in direct_results:
-        status = "✓ PASS" if success else "X FAIL"
+        status = "[OK] PASS" if success else "[FAIL] FAIL"
         print(f"  {Path(test_file).name:<40} {status}")
         total_tests += 1
         if success:
@@ -182,7 +182,7 @@ def main():
         print(" All tests passed!")
         return 0
     else:
-        print(f"X {total_tests - passed_tests} test(s) failed")
+        print(f"[FAIL] {total_tests - passed_tests} test(s) failed")
         return 1
 
 

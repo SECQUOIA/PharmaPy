@@ -63,7 +63,7 @@ def disect_rxns(rxns, sep="-->"):
         species += reactants
         species += products
 
-    regex = "^\d+(\.\d+)?(/\d+)?\s?"
+    regex = r"^\d+(\.\d+)?(/\d+)?\s?"
     for ind, sp in enumerate(species):
         species[ind] = re.sub(regex, "", sp)
 
@@ -97,7 +97,7 @@ def get_stoich(di_rxn, partic_species):
 
     # I think this is the right regex pattern...
     regex_coeff = r"\d+(\.\d+)?(/\d+)?"
-    regex_sub = r"^\d+(\.d+)?(/\d+)?\s?"
+    regex_sub = r"^\d+(\.\d+)?(/\d+)?\s?"
 
     for num, di in di_rxn.items():
         for r in di["reactants"]:
@@ -122,7 +122,7 @@ def get_stoich(di_rxn, partic_species):
 
 
 class RxnKinetics:
-    """
+    r"""
     Create a reaction kinetics object. Reaction rate r\ :sub:`i` is assumed to
     have the following functional form:
         r\ :sub:`i` = f\ :sub:`1` (T) * f\ :sub:`2` ( C\ :sub:`1`, ..., C\ :sub:`n_comp`)
@@ -398,8 +398,8 @@ class RxnKinetics:
         num_kpar = len(self.phi_1)
 
         if self.reformulate_kin:
-            name_k = ["\\varphi_{1, %i}" % ind for ind in range(1, num_kpar + 1)]
-            name_e = ["\\varphi_{2, %i}" % ind for ind in range(1, num_kpar + 1)]
+            name_k = [r"\varphi_{1, %i}" % ind for ind in range(1, num_kpar + 1)]
+            name_e = [r"\varphi_{2, %i}" % ind for ind in range(1, num_kpar + 1)]
         else:
             name_k = ["k_%i" % ind for ind in range(1, num_kpar + 1)]
             name_e = ["E_{a, %i}" % ind for ind in range(1, num_kpar + 1)]
@@ -741,18 +741,18 @@ class CrystKinetics:
 
         if reformulate_kin:
             self.name_params = (
-                "\log(k_{bp})",
-                "\log(E_{bp}/R)",
+                r"\log(k_{bp})",
+                r"\log(E_{bp}/R)",
                 "b",
-                "\log(k_{bs})",
-                "\log(E_{bs}/R)",
+                r"\log(k_{bs})",
+                r"\log(E_{bs}/R)",
                 "s_1",
                 "s_2",
-                "\log(k_{g})",
-                "\log(E_{g}/R)",
+                r"\log(k_{g})",
+                r"\log(E_{g}/R)",
                 "g",
-                "\log(k_{d})",
-                "\log(E_{d}/R)",
+                r"\log(k_{d})",
+                r"\log(E_{d}/R)",
                 "d",
             )
         else:

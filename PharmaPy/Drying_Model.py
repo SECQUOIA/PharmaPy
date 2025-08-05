@@ -847,7 +847,7 @@ class Drying:
 
         axis.plot(self.timeProf, self.dry_rate)
         axis.set_xlabel("time (s)")
-        axis.set_ylabel("drying rate ($\mathregular{mol_i \ s^{-1}}$)")
+        axis.set_ylabel(r"drying rate ($\mathregular{mol_i \ s^{-1}}$)")
 
         axis.text(
             1,

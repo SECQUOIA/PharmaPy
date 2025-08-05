@@ -1147,17 +1147,17 @@ class _BaseCryst:
         def get_mu_labels(mu_idx, msmpr=False):
             out = []
             for idx in mu_idx:
-                name = "$\mu_{%i}$" % idx
+                name = r"$\mu_{%i}$" % idx
 
                 if idx == 0:
                     unit = "#"
                 elif idx == 1:
                     unit = "m"
                 else:
-                    unit = "$\mathrm{m^{%i}}$" % idx
+                    unit = r"$\mathrm{m^{%i}}$" % idx
 
                 if msmpr:
-                    unit += " $\mathrm{m^{-3}}$"
+                    unit += r" $\mathrm{m^{-3}}$"
 
                 unit = r" (%s)" % unit
 
@@ -1232,7 +1232,7 @@ class _BaseCryst:
         axis.set_xscale("log")
 
         fig.texts[0].remove()
-        axis.set_xlabel("$x$ ($\mathregular{\mu m}$)")
+        axis.set_xlabel(r"$x$ ($\mathregular{\mu m}$)")
 
         return fig, axis
 
@@ -1290,7 +1290,7 @@ class _BaseCryst:
             sens_data = reorder_sens(self.sensit, separate_sens=True)
 
         # Name states
-        name_mom = ["\mu_%i" % i for i in range(self.num_distr)]
+        name_mom = [r"\mu_%i" % i for i in range(self.num_distr)]
         name_conc = [
             "C_{" + self.name_species[ind] + "}"
             for ind in range(len(self.Liquid_1.name_species))

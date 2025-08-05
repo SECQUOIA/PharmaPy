@@ -66,17 +66,17 @@ jobs:
     - name: Test basic imports
       shell: bash -l {0}
       run: |
-        python -c "import PharmaPy; print('✓ PharmaPy imported successfully')"
-        python -c "from PharmaPy import Utilities; print('✓ Utilities imported')"
+        python -c "import PharmaPy; print('[OK] PharmaPy imported successfully')"
+        python -c "from PharmaPy import Utilities; print('[OK] Utilities imported')"
         
     - name: Test assimulo-dependent imports
       shell: bash -l {0}
       continue-on-error: true
       run: |
-        python -c "from PharmaPy import Reactors; print('✓ Reactors imported')"
-        python -c "from PharmaPy import Streams; print('✓ Streams imported')"
-        python -c "from PharmaPy import Phases; print('✓ Phases imported')"
-        python -c "from PharmaPy import Kinetics; print('✓ Kinetics imported')"
+        python -c "from PharmaPy import Reactors; print('[OK] Reactors imported')"
+        python -c "from PharmaPy import Streams; print('[OK] Streams imported')"
+        python -c "from PharmaPy import Phases; print('[OK] Phases imported')"
+        python -c "from PharmaPy import Kinetics; print('[OK] Kinetics imported')"
         
     - name: Run comprehensive test suite
       shell: bash -l {0}
@@ -127,8 +127,8 @@ jobs:
         
     - name: Test core imports
       run: |
-        python -c "import PharmaPy; print('✓ PharmaPy core imported')"
-        python -c "from PharmaPy import Utilities; print('✓ Utilities imported')"
+        python -c "import PharmaPy; print('[OK] PharmaPy core imported')"
+        python -c "from PharmaPy import Utilities; print('[OK] Utilities imported')"
         
     - name: Run limited test suite
       run: |
@@ -172,7 +172,7 @@ jobs:
       shell: bash -l {0}
       run: |
         conda activate pharmapy-script-test
-        python -c "import PharmaPy; print('✓ Script installation successful')"
+        python -c "import PharmaPy; print('[OK] Script installation successful')"
         
     - name: Test functionality after script installation
       shell: bash -l {0}
@@ -207,7 +207,7 @@ jobs:
         
     - name: Test development tools
       run: |
-        python -c "import black, flake8, isort; print('✓ Development tools available')"
+        python -c "import black, flake8, isort; print('[OK] Development tools available')"
         
     - name: Test build system
       run: |

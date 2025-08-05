@@ -59,9 +59,9 @@ def test_installation_methods():
         success, stdout, stderr = run_command(cmd.split())
 
         if success:
-            print(f"    ✓ {description} successful")
+            print(f"    [OK] {description} successful")
         else:
-            print(f"    X {description} failed")
+            print(f"    [FAIL] {description} failed")
             print(f"    Error: {stderr}")
             return False
 
@@ -83,13 +83,13 @@ def test_imports():
     for test_import, required in import_tests:
         try:
             exec(test_import)
-            print(f"  ✓ {test_import}")
+            print(f"  [OK] {test_import}")
         except Exception as e:
             if required:
-                print(f"  X {test_import} - {e}")
+                print(f"  [FAIL] {test_import} - {e}")
                 return False
             else:
-                print(f"  !  {test_import} - {e} (optional)")
+                print(f"  [SKIP] {test_import} - {e} (optional)")
 
     return True
 
@@ -111,9 +111,9 @@ def test_make_commands():
         success, stdout, stderr = run_command([make_cmd, cmd])
 
         if success:
-            print(f"    ✓ {make_cmd} {cmd} successful")
+            print(f"    [OK] {make_cmd} {cmd} successful")
         else:
-            print(f"    X {make_cmd} {cmd} failed")
+            print(f"    [FAIL] {make_cmd} {cmd} failed")
             print(f"    Error: {stderr}")
 
     return True
@@ -127,12 +127,12 @@ def test_build_system():
     try:
         import build
 
-        print("  ✓ Build module available")
+        print("  [OK] Build module available")
     except ImportError:
-        print("  !  Build module not available, installing...")
+        print("  [INFO] Build module not available, installing...")
         success, _, _ = run_command(["pip", "install", "build"])
         if not success:
-            print("  X Could not install build module")
+            print("  [FAIL] Could not install build module")
             return False
 
     # Test building
@@ -140,7 +140,7 @@ def test_build_system():
     success, stdout, stderr = run_command(["python", "-m", "build"])
 
     if success:
-        print("  ✓ Package build successful")
+        print("  [OK] Package build successful")
 
         # Check if distributions exist
         dist_path = Path("dist")
@@ -150,16 +150,16 @@ def test_build_system():
 
             if wheels and tarballs:
                 print(
-                    f"  ✓ Found {len(wheels)} wheel(s) and {len(tarballs)} source distribution(s)"
+                    f"  [OK] Found {len(wheels)} wheel(s) and {len(tarballs)} source distribution(s)"
                 )
             else:
                 print(
-                    f"  !  Missing distributions: wheels={len(wheels)}, tarballs={len(tarballs)}"
+                    f"  [WARN] Missing distributions: wheels={len(wheels)}, tarballs={len(tarballs)}"
                 )
 
         return True
     else:
-        print("  X Package build failed")
+        print("  [FAIL] Package build failed")
         print(f"  Error: {stderr}")
         return False
 
@@ -181,9 +181,9 @@ def test_test_runners():
     )
 
     if success:
-        print("  ✓ Python test runner successful")
+        print("  [OK] Python test runner successful")
     else:
-        print("  X Python test runner failed")
+        print("  [FAIL] Python test runner failed")
         print(f"  Output: {stdout}")
         print(f"  Error: {stderr}")
         return False
@@ -194,9 +194,9 @@ def test_test_runners():
         success, stdout, stderr = run_command(["run_tests.bat"])
 
         if success:
-            print("  ✓ Windows batch test runner successful")
+            print("  [OK] Windows batch test runner successful")
         else:
-            print("  X Windows batch test runner failed")
+            print("  [FAIL] Windows batch test runner failed")
             print(f"  Error: {stderr}")
 
     return True
@@ -209,10 +209,10 @@ def check_assimulo_availability():
     try:
         import assimulo
 
-        print(f"  ✓ Assimulo available: version {assimulo.__version__}")
+        print(f"  [OK] Assimulo available: version {assimulo.__version__}")
         return True
     except ImportError:
-        print("  ℹ️  Assimulo not available - simulation features will be limited")
+        print("  [INFO] Assimulo not available - simulation features will be limited")
         print("   To install assimulo, consider using conda:")
         print("     conda install -c conda-forge sundials=5.8.0 superlu=5.2.2")
         print("     pip install assimulo")
@@ -245,7 +245,7 @@ def main():
             success = test_func()
             results[test_name] = success
         except Exception as e:
-            print(f"X {test_name} failed with exception: {e}")
+            print(f"[FAIL] {test_name} failed with exception: {e}")
             results[test_name] = False
 
     # Summary
@@ -257,7 +257,7 @@ def main():
     total = len(results)
 
     for test_name, success in results.items():
-        status = "✓ PASS" if success else "X FAIL"
+        status = "[PASS]" if success else "[FAIL]"
         print(f"  {test_name:<20} {status}")
 
     print(f"\nOverall: {passed}/{total} tests passed")
@@ -266,7 +266,7 @@ def main():
         print(" All validations passed! Ready for CI/CD.")
         return 0
     else:
-        print("X Some validations failed. Please fix before pushing.")
+        print("[FAIL] Some validations failed. Please fix before pushing.")
         return 1
 
 

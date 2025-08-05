@@ -120,8 +120,8 @@ jobs:
         
     - name: Run basic import tests
       run: |
-        python -c "import PharmaPy; print('✓ PharmaPy imported')"
-        python -c "from PharmaPy import Utilities; print('✓ Utilities imported')"
+        python -c "import PharmaPy; print('[OK] PharmaPy imported')"
+        python -c "from PharmaPy import Utilities; print('[OK] Utilities imported')"
         
     - name: Run reactor tests (if assimulo available)
       continue-on-error: true

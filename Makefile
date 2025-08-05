@@ -40,25 +40,25 @@ test: test-all
 
 test-quick:
 	@echo "Running quick test suite..."
-	@python -c "import PharmaPy; print('✓ PharmaPy imports OK')" || echo "X PharmaPy import failed"
-	@cd tests/integration && python reactor_tests.py || echo "⚠ Reactor tests require dependencies"
+	@python -c "import PharmaPy; print('[OK] PharmaPy imports OK')" || echo "[FAIL] PharmaPy import failed"
+	@cd tests/integration && python reactor_tests.py || echo "[WARN] Reactor tests require dependencies"
 
 test-reactor:
 	@echo "Running reactor tests..."
-	@cd tests/integration && python reactor_tests.py || echo "⚠ Reactor tests require dependencies"
+	@cd tests/integration && python reactor_tests.py || echo "[WARN] Reactor tests require dependencies"
 
 test-flowsheet:
 	@echo "Running flowsheet tests..."
-	@cd tests/Flowsheet && python flowsheet_tests.py || echo "⚠ Flowsheet tests require dependencies"
+	@cd tests/Flowsheet && python flowsheet_tests.py || echo "[WARN] Flowsheet tests require dependencies"
 
 test-imports:
 	@echo "Testing package imports..."
-	@python -c "import PharmaPy; print('✓ PharmaPy')" || echo "X PharmaPy import failed"
-	@python -c "from PharmaPy import Utilities; print('✓ Utilities')" || echo "⚠ Utilities import failed"
-	@python -c "from PharmaPy import Reactors; print('✓ Reactors')" || echo "⚠ Reactors import failed (may need assimulo)"
-	@python -c "from PharmaPy import Streams; print('✓ Streams')" || echo "⚠ Streams import failed (may need assimulo)"
-	@python -c "from PharmaPy import Phases; print('✓ Phases')" || echo "⚠ Phases import failed (may need assimulo)"
-	@python -c "from PharmaPy import Kinetics; print('✓ Kinetics')" || echo "⚠ Kinetics import failed (may need assimulo)"
+	@python -c "import PharmaPy; print('[OK] PharmaPy')" || echo "[FAIL] PharmaPy import failed"
+	@python -c "from PharmaPy import Utilities; print('[OK] Utilities')" || echo "[WARN] Utilities import failed"
+	@python -c "from PharmaPy import Reactors; print('[OK] Reactors')" || echo "[WARN] Reactors import failed (may need assimulo)"
+	@python -c "from PharmaPy import Streams; print('[OK] Streams')" || echo "[WARN] Streams import failed (may need assimulo)"
+	@python -c "from PharmaPy import Phases; print('[OK] Phases')" || echo "[WARN] Phases import failed (may need assimulo)"
+	@python -c "from PharmaPy import Kinetics; print('[OK] Kinetics')" || echo "[WARN] Kinetics import failed (may need assimulo)"
 
 test-all:
 	@echo "Running comprehensive test suite..."

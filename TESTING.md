@@ -4,7 +4,7 @@
 
 This document summarizes the robust testing infrastructure implemented for PharmaPy with pytest and conda-forge integration.
 
-## ✓ **Completed Infrastructure**
+## [OK] **Completed Infrastructure**
 
 ### 1. **Updated .gitignore**
 - Comprehensive Python/conda/IDE ignore patterns
@@ -63,7 +63,7 @@ python run_tests_pytest.py --type all --coverage --parallel
 
 ##  **Test Results**
 
-### ✓ **Working Components**
+### [OK] **Working Components**
 - **Test Collection**: 45 tests discovered
 - **Import Tests**: All PharmaPy modules import successfully
 - **Assimulo Integration**: Version 3.7.1 detected and available
@@ -71,7 +71,7 @@ python run_tests_pytest.py --type all --coverage --parallel
 - **Test Runner**: Custom CLI test runner operational
 - **CI Configuration**: GitHub Actions workflow ready
 
-### ! **Expected Limitations**
+### [WARN] **Expected Limitations**
 - **Data Dependencies**: Some tests require thermodynamic data files
 - **Assimulo API**: Some solver tests need API refinement
 - **Coverage**: Currently ~3% (baseline - will improve with more tests)
@@ -129,10 +129,10 @@ pytest tests/integration/ -v -m "assimulo and not slow"
 
 ##  **Key Benefits**
 
-- ✓ **Robust CI/CD**: Multi-platform automated testing
-- ✓ **Conda Integration**: Reliable dependency management
-- ✓ **Assimulo Support**: Verified simulation engine integration  
-- ✓ **Flexible Testing**: Multiple test execution strategies
-- ✓ **Future-Ready**: Extensible test framework for growth
+- [OK] **Robust CI/CD**: Multi-platform automated testing
+- [OK] **Conda Integration**: Reliable dependency management
+- [OK] **Assimulo Support**: Verified simulation engine integration  
+- [OK] **Flexible Testing**: Multiple test execution strategies
+- [OK] **Future-Ready**: Extensible test framework for growth
 
 The testing infrastructure is now **production-ready** and provides a solid foundation for PharmaPy development and quality assurance! 

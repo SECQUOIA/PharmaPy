@@ -10,17 +10,17 @@ set FAILED_TESTS=0
 
 echo.
 echo Testing PharmaPy imports...
-python -c "import PharmaPy; print('✓ PharmaPy imported successfully')"
+python -c "import PharmaPy; print('[OK] PharmaPy imported successfully')"
 if %ERRORLEVEL% neq 0 (
-    echo X PharmaPy import failed
+    echo [FAIL] PharmaPy import failed
     set /a FAILED_TESTS+=1
 )
 
 echo.
 echo Testing core module imports...
-python -c "from PharmaPy import Reactors, Streams, Phases; print('✓ Core modules imported successfully')"
+python -c "from PharmaPy import Reactors, Streams, Phases; print('[OK] Core modules imported successfully')"
 if %ERRORLEVEL% neq 0 (
-    echo X Core module imports failed
+    echo [FAIL] Core module imports failed
     set /a FAILED_TESTS+=1
 )
 
@@ -29,10 +29,10 @@ echo Running reactor tests...
 cd tests\integration
 python reactor_tests.py
 if %ERRORLEVEL% neq 0 (
-    echo X Reactor tests failed
+    echo [FAIL] Reactor tests failed
     set /a FAILED_TESTS+=1
 ) else (
-    echo ✓ Reactor tests passed
+    echo [OK] Reactor tests passed
 )
 cd ..\..
 
@@ -41,18 +41,18 @@ echo Running flowsheet tests...
 cd tests\Flowsheet
 python flowsheet_tests.py
 if %ERRORLEVEL% neq 0 (
-    echo X Flowsheet tests failed
+    echo [FAIL] Flowsheet tests failed
     set /a FAILED_TESTS+=1
 ) else (
-    echo ✓ Flowsheet tests passed
+    echo [OK] Flowsheet tests passed
 )
 cd ..\..
 
 echo.
 echo Testing package installation...
-python -c "import pkg_resources; pkg = pkg_resources.get_distribution('PharmaPy'); print('✓ Package installed:', pkg.project_name, 'v' + pkg.version)"
+python -c "import pkg_resources; pkg = pkg_resources.get_distribution('PharmaPy'); print('[OK] Package installed:', pkg.project_name, 'v' + pkg.version)"
 if %ERRORLEVEL% neq 0 (
-    echo X Package installation check failed
+    echo [FAIL] Package installation check failed
     set /a FAILED_TESTS+=1
 )
 
@@ -64,6 +64,6 @@ if %FAILED_TESTS% equ 0 (
     echo  All tests passed!
     exit /b 0
 ) else (
-    echo X %FAILED_TESTS% test(s) failed
+    echo [FAIL] %FAILED_TESTS% test(s) failed
     exit /b 1
 )
