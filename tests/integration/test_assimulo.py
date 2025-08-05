@@ -5,6 +5,57 @@ import pytest
 import numpy as np
 
 
+# Shared test problem definitions
+@pytest.fixture
+def simple_decay_rhs():
+    """Fixture providing a simple decay ODE: dy/dt = -y."""
+    def rhs(t, y):
+        return -y[0] if hasattr(y, '__getitem__') else -y
+    return rhs
+
+
+@pytest.fixture  
+def simple_decay_residual():
+    """Fixture providing a simple decay DAE residual: yd + y = 0."""
+    def res(t, y, yd):
+        return yd[0] + y[0]
+    return res
+
+
+@pytest.fixture
+def simple_initial_condition():
+    """Fixture providing standard initial condition for test problems."""
+    return [1.0]
+
+
+class AssimuloTestHelper:
+    """Helper class for common assimulo test operations."""
+    
+    @staticmethod
+    def create_explicit_problem(rhs_func, y0):
+        """Create an explicit problem for testing."""
+        from assimulo.problem import Explicit_Problem
+        return Explicit_Problem(rhs_func, y0)
+    
+    @staticmethod
+    def create_implicit_problem(res_func, y0, yd0):
+        """Create an implicit problem for testing."""
+        from assimulo.problem import Implicit_Problem
+        return Implicit_Problem(res_func, y0, yd0)
+    
+    @staticmethod
+    def create_cvode_solver(problem):
+        """Create a CVode solver with the given problem."""
+        from assimulo.solvers import CVode
+        return CVode(problem)
+    
+    @staticmethod
+    def create_ida_solver(problem):
+        """Create an IDA solver with the given problem."""
+        from assimulo.solvers import IDA
+        return IDA(problem)
+
+
 @pytest.mark.assimulo
 class TestAssimuloIntegration:
     """Test PharmaPy integration with assimulo simulation engine."""
@@ -15,20 +66,15 @@ class TestAssimuloIntegration:
         assert hasattr(assimulo, '__version__')
         assert assimulo.__version__ >= '3.0'
     
-    def test_assimulo_solvers_available(self, assimulo_available):
+    def test_assimulo_solvers_available(self, assimulo_available, simple_decay_rhs, simple_initial_condition):
         """Test that assimulo solvers are available."""
-        from assimulo.solvers import CVode
-        from assimulo.problem import Explicit_Problem
+        helper = AssimuloTestHelper()
         
-        # Create a simple test problem for solver instantiation
-        def rhs(t, y):
-            return -y[0]  # Simple decay: dy/dt = -y
-            
-        y0 = [1.0]  # Initial condition
-        problem = Explicit_Problem(rhs, y0)
+        # Create problem using fixtures
+        problem = helper.create_explicit_problem(simple_decay_rhs, simple_initial_condition)
         
         # Test that we can create a solver instance with a problem
-        solver = CVode(problem)
+        solver = helper.create_cvode_solver(problem)
         assert solver is not None
     
     def test_pharmapy_with_assimulo(self, assimulo_available, pharmapy_available):
@@ -83,30 +129,19 @@ class TestAssimuloIntegration:
         
         assert version.parse(current_version) >= version.parse(min_version)
     
-    def test_sundials_integration(self, assimulo_available):
+    def test_sundials_integration(self, assimulo_available, simple_decay_rhs, simple_decay_residual, simple_initial_condition):
         """Test that sundials integration works with assimulo."""
         try:
-            from assimulo.solvers import CVode, IDA
-            from assimulo.problem import Explicit_Problem, Implicit_Problem
+            helper = AssimuloTestHelper()
             import numpy as np
             
-            # Create a simple test problem for CVode (explicit ODE)
-            def rhs(t, y):
-                return -y[0]  # Simple decay: dy/dt = -y
-            
-            # Create a simple test problem for IDA (implicit DAE)
-            def res(t, y, yd):
-                return yd[0] + y[0]  # Same equation in residual form
-            
-            y0 = [1.0]  # Initial condition
-            
-            # Create problems
-            explicit_prob = Explicit_Problem(rhs, y0)
-            implicit_prob = Implicit_Problem(res, y0, [0.0])  # y0, yd0
+            # Create problems using fixtures
+            explicit_prob = helper.create_explicit_problem(simple_decay_rhs, simple_initial_condition)
+            implicit_prob = helper.create_implicit_problem(simple_decay_residual, simple_initial_condition, [0.0])  # y0, yd0
             
             # Test that solvers can be instantiated with problems
-            cvode_solver = CVode(explicit_prob)
-            ida_solver = IDA(implicit_prob)
+            cvode_solver = helper.create_cvode_solver(explicit_prob)
+            ida_solver = helper.create_ida_solver(implicit_prob)
             
             assert cvode_solver is not None
             assert ida_solver is not None
@@ -187,21 +222,16 @@ class TestAssimuloPerformance:
     """Test performance aspects of assimulo integration."""
     
     @pytest.mark.slow
-    def test_solver_performance(self, assimulo_available):
+    def test_solver_performance(self, assimulo_available, simple_decay_rhs, simple_initial_condition):
         """Test basic solver performance."""
         import time
-        from assimulo.solvers import CVode
-        from assimulo.problem import Explicit_Problem
+        helper = AssimuloTestHelper()
         import numpy as np
         
-        # Simple ODE: dy/dt = -y, y(0) = 1, solution: y(t) = exp(-t)
-        def rhs(t, y):
-            return -y
-        
-        # Create problem and solver
-        y0 = np.array([1.0])
-        problem = Explicit_Problem(rhs, y0)
-        solver = CVode(problem)
+        # Create problem and solver using fixtures
+        y0 = np.array(simple_initial_condition)
+        problem = helper.create_explicit_problem(simple_decay_rhs, y0)
+        solver = helper.create_cvode_solver(problem)
         
         # Time the solver setup and execution
         start_time = time.time()
@@ -221,21 +251,14 @@ class TestAssimuloPerformance:
         # Basic performance check - should complete quickly
         assert execution_time < 10.0  # Should complete in less than 10 seconds
     
-    def test_memory_usage(self, assimulo_available):
+    def test_memory_usage(self, assimulo_available, simple_decay_rhs, simple_initial_condition):
         """Test that assimulo doesn't have obvious memory leaks."""
-        from assimulo.solvers import CVode
-        from assimulo.problem import Explicit_Problem
+        helper = AssimuloTestHelper()
         
-        # Simple test problem for memory usage testing
-        def rhs(t, y):
-            return -y[0]
-        
-        y0 = [1.0]
-        
-        # Create and destroy multiple solver instances
+        # Create and destroy multiple solver instances using fixtures
         for i in range(10):
-            problem = Explicit_Problem(rhs, y0)
-            solver = CVode(problem)
+            problem = helper.create_explicit_problem(simple_decay_rhs, simple_initial_condition)
+            solver = helper.create_cvode_solver(problem)
             assert solver is not None
             del solver
             del problem
