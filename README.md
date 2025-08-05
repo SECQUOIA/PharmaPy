@@ -14,7 +14,45 @@ It allows to simulate the dynamics of standalone, drug substance unit operations
 <br clear="left"/>
 
 ## Getting started
-To install PharmaPy, download and unzip the code from the release section, and then follow the instructions on the `install_instructions.txt` file.
+
+### Quick Installation
+For most users, the simplest installation method is:
+
+```bash
+# Create a conda environment (recommended)
+conda create -n pharmapy python=3.9
+conda activate pharmapy
+
+# Install PharmaPy
+pip install -e .
+```
+
+### Installation Options
+
+#### Option 1: Using installation scripts (Automated)
+Download and unzip the code from the release section, then:
+- **Windows**: Run `InstallOnWindows.bat`
+- **Linux/Mac**: Run `chmod +x InstallOnMac.sh && ./InstallOnMac.sh`
+
+#### Option 2: Manual installation
+Follow the detailed instructions in the `install_instructions.txt` file.
+
+#### Option 3: Development installation
+For developers:
+```bash
+# Clone the repository
+git clone https://github.com/SECQUOIA/PharmaPy.git
+cd PharmaPy
+
+# Install with development dependencies
+pip install -e ".[dev]"
+```
+
+### Testing the Installation
+```bash
+cd tests
+python reactor_tests.py
+```
 
 Read our [documentation](https://pharmapy.readthedocs.io/en/latest/) or chat with the [PharmaPy Simulation Assistant](https://chatgpt.com/g/g-679bb3b5c5188191b26680b147a4f4a2-pharmapy-simulation-assistant) for more information on how to install and how to use PharmaPy.
 

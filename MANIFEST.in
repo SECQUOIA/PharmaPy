@@ -1,0 +1,12 @@
+include README.md
+include LICENSE.md
+include requirements.txt
+include install_instructions.txt
+include InstallOnWindows.bat
+include InstallOnMac.sh
+recursive-include data *
+recursive-include PharmaPy/data *
+recursive-include doc *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store

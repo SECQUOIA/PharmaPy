@@ -1,0 +1,10 @@
+# Development dependencies
+pytest>=6.0
+pytest-cov
+sphinx
+sphinx-rtd-theme
+black
+flake8
+isort
+build
+twine
