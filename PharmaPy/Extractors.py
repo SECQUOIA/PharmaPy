@@ -20,24 +20,30 @@ def material_setter(instance, oper_mode):
     name_comp = instance.name_species
     num_comp = len(name_comp)
     states_di = {
-        'x_heavy': {'dim': num_comp, 'type': 'alg', 'index': name_comp},
-        'x_light': {'dim': num_comp, 'type': 'alg', 'index': name_comp},
-        'moles_heavy': {'dim': 1, 'type': 'alg'},
-        'moles_light': {'dim': 1, 'type': 'alg'}}
+        "x_heavy": {"dim": num_comp, "type": "alg", "index": name_comp},
+        "x_light": {"dim": num_comp, "type": "alg", "index": name_comp},
+        "moles_heavy": {"dim": 1, "type": "alg"},
+        "moles_light": {"dim": 1, "type": "alg"},
+    }
 
-    if oper_mode == 'continuous':
+    if oper_mode == "continuous":
         in_flow = instance.mole_flow
     else:
         in_flow = instance.moles
 
-    out = {'in_flow': in_flow, 'temp': instance.temp, 'pres': instance.pres,
-           'num_comp': num_comp, 'states_di': states_di}
+    out = {
+        "in_flow": in_flow,
+        "temp": instance.temp,
+        "pres": instance.pres,
+        "num_comp": num_comp,
+        "states_di": states_di,
+    }
 
     return out
 
 
 class ContinuousExtractor:
-    def __init__(self, k_fun=None, gamma_method='UNIQUAC'):
+    def __init__(self, k_fun=None, gamma_method="UNIQUAC"):
 
         self._Inlet = None
 
@@ -45,7 +51,7 @@ class ContinuousExtractor:
 
         self.gamma_method = gamma_method
 
-        self.oper_mode = 'Batch'
+        self.oper_mode = "Batch"
 
     @property
     def Inlet(self):
@@ -66,16 +72,16 @@ class ContinuousExtractor:
 
     def material_eqn_based(self, extr, raff, x_extr, x_raff, z_i):
 
-        gamma_extr = self.matter.getActivityCoeff(method=self.gamma_method,
-                                                  mole_frac=x_extr,
-                                                  temp=self.temp)
+        gamma_extr = self.matter.getActivityCoeff(
+            method=self.gamma_method, mole_frac=x_extr, temp=self.temp
+        )
 
-        gamma_raff = self.matter.getActivityCoeff(method=self.gamma_method,
-                                                  mole_frac=x_raff,
-                                                  temp=self.temp)
+        gamma_raff = self.matter.getActivityCoeff(
+            method=self.gamma_method, mole_frac=x_raff, temp=self.temp
+        )
 
         global_bce = 1 - extr - raff
-        comp_bces = z_i - extr*x_extr - raff*x_raff
+        comp_bces = z_i - extr * x_extr - raff * x_raff
         equilibria = x_extr * gamma_extr - x_raff * gamma_raff
 
         diff_frac = np.sum(x_extr - x_raff)
@@ -83,23 +89,21 @@ class ContinuousExtractor:
         vap_flow = mid_fn(args_mid)
 
         balance = np.concatenate(
-            (np.array([global_bce]),
-             comp_bces, equilibria,
-             np.array([vap_flow]))
-            )
+            (np.array([global_bce]), comp_bces, equilibria, np.array([vap_flow]))
+        )
 
         return balance
 
     def material_balance(self, phi_seed, x_1_seed, x_2_seed, z_i, temp):
 
         def get_ki(x1, x2, temp):
-            gamma_1 = self.matter.getActivityCoeff(method=self.gamma_method,
-                                                   mole_frac=x1,
-                                                   temp=temp)
+            gamma_1 = self.matter.getActivityCoeff(
+                method=self.gamma_method, mole_frac=x1, temp=temp
+            )
 
-            gamma_2 = self.matter.getActivityCoeff(method=self.gamma_method,
-                                                   mole_frac=x2,
-                                                   temp=temp)
+            gamma_2 = self.matter.getActivityCoeff(
+                method=self.gamma_method, mole_frac=x2, temp=temp
+            )
 
             k_i = gamma_1 / gamma_2
 
@@ -111,27 +115,27 @@ class ContinuousExtractor:
             k_fun = self.k_fun
 
         def func_phi(phi, k_i):
-            f_phi = z_i * (1 - k_i) / (1 + phi*(k_i - 1))
+            f_phi = z_i * (1 - k_i) / (1 + phi * (k_i - 1))
 
             return f_phi.sum()
 
         def deriv_phi(phi, k_i):
-            deriv = z_i * (1 - k_i)**2 / (1 + phi*(k_i - 1))**2
+            deriv = z_i * (1 - k_i) ** 2 / (1 + phi * (k_i - 1)) ** 2
 
             return deriv.sum()
 
         error = 1
 
-        tol = self.solver_options.get('tol', 1e-4)
-        max_iter = self.solver_options.get('max_iter', 100)
+        tol = self.solver_options.get("tol", 1e-4)
+        max_iter = self.solver_options.get("max_iter", 100)
 
         count = 0
 
         while error > tol and count < max_iter:
             k_i = k_fun(x_1_seed, x_2_seed, self.temp)
-            phi_k = newton(func_phi, phi_seed, args=(k_i, ), fprime=deriv_phi)
+            phi_k = newton(func_phi, phi_seed, args=(k_i,), fprime=deriv_phi)
 
-            x_1_k = z_i / (1 + phi_k*(k_i - 1))
+            x_1_k = z_i / (1 + phi_k * (k_i - 1))
             x_2_k = x_1_k * k_i
 
             # Normalize x's
@@ -155,7 +159,7 @@ class ContinuousExtractor:
         x1_conv = x_1_seed
         x2_conv = x_2_seed
 
-        info = {'error': error, 'num_iter': count}
+        info = {"error": error, "num_iter": count}
 
         return phi_conv, x1_conv, x2_conv, info
 
@@ -166,10 +170,11 @@ class ContinuousExtractor:
         tref = self.temp
 
         h_liq = 0
-        h_vap = self.VaporOut.getEnthalpy(self.temp, temp_ref=tref,
-                                          mole_frac=y_i, basis='mole')
+        h_vap = self.VaporOut.getEnthalpy(
+            self.temp, temp_ref=tref, mole_frac=y_i, basis="mole"
+        )
 
-        h_in = self.matter.getEnthalpy(temp_ref=tref, basis='mole')
+        h_in = self.matter.getEnthalpy(temp_ref=tref, basis="mole")
 
         heat_duty = liq_flow * h_liq + vap_flow * h_vap - self.in_flow * h_in
 
@@ -226,8 +231,10 @@ class ContinuousExtractor:
         if phase_part > 1 or phase_part < 0:
             phase_part = 1
 
-            print('\nNo phases in equilibrium present at the specified '
-                  'conditions', end='\n')
+            print(
+                "\nNo phases in equilibrium present at the specified " "conditions",
+                end="\n",
+            )
 
             xa_liq = self.matter.mole_frac
             xb_liq = xa_liq
@@ -242,23 +249,31 @@ class ContinuousExtractor:
         path = self.matter.path_data
 
         # Store in objects
-        if self.oper_mode == 'continuous':
-            Liquid_a = LiquidStream(path, mole_frac=xa_liq,
-                                    mole_flow=liquid_a,
-                                    temp=self.temp, pres=self.pres)
-            Liquid_b = LiquidStream(path, mole_frac=xb_liq,
-                                    mole_flow=liquid_b,
-                                    temp=self.temp, pres=self.pres)
+        if self.oper_mode == "continuous":
+            Liquid_a = LiquidStream(
+                path,
+                mole_frac=xa_liq,
+                mole_flow=liquid_a,
+                temp=self.temp,
+                pres=self.pres,
+            )
+            Liquid_b = LiquidStream(
+                path,
+                mole_frac=xb_liq,
+                mole_flow=liquid_b,
+                temp=self.temp,
+                pres=self.pres,
+            )
         else:
-            Liquid_a = LiquidPhase(path, mole_frac=xa_liq,
-                                   moles=liquid_a,
-                                   temp=self.temp, pres=self.pres)
-            Liquid_b = LiquidPhase(path, mole_frac=xb_liq,
-                                   moles=liquid_b,
-                                   temp=self.temp, pres=self.pres)
+            Liquid_a = LiquidPhase(
+                path, mole_frac=xa_liq, moles=liquid_a, temp=self.temp, pres=self.pres
+            )
+            Liquid_b = LiquidPhase(
+                path, mole_frac=xb_liq, moles=liquid_b, temp=self.temp, pres=self.pres
+            )
 
-        dens_a = Liquid_a.getDensity(basis='mole')
-        dens_b = Liquid_b.getDensity(basis='mole')
+        dens_a = Liquid_a.getDensity(basis="mole")
+        dens_b = Liquid_b.getDensity(basis="mole")
 
         if phase_part > 0 and phase_part < 1:
             if dens_a > dens_b:
@@ -274,19 +289,29 @@ class ContinuousExtractor:
 
         # Result object
         if dens_a > dens_b:
-            di = {'x_light': xb_liq, 'x_heavy': xa_liq,
-                  'mol_heavy': liquid_a, 'mol_light': liquid_b,
-                  'rho_light': dens_b, 'rho_heavy': dens_a}
+            di = {
+                "x_light": xb_liq,
+                "x_heavy": xa_liq,
+                "mol_heavy": liquid_a,
+                "mol_light": liquid_b,
+                "rho_light": dens_b,
+                "rho_heavy": dens_a,
+            }
         else:
-            di = {'x_light': xa_liq, 'x_heavy': xb_liq,
-                  'mol_heavy': liquid_b, 'mol_light': liquid_a,
-                  'rho_light': dens_a, 'rho_heavy': dens_b}
+            di = {
+                "x_light": xa_liq,
+                "x_heavy": xb_liq,
+                "mol_heavy": liquid_b,
+                "mol_light": liquid_a,
+                "rho_light": dens_a,
+                "rho_heavy": dens_b,
+            }
 
         self.result = DynamicResult(self.states_di, **di)
 
 
 class BatchExtractor(ContinuousExtractor):
-    def __init__(self, k_fun=None, gamma_method='UNIQUAC'):
+    def __init__(self, k_fun=None, gamma_method="UNIQUAC"):
         super().__init__(k_fun, gamma_method)
 
         self._Phases = None

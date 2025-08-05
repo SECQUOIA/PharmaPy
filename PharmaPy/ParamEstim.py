@@ -24,11 +24,12 @@ from PharmaPy.Commons import plot_sens, reorder_sens
 
 try:
     from cyipopt import minimize_ipopt
+
     have_cyipopt = True
 except ImportError:
     have_cyipopt = False
 
-linestyles = cycle(['-', '--', '-.', ':'])
+linestyles = cycle(["-", "--", "-.", ":"])
 
 eps = np.finfo(float).eps
 
@@ -45,8 +46,9 @@ def pseudo_inv(states, dstates_dparam=None):
     else:
         # Derivative
         first_term = -pseudo_inv @ dstates_dparam @ pseudo_inv
-        second_term = pseudo_inv @ pseudo_inv.T @ dstates_dparam.T @ \
-            (1 - states @ pseudo_inv)
+        second_term = (
+            pseudo_inv @ pseudo_inv.T @ dstates_dparam.T @ (1 - states @ pseudo_inv)
+        )
         third_term = (1 - pseudo_inv @ states) @ (pseudo_inv.T @ pseudo_inv)
 
         dplus_dtheta = first_term + second_term + third_term
@@ -146,8 +148,7 @@ def analyze_data(x, y, merge_y=True):
             pass_x = get_array_list(x_data.values())
             pass_y = list(y_data.values())
 
-            x_unif, x_ma, y_ma = analyze_data([pass_x], [pass_y],
-                                              merge_y=False)
+            x_unif, x_ma, y_ma = analyze_data([pass_x], [pass_y], merge_y=False)
 
             # Save data
             x_model.append(x_unif[0])
@@ -208,14 +209,23 @@ def flatten_spectral_sens(sens):
 
 class ParameterEstimation:
 
-    def __init__(self, func, param_seed, x_data, y_data=None,
-                 measured_ind=None,
-                 args_fun=None, kwargs_fun=None,
-                 optimize_flags=None,
-                 jac_fun=None, dx_finitediff=None,
-                 weight_matrix=None,
-                 name_params=None, name_states=None):
-        """ Create a ParameterEstimation object
+    def __init__(
+        self,
+        func,
+        param_seed,
+        x_data,
+        y_data=None,
+        measured_ind=None,
+        args_fun=None,
+        kwargs_fun=None,
+        optimize_flags=None,
+        jac_fun=None,
+        dx_finitediff=None,
+        weight_matrix=None,
+        name_params=None,
+        name_states=None,
+    ):
+        """Create a ParameterEstimation object
 
         Parameters
         ----------
@@ -327,8 +337,9 @@ class ParameterEstimation:
         self.num_datasets = len(self.y_data)
 
         if self.experim_names is None:
-            self.experim_names = ['exp_%i' % (ind + 1)
-                                  for ind in range(self.num_datasets)]
+            self.experim_names = [
+                "exp_%i" % (ind + 1) for ind in range(self.num_datasets)
+            ]
 
         if measured_ind is None:
             measured_ind = list(range(y_data[0].shape[1]))
@@ -381,7 +392,7 @@ class ParameterEstimation:
         self.num_params_total = len(param_seed)
         if optimize_flags is None:
             self.map_fixed = []
-            self.map_variable = np.array([True]*self.num_params_total)
+            self.map_variable = np.array([True] * self.num_params_total)
         else:
             self.map_variable = np.array(optimize_flags)
             self.map_fixed = ~self.map_variable
@@ -393,30 +404,33 @@ class ParameterEstimation:
         # --------------- Names
         # Parameters
         if name_params is None:
-            self.name_params = ['theta_{}'.format(ind + 1)
-                                for ind in range(self.num_params)]
+            self.name_params = [
+                "theta_{}".format(ind + 1) for ind in range(self.num_params)
+            ]
 
-            self.name_params_total = ['theta_{}'.format(ind + 1)
-                                      for ind in range(self.num_params_total)]
+            self.name_params_total = [
+                "theta_{}".format(ind + 1) for ind in range(self.num_params_total)
+            ]
 
-            self.name_params_plot = [r'$\theta_{}$'.format(ind + 1)
-                                     for ind in range(self.num_params)]
+            self.name_params_plot = [
+                r"$\theta_{}$".format(ind + 1) for ind in range(self.num_params)
+            ]
         else:
             self.name_params_total = name_params
             if len(name_params) > sum(self.map_variable):
-                self.name_params = [name_params[ind]
-                                    for ind in range(len(name_params))
-                                    if self.map_variable[ind]]
+                self.name_params = [
+                    name_params[ind]
+                    for ind in range(len(name_params))
+                    if self.map_variable[ind]
+                ]
             else:
                 self.name_params = name_params
 
-            self.name_params_plot = [r'$' + name + '$'
-                                     for name in self.name_params]
+            self.name_params_plot = [r"$" + name + "$" for name in self.name_params]
 
         # ---------- States
         if name_states is None:
-            self.name_states = [r'$y_{}$'.format(ind + 1)
-                                for ind in self.measured_ind]
+            self.name_states = [r"$y_{}$".format(ind + 1) for ind in self.measured_ind]
         else:
             self.name_states = name_states
 
@@ -440,8 +454,9 @@ class ParameterEstimation:
         if times is None:
             selected = [parts[ind] for ind in self.measured_ind]
         else:
-            selected = [parts[ind][times[count]]
-                        for count, ind in enumerate(self.measured_ind)]
+            selected = [
+                parts[ind][times[count]] for count, ind in enumerate(self.measured_ind)
+            ]
 
         return selected
 
@@ -472,8 +487,9 @@ class ParameterEstimation:
 
         for ind in range(self.num_datasets):
             # Solve model
-            result = self.function(params, self.x_model[ind],
-                                   *self.args_fun[ind], **self.kwargs_fun[ind])
+            result = self.function(
+                params, self.x_model[ind], *self.args_fun[ind], **self.kwargs_fun[ind]
+            )
 
             if isinstance(result, (tuple, list)):  # func also returns the jacobian
                 y_prof, sens = result
@@ -504,14 +520,13 @@ class ParameterEstimation:
             y_runs.append(y_run)
             resid_runs.append(resid_run)
 
-        weighted_residuals = [np.dot(resid, self.sigma_inv)
-                              for resid in resid_runs]
+        weighted_residuals = [np.dot(resid, self.sigma_inv) for resid in resid_runs]
 
         if len(sens_second) > 0:
             self.sens_second = sens_second
 
         if type(self.objfun_iter) is list:
-            objfun_val = np.linalg.norm(np.concatenate(resid_runs))**2
+            objfun_val = np.linalg.norm(np.concatenate(resid_runs)) ** 2
             self.objfun_iter.append(objfun_val)
 
         residuals = self.optimize_flag * np.concatenate(resid_runs)
@@ -523,12 +538,11 @@ class ParameterEstimation:
             self.residuals = residuals
 
         # Return objective
-        residual_out = np.concatenate([ar.T.ravel()
-                                       for ar in weighted_residuals])
+        residual_out = np.concatenate([ar.T.ravel() for ar in weighted_residuals])
         if out_array:
             return residual_out
         else:
-            residual_out = 1/2 * np.dot(residual_out, residual_out)
+            residual_out = 1 / 2 * np.dot(residual_out, residual_out)
 
         return residual_out
 
@@ -538,17 +552,23 @@ class ParameterEstimation:
             raw_sens = []
             for ind in range(self.num_datasets):
                 if self.jac_fun is None:
-                    pass_to_fun = (self.x_model[ind], self.args_fun[ind],
-                                   self.kwargs_fun[ind])
+                    pass_to_fun = (
+                        self.x_model[ind],
+                        self.args_fun[ind],
+                        self.kwargs_fun[ind],
+                    )
 
                     pick_p = np.where(self.map_variable)[0]
-                    sens = numerical_jac_data(self.func_aux, params,
-                                              pass_to_fun, dx=self.dx_fd,
-                                              pick_x=pick_p)
+                    sens = numerical_jac_data(
+                        self.func_aux, params, pass_to_fun, dx=self.dx_fd, pick_x=pick_p
+                    )
                 else:
-                    sens = self.jac_fun(params, self.x_model[ind],
-                                        *self.args_fun[ind],
-                                        **self.kwargs_fun[ind])
+                    sens = self.jac_fun(
+                        params,
+                        self.x_model[ind],
+                        *self.args_fun[ind],
+                        **self.kwargs_fun[ind],
+                    )
 
                 raw_sens.append(sens)
 
@@ -596,52 +616,67 @@ class ParameterEstimation:
 
         return cond_number
 
-    def optimize_fn(self, optim_options=None, simulate=False, verbose=True,
-                    store_iter=True, method='LM', bounds=None):
+    def optimize_fn(
+        self,
+        optim_options=None,
+        simulate=False,
+        verbose=True,
+        store_iter=True,
+        method="LM",
+        bounds=None,
+    ):
 
         self.optimize_flag = not simulate
         self.opt_method = method
 
         params_var = self.param_seed[self.map_variable]
 
-        if method == 'LM':
+        if method == "LM":
             if optim_options is None:
-                optim_options = {'full_output': True, 'verbose': verbose}
+                optim_options = {"full_output": True, "verbose": verbose}
             else:
-                optim_options['full_output'] = True
-                optim_options['verbose'] = verbose
+                optim_options["full_output"] = True
+                optim_options["verbose"] = verbose
 
             opt_par, inv_hessian, info = levenberg_marquardt(
                 params_var,
                 self.get_objective,
                 self.get_gradient,
                 args=(True,),
-                **optim_options)
+                **optim_options,
+            )
 
-        elif method == 'IPOPT':
+        elif method == "IPOPT":
             if not have_cyipopt:
-                raise ImportError('cyipopt is an optional import. Please install cyipopt to use IPOPT as a solver for parameter estimation. conda install -c conda-forge cyipopt')
+                raise ImportError(
+                    "cyipopt is an optional import. Please install cyipopt to use IPOPT as a solver for parameter estimation. conda install -c conda-forge cyipopt"
+                )
             if optim_options is None:
-                optim_options = {'print_level': int(verbose) * 5}
+                optim_options = {"print_level": int(verbose) * 5}
             else:
-                optim_options['print_level'] = int(verbose) * 5
+                optim_options["print_level"] = int(verbose) * 5
 
-            kwargs_fun = {'out_array': False}
-            result = minimize_ipopt(self.get_objective, params_var,
-                                    jac=self.get_gradient,
-                                    bounds=bounds, options=optim_options,
-                                    kwargs=kwargs_fun)
+            kwargs_fun = {"out_array": False}
+            result = minimize_ipopt(
+                self.get_objective,
+                params_var,
+                jac=self.get_gradient,
+                bounds=bounds,
+                options=optim_options,
+                kwargs=kwargs_fun,
+            )
 
-            opt_par = result['x']
+            opt_par = result["x"]
 
             # final_sens = np.vstack(self.sens_runs)[:, self.map_variable].T
             # final_sens = np.vstack(self.sens_runs)
             # final_fun = np.concatenate(self.resid_runs)
 
-            resid_multidim = self.get_objective(opt_par, out_array=True,
-                                                update_self=False)
+            resid_multidim = self.get_objective(
+                opt_par, out_array=True, update_self=False
+            )
             jac_multidim = self.get_gradient(opt_par, out_array=True)
-            info = {'jac': jac_multidim, 'fun': resid_multidim}
+            info = {"jac": jac_multidim, "fun": resid_multidim}
 
         self.optim_options = optim_options
 
@@ -658,10 +693,10 @@ class ParameterEstimation:
             self.params_iter = self.params_iter[np.sort(idx)]
             self.objfun_iter = np.array(self.objfun_iter)[np.sort(idx)]
 
-            col_names = ['obj_fun'] + self.name_params
+            col_names = ["obj_fun"] + self.name_params
             self.paramest_df = pd.DataFrame(
-                np.column_stack((self.objfun_iter, self.params_iter)),
-                columns=col_names)
+                np.column_stack((self.objfun_iter, self.params_iter)), columns=col_names
+            )
 
         # Model prediction with final parameters
         for ind in range(self.num_datasets):
@@ -677,8 +712,8 @@ class ParameterEstimation:
         return opt_par, covar_params, info
 
     def get_covariance(self, include_mse=True):
-        jac = self.info_opt['jac']
-        resid = self.info_opt['fun']
+        jac = self.info_opt["jac"]
+        resid = self.info_opt["fun"]
 
         hessian_approx = np.dot(jac, jac.T)
 
@@ -692,7 +727,7 @@ class ParameterEstimation:
             covar = np.linalg.inv(hessian_approx)
         # Correlation matrix
         sigma = np.sqrt(covar.diagonal())
-        d_matrix = np.diag(1/sigma)
+        d_matrix = np.diag(1 / sigma)
         correlation = d_matrix.dot(covar).dot(d_matrix)
 
         self.covar_params = covar
@@ -704,18 +739,18 @@ class ParameterEstimation:
 
         num_plots = self.num_datasets
 
-        if 'ncols' not in fig_kwargs and 'nrows' not in fig_kwargs:
+        if "ncols" not in fig_kwargs and "nrows" not in fig_kwargs:
             num_cols = bool(num_plots // 2) + 1
             num_rows = num_plots // 2 + num_plots % 2
 
-            fig_kwargs.update({'nrows': num_rows, 'ncols': num_cols})
+            fig_kwargs.update({"nrows": num_rows, "ncols": num_cols})
 
         fig, axes = plt.subplots(**fig_kwargs)
 
         if num_plots == 1:
             axes = np.asarray(axes)[np.newaxis]
 
-        ax_kwargs = {'mfc': 'None', 'ls': '', 'ms': 4}
+        ax_kwargs = {"mfc": "None", "ls": "", "ms": 4}
 
         ax_flatten = axes.flatten()
 
@@ -733,18 +768,18 @@ class ParameterEstimation:
             lines = ax_flatten[ind].lines
             colors = [line.get_color() for line in lines]
 
-            markers = cycle(['o', 's', '^', '*', 'P', 'X'])
+            markers = cycle(["o", "s", "^", "*", "P", "X"])
             for color, y in zip(colors, y_data[ind].T):
-                ax_flatten[ind].plot(x_data[ind], y, color=color,
-                                     marker=next(markers),
-                                     **ax_kwargs)
+                ax_flatten[ind].plot(
+                    x_data[ind], y, color=color, marker=next(markers), **ax_kwargs
+                )
 
             # Edit
-            ax_flatten[ind].spines['right'].set_visible(False)
-            ax_flatten[ind].spines['top'].set_visible(False)
+            ax_flatten[ind].spines["right"].set_visible(False)
+            ax_flatten[ind].spines["top"].set_visible(False)
 
             # ax_flatten[ind].set_xlabel('$x$')
-            ax_flatten[ind].set_ylabel(r'$\mathbf{y}$')
+            ax_flatten[ind].set_ylabel(r"$\mathbf{y}$")
 
             ax_flatten[ind].xaxis.set_minor_locator(AutoMinorLocator(2))
             ax_flatten[ind].yaxis.set_minor_locator(AutoMinorLocator(2))
@@ -754,9 +789,9 @@ class ParameterEstimation:
 
         if len(axes) == 1:
             axes = axes[0]
-            axes.set_xlabel('$x$')
+            axes.set_xlabel("$x$")
         else:
-            fig.text(0.5, 0, '$x$', ha='center')
+            fig.text(0.5, 0, "$x$", ha="center")
 
         fig.tight_layout()
 
@@ -784,8 +819,7 @@ class ParameterEstimation:
 
             line = axes.flatten()[ind].lines[0]
             color = line.get_color()
-            axes.flatten()[ind].plot(xdata, ydata[ind], 'o',
-                                     color=color, mfc='None')
+            axes.flatten()[ind].plot(xdata, ydata[ind], "o", color=color, mfc="None")
 
             axes.flatten()[ind].set_ylabel(self.name_states[ind])
 
@@ -805,39 +839,44 @@ class ParameterEstimation:
 
     def plot_parity(self, fig_size=(4.5, 4.0), **fig_kwargs):
         if len(fig_kwargs) == 0:
-            fig_kwargs['alpha'] = 0.70
+            fig_kwargs["alpha"] = 0.70
 
         fig, axis = plt.subplots(figsize=fig_size)
 
         y_model = self.y_model
 
         if self.experim_names is None:
-            experim_names = ['experiment {}'.format(ind + 1)
-                             for ind in range(self.num_datasets)]
+            experim_names = [
+                "experiment {}".format(ind + 1) for ind in range(self.num_datasets)
+            ]
         else:
             experim_names = self.experim_names
 
-        markers = cycle(['o', 's', '^', '*', 'P', 'X'])
+        markers = cycle(["o", "s", "^", "*", "P", "X"])
         for ind, y_model in enumerate(y_model):
             y_data = self.y_data[ind]
 
             if isinstance(y_data, dict):
                 y_data = np.hstack(list(y_data.values()))
 
-            axis.scatter(y_model.T.flatten(), y_data.T.flatten(),
-                         label=experim_names[ind], marker=next(markers),
-                         **fig_kwargs)
+            axis.scatter(
+                y_model.T.flatten(),
+                y_data.T.flatten(),
+                label=experim_names[ind],
+                marker=next(markers),
+                **fig_kwargs,
+            )
 
-        axis.set_xlabel('Model')
-        axis.set_ylabel('Data')
-        axis.legend(loc='best')
+        axis.set_xlabel("Model")
+        axis.set_ylabel("Data")
+        axis.legend(loc="best")
 
         plot_min, plot_max = axis.get_xlim()
 
-        offset = 0.05*plot_max
+        offset = 0.05 * plot_max
         x_central = [plot_min - offset, plot_max + offset]
 
-        axis.plot(x_central, x_central, 'k')
+        axis.plot(x_central, x_central, "k")
         axis.set_xlim(x_central)
         axis.set_ylim(x_central)
 
@@ -852,8 +891,9 @@ class ParameterEstimation:
         # Plot
         fig_heat, axis_heat = plt.subplots()
 
-        heatmap = axis_heat.imshow(corr_masked, cmap='RdBu', aspect='equal',
-                                   vmin=-1, vmax=1)
+        heatmap = axis_heat.imshow(
+            corr_masked, cmap="RdBu", aspect="equal", vmin=-1, vmax=1
+        )
 
         divider = make_axes_locatable(axis_heat)
         cax = divider.append_axes("right", size="5%", pad=0.05)
@@ -908,20 +948,21 @@ class Deconvolution:
         return der_x
 
     def inspect_data(self):
-        gaussian_pred = gs.multiple_gaussian(self.x_data, self.mu, self.sigma,
-                                             self.ampl)
+        gaussian_pred = gs.multiple_gaussian(
+            self.x_data, self.mu, self.sigma, self.ampl
+        )
 
         fig, axis = plt.subplots()
 
         axis.plot(self.x_data, gaussian_pred)
-        axis.plot(self.x_data, self.y_data, 'o', mfc='None')
+        axis.plot(self.x_data, self.y_data, "o", mfc="None")
 
-        axis.legend(('prediction with seed params', 'experimental data'))
-        axis.set_xlabel('$x$')
-        axis.set_ylabel('signal')
+        axis.legend(("prediction with seed params", "experimental data"))
+        axis.set_xlabel("$x$")
+        axis.set_ylabel("signal")
 
-        axis.spines['right'].set_visible(False)
-        axis.spines['top'].set_visible(False)
+        axis.spines["right"].set_visible(False)
+        axis.spines["top"].set_visible(False)
 
         return fig, axis, gaussian_pred
 
@@ -942,96 +983,122 @@ class Deconvolution:
 
     #     return optim_params, result[1:], paramest
 
-    def plot_results(self, fig_size=None, plot_initial=False,
-                     plot_individual=False):
+    def plot_results(self, fig_size=None, plot_initial=False, plot_individual=False):
 
-        fig, axis = self.param_obj.plot_data_model(fig_size=fig_size,
-                                                   plot_initial=plot_initial)
+        fig, axis = self.param_obj.plot_data_model(
+            fig_size=fig_size, plot_initial=plot_initial
+        )
 
-        axis.legend(('best fit', 'experimental data'))
-        axis.set_ylabel('signal')
+        axis.legend(("best fit", "experimental data"))
+        axis.set_ylabel("signal")
 
         axis.xaxis.set_minor_locator(AutoMinorLocator(2))
         axis.yaxis.set_minor_locator(AutoMinorLocator(2))
 
         if plot_individual:
             gaussian_vals = gs.multiple_gaussian(
-                self.x_data, *self.optim_params, separated=True)
+                self.x_data, *self.optim_params, separated=True
+            )
 
             for row in gaussian_vals.T:
-                axis.plot(self.x_data, row, '--')
+                axis.plot(self.x_data, row, "--")
                 color = axis.lines[-1].get_color()
 
-                axis.fill_between(self.x_data, row.min(), row, fc=color,
-                                  alpha=0.2)
+                axis.fill_between(self.x_data, row.min(), row, fc=color, alpha=0.2)
 
         return fig, axis
 
-    def plot_deriv(self, which='both', plot_mu=False):
+    def plot_deriv(self, which="both", plot_mu=False):
         fig, axis = plt.subplots()
 
         # fun = gs.multiple_gaussian(self.x_data, *self.optim_params)
 
-        if which == 'both':
+        if which == "both":
             first = gs.gauss_dx_mult(self.x_data, *self.optim_params)
             second = gs.gauss_dxdx_mult(self.x_data, *self.optim_params)
 
             axis.plot(self.x_data, first)
-            axis.set_ylabel('$\partial f / \partial x$')
+            axis.set_ylabel("$\partial f / \partial x$")
 
             axis_sec = axis.twinx()
-            axis_sec.plot(self.x_data, second, '--')
-            axis_sec.set_ylabel('$\partial^2 f / \partial x^2$')
+            axis_sec.plot(self.x_data, second, "--")
+            axis_sec.set_ylabel("$\partial^2 f / \partial x^2$")
 
-            fig.legend(('first', 'second'), bbox_to_anchor=(1, 1),
-                       bbox_transform=axis.transAxes)
+            fig.legend(
+                ("first", "second"),
+                bbox_to_anchor=(1, 1),
+                bbox_transform=axis.transAxes,
+            )
 
-            axis.spines['top'].set_visible(False)
-            axis_sec.spines['top'].set_visible(False)
+            axis.spines["top"].set_visible(False)
+            axis_sec.spines["top"].set_visible(False)
 
-        elif which == 'first':
+        elif which == "first":
             first = gs.gauss_dx_mult(self.x_data, *self.optim_params)
             axis.plot(self.x_data, first)
-            axis.set_ylabel('$\partial f / \partial x$')
+            axis.set_ylabel("$\partial f / \partial x$")
 
-            axis.spines['right'].set_visible(False)
-            axis.spines['top'].set_visible(False)
+            axis.spines["right"].set_visible(False)
+            axis.spines["top"].set_visible(False)
 
-        elif which == 'second':
+        elif which == "second":
             second = gs.gauss_dxdx_mult(self.x_data, *self.optim_params)
             axis.plot(self.x_data, second)
-            axis.set_ylabel('$\partial^2 f / \partial x^2$')
+            axis.set_ylabel("$\partial^2 f / \partial x^2$")
 
-            axis.spines['right'].set_visible(False)
-            axis.spines['top'].set_visible(False)
+            axis.spines["right"].set_visible(False)
+            axis.spines["top"].set_visible(False)
 
         axis.xaxis.set_minor_locator(AutoMinorLocator(2))
         axis.yaxis.set_minor_locator(AutoMinorLocator(2))
 
-        axis.set_xlabel('$x$')
+        axis.set_xlabel("$x$")
 
         if plot_mu:
             mu_opt = self.optim_params[0]
 
             for mu in mu_opt:
-                axis.axvline(mu, ls='--', alpha=0.4)
+                axis.axvline(mu, ls="--", alpha=0.4)
 
         return fig, axis
 
 
 class MultipleCurveResolution(ParameterEstimation):
-    def __init__(self, func, param_seed, time_data, y_spectra, mult_penalty=1,
-                 global_analysis=True,
-                 args_fun=None, kwargs_fun=None,
-                 optimize_flags=None,
-                 jac_fun=None, dx_finitediff=None,
-                 measured_ind=None, non_spectral_ind=None, weight_matrix=None,
-                 name_params=None, name_states=None):
+    def __init__(
+        self,
+        func,
+        param_seed,
+        time_data,
+        y_spectra,
+        mult_penalty=1,
+        global_analysis=True,
+        args_fun=None,
+        kwargs_fun=None,
+        optimize_flags=None,
+        jac_fun=None,
+        dx_finitediff=None,
+        measured_ind=None,
+        non_spectral_ind=None,
+        weight_matrix=None,
+        name_params=None,
+        name_states=None,
+    ):
 
-        super().__init__(func, param_seed, time_data, y_spectra, measured_ind,
-                         args_fun, kwargs_fun, optimize_flags, jac_fun,
-                         dx_finitediff, weight_matrix,
-                         name_params, name_states)
+        super().__init__(
+            func,
+            param_seed,
+            time_data,
+            y_spectra,
+            measured_ind,
+            args_fun,
+            kwargs_fun,
+            optimize_flags,
+            jac_fun,
+            dx_finitediff,
+            weight_matrix,
+            name_params,
+            name_states,
+        )
 
         self.fit_spectra = True
 
@@ -1039,18 +1106,17 @@ class MultipleCurveResolution(ParameterEstimation):
         y_data = []
         for y in self.y_data:
             if isinstance(y, dict):
-                if 'spectra' not in y:
-                    raise ValueError(
-                        "Data dictionary must have the 'spectra' key")
+                if "spectra" not in y:
+                    raise ValueError("Data dictionary must have the 'spectra' key")
 
                 y_spectral.append(y)
 
             elif isinstance(y, np.ndarray):
-                y_di = {'spectra': y}
+                y_di = {"spectra": y}
                 y_spectral.append(y_di)
 
-        self.len_spectra = [data['spectra'].shape[0] for data in y_spectral]
-        self.size_spectra = [data['spectra'].size for data in y_spectral]
+        self.len_spectra = [data["spectra"].shape[0] for data in y_spectral]
+        self.size_spectra = [data["spectra"].size for data in y_spectral]
 
         keys = list(set().union(*[di.keys() for di in y_spectral]))
 
@@ -1059,21 +1125,21 @@ class MultipleCurveResolution(ParameterEstimation):
             li = [di[key] for di in y_spectral if key in di]
             y_concat[key] = np.vstack(li)
 
-        self.spectra_tot = y_concat['spectra']
+        self.spectra_tot = y_concat["spectra"]
         self.y_concat = np.hstack(list(y_concat.values()))
 
         self.global_analysis = global_analysis
 
         if isinstance(measured_ind, (tuple, list, range)):
-            self.measured_ind = {'spectra': measured_ind}
+            self.measured_ind = {"spectra": measured_ind}
 
         self.has_non = False
-        if 'non_spectra' in self.measured_ind:
+        if "non_spectra" in self.measured_ind:
             self.has_non = True
 
         if weight_matrix is None:
-            size_sigma = y_spectral[0]['spectra'].shape[1]
-            size_sigma += len(self.measured_ind.get('non_spectra', []))
+            size_sigma = y_spectral[0]["spectra"].shape[1]
+            size_sigma += len(self.measured_ind.get("non_spectra", []))
 
             self.sigma_inv = np.eye(size_sigma)
 
@@ -1098,8 +1164,7 @@ class MultipleCurveResolution(ParameterEstimation):
     def func_aux(self, params, x_vals, spectra, *args):
         states = self.function(params, x_vals, *args)
 
-        _, epsilon, absorbance = mcr_spectra(
-            states[:, self.spectral_ind], spectra)
+        _, epsilon, absorbance = mcr_spectra(states[:, self.spectral_ind], spectra)
 
         return absorbance.T.ravel()
 
@@ -1115,8 +1180,9 @@ class MultipleCurveResolution(ParameterEstimation):
                 args = (False, False)
                 jac_fun = numerical_jac
 
-            weighted_sens = jac_fun(self.get_objective, params, args=args,
-                                    dx=self.dx_fd, pick_x=pick_p)
+            weighted_sens = jac_fun(
+                self.get_objective, params, args=args, dx=self.dx_fd, pick_x=pick_p
+            )
 
             # if self.opt_method == 'LM':
 
@@ -1135,15 +1201,16 @@ class MultipleCurveResolution(ParameterEstimation):
             raw_sens = self.sens_second
             sens_tot = np.concatenate(raw_sens, axis=1)  # (n_par x n_times x n_states)
 
-            sens_mcr = sens_tot[:, :, self.measured_ind['spectra']]
+            sens_mcr = sens_tot[:, :, self.measured_ind["spectra"]]
 
             # Variable projection derivative: n_par x n_times x n_lambda
-            sens_spectra = self.get_sens_projection(sens_states=sens_mcr,
-                                                    **self.projection_kwargs)
+            sens_spectra = self.get_sens_projection(
+                sens_states=sens_mcr, **self.projection_kwargs
+            )
 
             n_par, n_times, n_lambda = sens_spectra.shape
             if self.has_non:
-                sens_regular = sens_tot[:, :, self.measured_ind['non_spectra']]
+                sens_regular = sens_tot[:, :, self.measured_ind["non_spectra"]]
 
                 all_sens = np.concatenate((sens_spectra, sens_regular), axis=2)
 
@@ -1175,9 +1242,13 @@ class MultipleCurveResolution(ParameterEstimation):
 
         y_data_non = []
         for ind in range(self.num_datasets):
-            result = self.function(params, self.x_model[ind],
-                                   reord_sens=False,
-                                   *self.args_fun[ind], **self.kwargs_fun[ind])
+            result = self.function(
+                params,
+                self.x_model[ind],
+                reord_sens=False,
+                *self.args_fun[ind],
+                **self.kwargs_fun[ind],
+            )
 
             if isinstance(result, tuple):
                 states, sens_st = result
@@ -1185,13 +1256,13 @@ class MultipleCurveResolution(ParameterEstimation):
             else:
                 states = result
 
-            conc_target = states[:, self.measured_ind['spectra']]
+            conc_target = states[:, self.measured_ind["spectra"]]
 
             if self.has_non:
-                non_spectra = states[:, self.measured_ind['non_spectra']]
+                non_spectra = states[:, self.measured_ind["non_spectra"]]
 
-                y_non = self.y_data[ind]['non_spectra'].copy()
-                x_mask = self.x_masks[ind]['non_spectra']
+                y_non = self.y_data[ind]["non_spectra"].copy()
+                x_mask = self.x_masks[ind]["non_spectra"]
                 if x_mask is not None:
                     y_non[~x_mask] = non_spectra[~x_mask]
 
@@ -1217,7 +1288,7 @@ class MultipleCurveResolution(ParameterEstimation):
 
         spectra_pred = np.dot(conc_tot, absorptivity_pure)
 
-        self.projection_kwargs = {'c_target': conc_tot, 'c_plus': conc_plus}
+        self.projection_kwargs = {"c_target": conc_tot, "c_plus": conc_plus}
 
         if len(sens_states) > 0:
             self.sens_second = sens_states
@@ -1247,9 +1318,13 @@ class MultipleCurveResolution(ParameterEstimation):
         weighted_resid = []
 
         for ind in range(self.num_datasets):
-            result = self.function(params, self.x_fit[ind],
-                                   reorder=False,
-                                   *self.args_fun[ind], **self.kwargs_fun[ind])
+            result = self.function(
+                params,
+                self.x_fit[ind],
+                reorder=False,
+                *self.args_fun[ind],
+                **self.kwargs_fun[ind],
+            )
 
             if isinstance(result, tuple):
                 conc_prof, sens_states = result
@@ -1267,14 +1342,15 @@ class MultipleCurveResolution(ParameterEstimation):
             epsilon_mcr.append(absorptivity_pure)
 
             if sens_states is None:
-                args_merged = [self.x_data[ind],
-                               self.args_fun[ind], self.spectra[ind]]
+                args_merged = [self.x_data[ind], self.args_fun[ind], self.spectra[ind]]
 
-                sens = numerical_jac_data(self.func_aux, params, args_merged,
-                                          dx=self.dx_fd)[:, self.map_variable]
+                sens = numerical_jac_data(
+                    self.func_aux, params, args_merged, dx=self.dx_fd
+                )[:, self.map_variable]
             else:
-                sens = self.get_sens_projection(conc_target, conc_plus,
-                                                sens_states, spectra_pred)
+                sens = self.get_sens_projection(
+                    conc_target, conc_plus, sens_states, spectra_pred
+                )
 
             resid_run = spectra_pred - self.spectra[ind]
             weighted_resid = np.dot(resid_run, self.sigma_inv)
@@ -1292,7 +1368,11 @@ class MultipleCurveResolution(ParameterEstimation):
         weighted_resid = [elem.T.ravel() for elem in weighted_resid]
         weighted_resid = np.concatenate(weighted_resid)
 
-        return y_runs, weighted_resid, absorptivity_pure  # TODO: I didn't work on this method
+        return (
+            y_runs,
+            weighted_resid,
+            absorptivity_pure,
+        )  # TODO: I didn't work on this method
 
     def get_objective(self, params, out_array=False, update_self=True):
 
@@ -1312,7 +1392,7 @@ class MultipleCurveResolution(ParameterEstimation):
 
         if update_self:
             if type(self.objfun_iter) is list:
-                objfun_val = np.linalg.norm(weighted_resid)**2
+                objfun_val = np.linalg.norm(weighted_resid) ** 2
                 self.objfun_iter.append(objfun_val)
 
             if type(self.params_iter) is list:
@@ -1327,35 +1407,37 @@ class MultipleCurveResolution(ParameterEstimation):
         if out_array:
             return weighted_resid
         else:
-            residual = 1/2 * np.dot(weighted_resid, weighted_resid)
-            penalty = self.mult_penalty*(np.maximum(-molar_abs, 0)**2).sum()
+            residual = 1 / 2 * np.dot(weighted_resid, weighted_resid)
+            penalty = self.mult_penalty * (np.maximum(-molar_abs, 0) ** 2).sum()
             return residual + penalty
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import englezos_example as englezos
 
     # Data
-    data = np.genfromtxt('../data/englezos_example.csv', delimiter=',',
-                         skip_header=1)
+    data = np.genfromtxt("../data/englezos_example.csv", delimiter=",", skip_header=1)
     t_exp, c3_exp = data.T
 
     init_conc = [60, 60, 0]
     param_seed = [1e-5, 1e-5]
-#    param_seed = [0.4577e-5, 0.2797e-3]
+    #    param_seed = [0.4577e-5, 0.2797e-3]
 
     reaction_matrix = np.array([-2, -1, 2])
-    species = ('$NO$', '$O_2$', '$NO_2$')
+    species = ("$NO$", "$O_2$", "$NO_2$")
 
     param_object = ParameterEstimation(
-        reaction_matrix, param_seed,
-        t_exp, c3_exp,
+        reaction_matrix,
+        param_seed,
+        t_exp,
+        c3_exp,
         y_init=init_conc,
         measured_ind=(-1,),
         kinetic_model=englezos.bodenstein_linder,
         df_dstates=englezos.jac_conc,
         df_dtheta=englezos.jac_par,
-        names_species=species)
+        names_species=species,
+    )
 
     simulate = True
 
@@ -1368,15 +1450,16 @@ if __name__ == '__main__':
         U, sing_vals, V = svd(sens_total)
         cond_number = max(sing_vals) / min(sing_vals)
 
-        labels = list('ab')
+        labels = list("ab")
         for ax, lab in zip(axes_sens, labels):
             ax.text(0.05, 0.9, lab, transform=ax.transAxes)
 
-        fig_sens.savefig('../img/sens_englezos.pdf', bbox_inches='tight')
+        fig_sens.savefig("../img/sens_englezos.pdf", bbox_inches="tight")
 
     else:
-        optim_options = {'max_iter': 150, 'full_output': True, 'tau': 1e-2}
+        optim_options = {"max_iter": 150, "full_output": True, "tau": 1e-2}
 
         params_optim, covar, info = param_object.optimize_fn(
-            optim_options=optim_options)
+            optim_options=optim_options
+        )
         param_object.plot_data_model()

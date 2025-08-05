@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 
-
 import numpy as np
 import json
 import re
@@ -16,8 +15,7 @@ gas_ct = 8.314  # J/mol/K
 eps = np.finfo(float).eps
 
 
-def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
-                    order):
+def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv, order):
     sec = False
     if len(params) == 3:
         phi_1, phi_2, exp = params
@@ -30,23 +28,24 @@ def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
 
     absup = np.maximum(eps, absup_)
     if reformulate:
-        pre_exp = np.exp(phi_1 + np.exp(phi_2)*(1/temp_ref - 1/temp))
+        pre_exp = np.exp(phi_1 + np.exp(phi_2) * (1 / temp_ref - 1 / temp))
     else:
-        pre_exp = phi_1 * np.exp(-phi_2/gas_ct/temp)
+        pre_exp = phi_1 * np.exp(-phi_2 / gas_ct / temp)
 
-    kinetic_term = pre_exp * sup_sat * absup**(exp - 1)
+    kinetic_term = pre_exp * sup_sat * absup ** (exp - 1)
 
     if sec:
         if moms.ndim == 1:
-            mom = np.maximum(0, moms[order]) # For vector moms
+            mom = np.maximum(0, moms[order])  # For vector moms
 
         elif moms.ndim == 2:
-            mom= np.maximum(0, moms[:, order]) # for matrix
-        kinetic_term *= (mom * kv)**s_2
+            mom = np.maximum(0, moms[:, order])  # for matrix
+        kinetic_term *= (mom * kv) ** s_2
 
     return kinetic_term
 
-def disect_rxns(rxns, sep='-->'):
+
+def disect_rxns(rxns, sep="-->"):
 
     out = {}
     species = []
@@ -55,18 +54,18 @@ def disect_rxns(rxns, sep='-->'):
         out[ind] = {}
         left, right = rxn.split(sep)
 
-        reactants = [x.strip() for x in left.split('+')]
-        products = [x.strip() for x in right.split('+')]
+        reactants = [x.strip() for x in left.split("+")]
+        products = [x.strip() for x in right.split("+")]
 
-        out[ind]['reactants'] = reactants
-        out[ind]['products'] = products
+        out[ind]["reactants"] = reactants
+        out[ind]["products"] = products
 
         species += reactants
         species += products
 
-    regex = '^\d+(\.\d+)?(/\d+)?\s?'
+    regex = "^\d+(\.\d+)?(/\d+)?\s?"
     for ind, sp in enumerate(species):
-        species[ind] = re.sub(regex, '', sp)
+        species[ind] = re.sub(regex, "", sp)
 
     species = list(dict.fromkeys(species))
 
@@ -78,8 +77,8 @@ def get_coeff(pattern, expr):
 
     if text is None:
         coeff = 1
-    elif '/' in text.group():
-        num, denom = text.group().split('/')
+    elif "/" in text.group():
+        num, denom = text.group().split("/")
         coeff = int(num) / int(denom)
     else:
         coeff = float(text.group())
@@ -97,23 +96,23 @@ def get_stoich(di_rxn, partic_species):
     stoich = np.zeros((num_rxns, num_species))
 
     # I think this is the right regex pattern...
-    regex_coeff = r'\d+(\.\d+)?(/\d+)?'
-    regex_sub = r'^\d+(\.d+)?(/\d+)?\s?'
+    regex_coeff = r"\d+(\.\d+)?(/\d+)?"
+    regex_sub = r"^\d+(\.d+)?(/\d+)?\s?"
 
     for num, di in di_rxn.items():
-        for r in di['reactants']:
+        for r in di["reactants"]:
             coeff = get_coeff(regex_coeff, r)
 
-            r = re.sub(regex_sub, '', r)
+            r = re.sub(regex_sub, "", r)
 
             col = partic_species.index(r)
 
             stoich[num, col] = -coeff
 
-        for p in di['products']:
+        for p in di["products"]:
             coeff = get_coeff(regex_coeff, p)
 
-            p = re.sub(regex_sub, '', p)
+            p = re.sub(regex_sub, "", p)
 
             col = partic_species.index(p)
 
@@ -125,9 +124,9 @@ def get_stoich(di_rxn, partic_species):
 class RxnKinetics:
     """
     Create a reaction kinetics object. Reaction rate r\ :sub:`i` is assumed to
-    have the following functional form: 
-        r\ :sub:`i` = f\ :sub:`1` (T) * f\ :sub:`2` ( C\ :sub:`1`, ..., C\ :sub:`n_comp`) 
-        
+    have the following functional form:
+        r\ :sub:`i` = f\ :sub:`1` (T) * f\ :sub:`2` ( C\ :sub:`1`, ..., C\ :sub:`n_comp`)
+
     with the temperature-dependent term f\ :sub:`1` given by:
         f\ :sub:`1` = k\ :sub:`i` * exp(- Ea\ :sub:`i`/R/T)
 
@@ -159,7 +158,7 @@ class RxnKinetics:
             '2 H\ :sub:`2` O --> 2 H\ :sub:`2` + O\ :sub:`2`',
             'H\ :sub:`2` O --> H\ :sub:`2` + 0.5 O\ :sub:`2`,
             'H\ :sub:`2` O --> H\ :sub:`2` + 0.5 O\ :sub:`2`'
-         
+
 
         Note that integer, float and fractional stoichiometric coefficients
         are supported.
@@ -204,7 +203,7 @@ class RxnKinetics:
     tref_hrxn : float, optional
         DESCRIPTION. The default is 298.15.
 
-    kinetic_model : callable, optional  
+    kinetic_model : callable, optional
         kinetic model to be used to compute f\ :sub:`2`. It must have
         the signature:
 
@@ -220,13 +219,25 @@ class RxnKinetics:
     RxnKinetics object.
 
     """
-    def __init__(self, path, k_params, ea_params, rxn_list=None,
-                 stoich_matrix=None, partic_species=None,
-                 temp_ref=None, reformulate_kin=False,
-                 keq_params=None, params_f=None, delta_hrxn=0,
-                 tref_hrxn=298.15, kinetic_model=None, df_dstates=None,
-                 df_dtheta=None):
 
+    def __init__(
+        self,
+        path,
+        k_params,
+        ea_params,
+        rxn_list=None,
+        stoich_matrix=None,
+        partic_species=None,
+        temp_ref=None,
+        reformulate_kin=False,
+        keq_params=None,
+        params_f=None,
+        delta_hrxn=0,
+        tref_hrxn=298.15,
+        kinetic_model=None,
+        df_dstates=None,
+        df_dtheta=None,
+    ):
 
         with open(path) as f:
             db = json.load(f)
@@ -240,7 +251,9 @@ class RxnKinetics:
         else:
             stoich_matrix = np.atleast_2d(stoich_matrix)
             if partic_species is None:
-                raise PharmaPyTypeError('Please provide a participating species list when using a stoichiometric matrix.')
+                raise PharmaPyTypeError(
+                    "Please provide a participating species list when using a stoichiometric matrix."
+                )
 
         perm_idx = get_permutation_indexes(name_species, partic_species)
         stoich_matrix = stoich_matrix[:, perm_idx]
@@ -282,8 +295,12 @@ class RxnKinetics:
         self.stoich_matrix = stoich_matrix
 
         # ---------- Parameters
-        params_dict = {'k_params': k_params, 'ea_params': ea_params,
-                       'keq_params': keq_params, 'params_f': params_f}
+        params_dict = {
+            "k_params": k_params,
+            "ea_params": ea_params,
+            "keq_params": keq_params,
+            "params_f": params_f,
+        }
 
         self.set_params(params_dict)
         self.nomenclature(stoich_matrix, k_params)
@@ -313,10 +330,10 @@ class RxnKinetics:
 
     def transform_params(self, kvals, evals):
         if self.reformulate_kin:
-            ea_term = evals/gas_ct/self.temp_ref
+            ea_term = evals / gas_ct / self.temp_ref
 
             phi_1 = np.log(kvals) - ea_term
-            phi_2 = np.log(evals/gas_ct)
+            phi_2 = np.log(evals / gas_ct)
 
         else:
             phi_1 = kvals
@@ -327,8 +344,8 @@ class RxnKinetics:
     def set_params(self, params):  # From 1D params to matrix-shaped params
 
         if isinstance(params, dict):
-            k_params = np.atleast_1d(params['k_params']) + eps
-            ea_params = np.atleast_1d(params['ea_params']) + eps
+            k_params = np.atleast_1d(params["k_params"]) + eps
+            ea_params = np.atleast_1d(params["ea_params"]) + eps
 
             self.phi_1, self.phi_2 = self.transform_params(k_params, ea_params)
 
@@ -336,7 +353,7 @@ class RxnKinetics:
 
             self.fit_paramsf = True
             if self.elem_flag:
-                params_f = params.get('params_f', None)
+                params_f = params.get("params_f", None)
                 if params_f is None:
                     is_reactant = self.stoich_matrix < 0
                     orders = abs(is_reactant * self.stoich_matrix)
@@ -344,7 +361,7 @@ class RxnKinetics:
                 else:
                     order_map = self.stoich_matrix < 0
 
-                    params_f = params['params_f']
+                    params_f = params["params_f"]
                     if not isinstance(params_f[0], (list, tuple)):
                         params_f = [params_f]
 
@@ -357,22 +374,23 @@ class RxnKinetics:
 
                 params_f = orders
             elif params_f is None:
-                raise RuntimeError("For user-defined kinetic function, "
-                                   "argument 'params_f' is mandatory.")
+                raise RuntimeError(
+                    "For user-defined kinetic function, "
+                    "argument 'params_f' is mandatory."
+                )
 
             self.params_f = orders
             self.order_map = self.stoich_matrix < 0
 
         else:
-            self.phi_1, self.phi_2 = np.split(params[:self.num_paramsk], 2)
+            self.phi_1, self.phi_2 = np.split(params[: self.num_paramsk], 2)
 
             if self.elem_flag:
                 # Reorganize rxn orders into a stoich_matrix-like structure
                 if self.fit_paramsf:
-                    self.params_f = np.zeros_like(self.stoich_matrix,
-                                                  dtype=np.float64)
+                    self.params_f = np.zeros_like(self.stoich_matrix, dtype=np.float64)
 
-                    self.params_f[self.order_map] = params[self.num_paramsk:]
+                    self.params_f[self.order_map] = params[self.num_paramsk :]
 
     def nomenclature(self, stoich_matrix, kvals):
 
@@ -380,16 +398,15 @@ class RxnKinetics:
         num_kpar = len(self.phi_1)
 
         if self.reformulate_kin:
-            name_k = ['\\varphi_{1, %i}' % ind for ind in range(1, num_kpar + 1)]
-            name_e = ['\\varphi_{2, %i}' % ind for ind in range(1, num_kpar + 1)]
+            name_k = ["\\varphi_{1, %i}" % ind for ind in range(1, num_kpar + 1)]
+            name_e = ["\\varphi_{2, %i}" % ind for ind in range(1, num_kpar + 1)]
         else:
-            name_k = ['k_%i' % ind for ind in range(1, num_kpar + 1)]
-            name_e = ['E_{a, %i}' % ind for ind in range(1, num_kpar + 1)]
+            name_k = ["k_%i" % ind for ind in range(1, num_kpar + 1)]
+            name_e = ["E_{a, %i}" % ind for ind in range(1, num_kpar + 1)]
 
         if self.fit_paramsf:
             num_orders = (stoich_matrix < 0).sum()
-            name_orders = [r'\alpha_{}'.format(ind)
-                           for ind in range(1, num_orders + 1)]
+            name_orders = [r"\alpha_{}".format(ind) for ind in range(1, num_orders + 1)]
         else:
             name_orders = []
 
@@ -431,48 +448,45 @@ class RxnKinetics:
     def temp_term(self, temp):
 
         temp = np.asarray(temp)
-        inv_temp = (1/self.temp_ref - 1/temp)
+        inv_temp = 1 / self.temp_ref - 1 / temp
 
         if self.reformulate_kin:
 
             if temp.ndim == 0:
                 k_temp = np.exp(self.phi_1 + np.exp(self.phi_2) * inv_temp)
             else:
-                k_temp = np.exp(self.phi_1 +
-                                np.outer(inv_temp, np.exp(self.phi_2)))
+                k_temp = np.exp(self.phi_1 + np.outer(inv_temp, np.exp(self.phi_2)))
 
         else:
             if temp.ndim == 0:
-                k_temp = self.phi_1 * np.exp(self.phi_2/gas_ct * inv_temp)
+                k_temp = self.phi_1 * np.exp(self.phi_2 / gas_ct * inv_temp)
             else:
-                k_temp = self.phi_1 * \
-                    np.exp(np.outer(inv_temp, self.phi_2/gas_ct))
+                k_temp = self.phi_1 * np.exp(np.outer(inv_temp, self.phi_2 / gas_ct))
 
         return k_temp
 
     def equil_term(self, temp, deltah_temp):
         temp = np.asarray(temp)
-        inv_temp = (1/temp - 1/self.tref_hrxn)
+        inv_temp = 1 / temp - 1 / self.tref_hrxn
 
         if temp.ndim == 0:
-            k_eq = self.keq_params * np.exp(-deltah_temp/gas_ct * inv_temp)
+            k_eq = self.keq_params * np.exp(-deltah_temp / gas_ct * inv_temp)
         else:
-            k_eq = self.keq_params * \
-                np.exp(-np.outer(inv_temp, deltah_temp/gas_ct))
+            k_eq = self.keq_params * np.exp(-np.outer(inv_temp, deltah_temp / gas_ct))
 
         return k_eq
 
     def dk_dkparams(self, temp):
         temp_term = self.temp_term(temp)
 
-        inv_temp = (1/self.temp_ref - 1/temp)
+        inv_temp = 1 / self.temp_ref - 1 / temp
 
         if self.reformulate_kin:
             drate_dphi1 = np.diag(temp_term)
             dphi_2 = temp_term * inv_temp * np.exp(self.phi_2)
         else:
-            drate_dphi1 = np.diag(np.exp(self.phi_2/gas_ct * inv_temp))
-            dphi_2 = temp_term/gas_ct * inv_temp
+            drate_dphi1 = np.diag(np.exp(self.phi_2 / gas_ct * inv_temp))
+            dphi_2 = temp_term / gas_ct * inv_temp
 
         drate_dphi2 = np.diag(dphi_2)
         drate_dk = np.hstack((drate_dphi1, drate_dphi2))
@@ -480,7 +494,7 @@ class RxnKinetics:
         return np.atleast_2d(drate_dk)
 
     def elem_f_model(self, conc, rxn_orders):
-        """ Compute elementary reaction rates for each participating reaction
+        """Compute elementary reaction rates for each participating reaction
 
         Parameters
         ----------
@@ -519,12 +533,11 @@ class RxnKinetics:
         if conc.ndim == 1:
             r_term = np.zeros(self.num_rxns)
             for ind in range(self.num_rxns):
-                r_term[ind] = np.prod(conc**(orders[ind])) / keq_temp[ind]
+                r_term[ind] = np.prod(conc ** (orders[ind])) / keq_temp[ind]
         else:
             r_term = np.zeros((n_conc, self.num_rxns))
             for ind in range(self.num_rxns):
-                r_term[:, ind] = np.prod(
-                    conc**(orders[ind]), axis=1) / keq_temp[ind]
+                r_term[:, ind] = np.prod(conc ** (orders[ind]), axis=1) / keq_temp[ind]
 
         overall_rate = f_term - r_term
 
@@ -553,8 +566,7 @@ class RxnKinetics:
             conc_m = conc_correc[row]  # see Section 3.2.2
 
             norder_i = sum(row)
-            drate_dorder[ind,
-                         count:count + norder_i] = np.log(conc_m) * f_term[ind]
+            drate_dorder[ind, count : count + norder_i] = np.log(conc_m) * f_term[ind]
 
             count += norder_i
         drate_dorder = drate_dorder
@@ -590,8 +602,9 @@ class RxnKinetics:
 
             return jac_params
 
-    def get_rxn_rates(self, conc, temp=298.15, overall_rates=True, jac=False,
-                      delta_hrxn=None):
+    def get_rxn_rates(
+        self, conc, temp=298.15, overall_rates=True, jac=False, delta_hrxn=None
+    ):
 
         if jac:
             jac_states = self.derivatives(conc, temp)
@@ -601,8 +614,7 @@ class RxnKinetics:
             temp_terms = self.temp_term(temp)
 
             if self.keq_params is None:
-                f_terms = self.kinetic_model(conc, self.params_f,
-                                             *self.args_kin)
+                f_terms = self.kinetic_model(conc, self.params_f, *self.args_kin)
             else:
                 f_terms = self.equilibrium_model(conc, temp, delta_hrxn)
 
@@ -615,42 +627,52 @@ class RxnKinetics:
 
 
 class CrystKinetics:
-    """ Specify a kinetics crystallization kinetics object
+    """Specify a kinetics crystallization kinetics object
 
-        Parameters
-        ----------
-        coeff_solub : array-like
-            coefficients for a temperature-dependent solubility (S) polynomial
-            of the form S = A + B*T + C*T^2...
-        nucl_prim : array-like (3 elements)
-            primary nucleation coefficients, with the result given in
-            number of particles per second per cubic meter slurry
-        nucl_sec : array-like (4 elements) (optional)
-            secondary nucleation coefficients, with the result given in
-            number of particles per second per cubic meter slurry
-        growth : array-like (dimension 3) (optional)
-            nucleation parameters, with the result given in um/s
-        dissolution : array_like (dimension 3) (optional)
-            dissolution parameters, with the result given in um/s
-        rel_super : bool (optional, default True)
-            if True, relative supersaturation is used for computing the kinetic
-            mechanism
-        alpha_fn : callable (optional)
-            function that receives the vector of liquid phase compositions
-            and calculates the growth inhibition term, returning a float
-            between 0 and 1
+    Parameters
+    ----------
+    coeff_solub : array-like
+        coefficients for a temperature-dependent solubility (S) polynomial
+        of the form S = A + B*T + C*T^2...
+    nucl_prim : array-like (3 elements)
+        primary nucleation coefficients, with the result given in
+        number of particles per second per cubic meter slurry
+    nucl_sec : array-like (4 elements) (optional)
+        secondary nucleation coefficients, with the result given in
+        number of particles per second per cubic meter slurry
+    growth : array-like (dimension 3) (optional)
+        nucleation parameters, with the result given in um/s
+    dissolution : array_like (dimension 3) (optional)
+        dissolution parameters, with the result given in um/s
+    rel_super : bool (optional, default True)
+        if True, relative supersaturation is used for computing the kinetic
+        mechanism
+    alpha_fn : callable (optional)
+        function that receives the vector of liquid phase compositions
+        and calculates the growth inhibition term, returning a float
+        between 0 and 1
 
-        Returns
-        -------
+    Returns
+    -------
 
     """
 
-    def __init__(self, coeff_solub=None, solub_fn=None,
-                 nucl_prim=None, nucl_sec=None, growth=None, dissolution=None,
-                 solubility_type='polynomial', sup_sat_type='relative',
-                 reformulate_kin=False, alpha_fn=None,
-                 temp_ref=298.15, custom_mechanisms=None,
-                 mu_sec_nucl='volume'):
+    def __init__(
+        self,
+        coeff_solub=None,
+        solub_fn=None,
+        nucl_prim=None,
+        nucl_sec=None,
+        growth=None,
+        dissolution=None,
+        solubility_type="polynomial",
+        sup_sat_type="relative",
+        reformulate_kin=False,
+        alpha_fn=None,
+        temp_ref=298.15,
+        custom_mechanisms=None,
+        mu_sec_nucl="volume",
+    ):
         """
         Parameters
         ----------
@@ -685,32 +707,32 @@ class CrystKinetics:
         else:
             self.get_solubility = solub_fn
 
-        mu_sec = {'area': 2, 'volume': 3}
+        mu_sec = {"area": 2, "volume": 3}
         self.mu_sec_nucl = mu_sec[mu_sec_nucl]
 
         if custom_mechanisms is None:
             custom_mechanisms = {}
         elif not isinstance(custom_mechanisms, dict):
-            raise PharmaPyTypeError('Provide a dictionary of callables for kinetics.')
+            raise PharmaPyTypeError("Provide a dictionary of callables for kinetics.")
 
         self.custom_mechanisms = custom_mechanisms
 
         # ---------- Parameters
-        self.names_mechanisms = ('nucl_prim', 'nucl_sec', 'growth',
-                                 'dissolution')
+        self.names_mechanisms = ("nucl_prim", "nucl_sec", "growth", "dissolution")
 
         params_all = [nucl_prim, nucl_sec, growth, dissolution]
 
-        params_keys = [name for param, name
-                       in zip(params_all, self.names_mechanisms)
-                       if param is not None]
+        params_keys = [
+            name
+            for param, name in zip(params_all, self.names_mechanisms)
+            if param is not None
+        ]
 
         params_list = [item for item in params_all if item is not None]
 
         self.num_par_tuple = [len(item) for item in params_list]
 
-        param_dict = {key: value
-                      for key, value in zip(params_keys, params_list)}
+        param_dict = {key: value for key, value in zip(params_keys, params_list)}
 
         self.set_params(param_dict)  # create self.params
 
@@ -718,15 +740,37 @@ class CrystKinetics:
         self.solub_type = solubility_type
 
         if reformulate_kin:
-            self.name_params = ('\log(k_{bp})', '\log(E_{bp}/R)', 'b',
-                                '\log(k_{bs})', '\log(E_{bs}/R)', 's_1', 's_2',
-                                '\log(k_{g})', '\log(E_{g}/R)', 'g',
-                                '\log(k_{d})', '\log(E_{d}/R)', 'd')
+            self.name_params = (
+                "\log(k_{bp})",
+                "\log(E_{bp}/R)",
+                "b",
+                "\log(k_{bs})",
+                "\log(E_{bs}/R)",
+                "s_1",
+                "s_2",
+                "\log(k_{g})",
+                "\log(E_{g}/R)",
+                "g",
+                "\log(k_{d})",
+                "\log(E_{d}/R)",
+                "d",
+            )
         else:
-            self.name_params = ('k_{bp}', 'E_{bp}', 'b',
-                                'k_{bs}', 'E_{bs}', 's_1', 's_2',
-                                'k_{g}', 'E_{g}', 'g',
-                                'k_{d}', 'E_{d}', 'd')
+            self.name_params = (
+                "k_{bp}",
+                "E_{bp}",
+                "b",
+                "k_{bs}",
+                "E_{bs}",
+                "s_1",
+                "s_2",
+                "k_{g}",
+                "E_{g}",
+                "g",
+                "k_{d}",
+                "E_{d}",
+                "d",
+            )
 
         self.num_params = len(self.name_params)
 
@@ -738,8 +782,7 @@ class CrystKinetics:
 
     def set_params(self, params_in):
         if isinstance(params_in, dict):
-            params_complete = self.transform_params(params_in,
-                                                    self.reformulate_kin)
+            params_complete = self.transform_params(params_in, self.reformulate_kin)
         else:
             param_lens = np.array([3, 4, 3, 3])
             split_idx = param_lens.cumsum()[:-1]
@@ -751,7 +794,7 @@ class CrystKinetics:
         self.params = params_complete
 
     def transform_params(self, param_dict, reparam):
-        self.params_sec = param_dict.get('nucl_sec')
+        self.params_sec = param_dict.get("nucl_sec")
         if reparam:
             zero_log = np.log(eps)
 
@@ -760,16 +803,20 @@ class CrystKinetics:
             growth = [zero_log, 0, 0]
             dissol = [zero_log, 0, 0]
 
-            params_parsed = {'nucl_prim': nucl_prim, 'nucl_sec': nucl_sec,
-                             'growth': growth, 'dissolution': dissol}
+            params_parsed = {
+                "nucl_prim": nucl_prim,
+                "nucl_sec": nucl_sec,
+                "growth": growth,
+                "dissolution": dissol,
+            }
 
             for name in self.names_mechanisms:
                 if name in param_dict.keys():
                     vals = param_dict[name]
 
                     tref = self.temp_ref
-                    phi_1 = np.log(vals[0] + eps) - vals[1]/gas_ct/tref
-                    phi_2 = np.log((vals[1] + eps)/gas_ct)
+                    phi_1 = np.log(vals[0] + eps) - vals[1] / gas_ct / tref
+                    phi_2 = np.log((vals[1] + eps) / gas_ct)
 
                     params_parsed[name] = list(vals)
 
@@ -781,8 +828,12 @@ class CrystKinetics:
             growth = [0, 0, 0]
             dissol = [0, 0, 0]
 
-            params_parsed = {'nucl_prim': nucl_prim, 'nucl_sec': nucl_sec,
-                             'growth': growth, 'dissolution': dissol}
+            params_parsed = {
+                "nucl_prim": nucl_prim,
+                "nucl_sec": nucl_sec,
+                "growth": growth,
+                "dissolution": dissol,
+            }
 
             for name in self.names_mechanisms:
                 if name in param_dict.keys():
@@ -804,7 +855,7 @@ class CrystKinetics:
         return params_conc
 
     def solubility_temp(self, temp, conc=None):
-        if self.solub_type == 'polynomial':
+        if self.solub_type == "polynomial":
             int_coeff = np.arange(len(self.coeff_solub))
 
             temp = np.asarray(temp)
@@ -813,34 +864,34 @@ class CrystKinetics:
             else:
                 temp = temp[..., np.newaxis]
                 c_satur = (temp**int_coeff * self.coeff_solub).sum(axis=1)
-                
-        elif self.solub_type == 'apelblat':
+
+        elif self.solub_type == "apelblat":
             a1, a2, a3 = self.coeff_solub
-            c_satur = np.exp(a1 + a2/temp + a3*np.log(temp))
+            c_satur = np.exp(a1 + a2 / temp + a3 * np.log(temp))
         else:
-            raise NameError("Bad 'solub_type' name. It must be either "
-                            "'polynomial' or 'apelblat")
+            raise NameError(
+                "Bad 'solub_type' name. It must be either " "'polynomial' or 'apelblat"
+            )
 
         return c_satur
 
-    def get_kinetics(self, conc, temp, kv_cry,
-                     moments=None, nucl_sec_out=False):
+    def get_kinetics(self, conc, temp, kv_cry, moments=None, nucl_sec_out=False):
 
         conc_target = conc.T[self.target_idx]
 
         # Supersaturation
         conc_sat = self.get_solubility(temp, conc)
-        sup_sat = (conc_target - conc_sat)
+        sup_sat = conc_target - conc_sat
 
-        if self.sup_sat_type == 'relative':
+        if self.sup_sat_type == "relative":
             sup_sat = sup_sat / conc_sat
 
-        if self.sup_sat_type == 'ratio':
+        if self.sup_sat_type == "ratio":
             sup_sat = sup_sat / conc_sat + 1
 
         par_p, par_s, par_g, par_d = self.params.values()
 
-        if 'nucl_sec' in self.custom_mechanisms:
+        if "nucl_sec" in self.custom_mechanisms:
             args_sec = ()
             par_sec = self.params_sec
         else:
@@ -852,10 +903,10 @@ class CrystKinetics:
             args = [sup_sat, conc_sat, moments, temp, self.temp_ref]
             if sup_sat >= 0:
 
-                subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
+                subset_mech = ("nucl_prim", "nucl_sec", "growth")
             else:
 
-                subset_mech = ('dissolution', )
+                subset_mech = ("dissolution",)
 
             mechs = {}
 
@@ -864,21 +915,26 @@ class CrystKinetics:
                     args_concat = args + [self.params[name]]
                     mechs[name] = self.custom_mechanisms[name](*args_concat)
                 else:
-                    mechs[name] = cryst_mechanism(sup_sat, moments, temp,
-                                                  self.temp_ref,
-                                                  self.params[name],
-                                                  self.reformulate_kin,
-                                                  kv_cry, self.mu_sec_nucl)
+                    mechs[name] = cryst_mechanism(
+                        sup_sat,
+                        moments,
+                        temp,
+                        self.temp_ref,
+                        self.params[name],
+                        self.reformulate_kin,
+                        kv_cry,
+                        self.mu_sec_nucl,
+                    )
 
             for ky in self.names_mechanisms:
                 if ky not in mechs:
                     mechs[ky] = 0
 
             # Returns
-            self.prim_nucl = mechs['nucl_prim']
-            self.sec_nucl = mechs['nucl_sec']
-            self.growth = mechs['growth']  # um/s
-            self.dissol = mechs['dissolution']  # um/s
+            self.prim_nucl = mechs["nucl_prim"]
+            self.sec_nucl = mechs["nucl_sec"]
+            self.growth = mechs["growth"]  # um/s
+            self.dissol = mechs["dissolution"]  # um/s
 
         else:
             # Divide positive and negative supersaturation periods
@@ -896,52 +952,77 @@ class CrystKinetics:
             moments_positive = moments[positive_map]
             moments_negative = moments[~positive_map]
 
-            subset_mech = ('nucl_prim', 'nucl_sec', 'growth')
+            subset_mech = ("nucl_prim", "nucl_sec", "growth")
 
             mechs = {}
 
             for name in self.names_mechanisms:
                 mechs[name] = np.zeros_like(sup_sat)
 
-            args = [sup_positive, conc_sat_positive, moments_positive,
-                    temp_positive, self.temp_ref]
+            args = [
+                sup_positive,
+                conc_sat_positive,
+                moments_positive,
+                temp_positive,
+                self.temp_ref,
+            ]
 
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
-                    mechs[name][positive_map] = self.custom_mechanisms[name](*args_concat)
+                    mechs[name][positive_map] = self.custom_mechanisms[name](
+                        *args_concat
+                    )
                 else:
-                    mechs[name][positive_map] = cryst_mechanism(sup_positive,
-                                                                moments_positive,
-                                                                temp_positive,
-                                                                self.temp_ref,
-                                                                self.params[name],
-                                                                self.reformulate_kin,
-                                                                kv_cry, self.mu_sec_nucl)
+                    mechs[name][positive_map] = cryst_mechanism(
+                        sup_positive,
+                        moments_positive,
+                        temp_positive,
+                        self.temp_ref,
+                        self.params[name],
+                        self.reformulate_kin,
+                        kv_cry,
+                        self.mu_sec_nucl,
+                    )
 
-            subset_mech = ('dissolution', )
+            subset_mech = ("dissolution",)
 
-            args = [sup_negative, conc_sat_negative, moments_negative,
-                    temp_negative, self.temp_ref]
+            args = [
+                sup_negative,
+                conc_sat_negative,
+                moments_negative,
+                temp_negative,
+                self.temp_ref,
+            ]
 
             for name in subset_mech:
                 if name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
-                    mechs[name][~positive_map] = self.custom_mechanisms[name](*args_concat)
+                    mechs[name][~positive_map] = self.custom_mechanisms[name](
+                        *args_concat
+                    )
                 else:
-                    mechs[name][~positive_map] = cryst_mechanism(sup_negative,
-                                                                 moments_negative,
-                                                                temp_negative,
-                                                                self.temp_ref,
-                                                                self.params[name],
-                                                                self.reformulate_kin,
-                                                                kv_cry, self.mu_sec_nucl)
+                    mechs[name][~positive_map] = cryst_mechanism(
+                        sup_negative,
+                        moments_negative,
+                        temp_negative,
+                        self.temp_ref,
+                        self.params[name],
+                        self.reformulate_kin,
+                        kv_cry,
+                        self.mu_sec_nucl,
+                    )
 
         if nucl_sec_out:
-            return mechs['nucl_prim'], mechs['nucl_sec'], mechs['growth'], mechs['dissolution']
+            return (
+                mechs["nucl_prim"],
+                mechs["nucl_sec"],
+                mechs["growth"],
+                mechs["dissolution"],
+            )
         else:
-            nucl = mechs['nucl_prim'] + mechs['nucl_sec']
-            return nucl, mechs['growth'], mechs['dissolution']
+            nucl = mechs["nucl_prim"] + mechs["nucl_sec"]
+            return nucl, mechs["growth"], mechs["dissolution"]
 
     def deriv_cryst(self, conc_tg, conc, temp):
         conc_sat = self.get_solubility(temp, conc)
@@ -952,9 +1033,12 @@ class CrystKinetics:
                 phi_2 = params[1]
 
                 dmech = np.array(
-                    [mech,
-                     mech * (1 / self.temp_ref - 1 / temp) * np.exp(phi_2),
-                     mech * np.log(ssat)])
+                    [
+                        mech,
+                        mech * (1 / self.temp_ref - 1 / temp) * np.exp(phi_2),
+                        mech * np.log(ssat),
+                    ]
+                )
             else:
                 e_act = params[1]
                 expo = params[2]
@@ -962,9 +1046,12 @@ class CrystKinetics:
                 absup = max(eps, ssat)
 
                 dmech = np.array(
-                    [np.exp(-e_act/gas_ct/temp) * ssat * absup**(expo - 1),
-                     -mech * np.exp(e_act/gas_ct/temp),
-                     mech * np.log(ssat)])
+                    [
+                        np.exp(-e_act / gas_ct / temp) * ssat * absup ** (expo - 1),
+                        -mech * np.exp(e_act / gas_ct / temp),
+                        mech * np.log(ssat),
+                    ]
+                )
 
             return dmech
 

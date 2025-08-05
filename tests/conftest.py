@@ -1,6 +1,7 @@
 """
 Pytest configuration and shared fixtures for PharmaPy tests.
 """
+
 import pytest
 import os
 import sys
@@ -14,8 +15,9 @@ def pytest_addoption(parser):
         "--run-network-tests",
         action="store_true",
         default=False,
-        help="Run tests that require network access"
+        help="Run tests that require network access",
     )
+
 
 # Add the PharmaPy package to the Python path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -24,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 try:
     import PharmaPy
     from PharmaPy import Streams, Phases, Kinetics, Utilities
+
     PHARMAPY_AVAILABLE = True
 except ImportError:
     PHARMAPY_AVAILABLE = False
@@ -31,6 +34,7 @@ except ImportError:
 # Check for optional dependencies
 try:
     import assimulo
+
     ASSIMULO_AVAILABLE = True
     ASSIMULO_VERSION = assimulo.__version__
 except ImportError:
@@ -49,9 +53,9 @@ def setup_test_environment():
     data_dir = Path(__file__).parent.parent / "data"
     if not data_dir.exists():
         pytest.skip("Data directory not found")
-    
+
     yield
-    
+
     # Cleanup after all tests
     # Remove any temporary files created during testing
     pass
@@ -90,14 +94,18 @@ def sample_liquid_stream():
     """Create a sample liquid stream for testing."""
     if not PHARMAPY_AVAILABLE:
         pytest.skip("PharmaPy not available")
-    
+
     from PharmaPy.Streams import LiquidStream
     from PharmaPy.Phases import LiquidPhase
-    
+
     # Create a simple test stream using proper API with data file
-    datapath = 'tests/integration/data/pfr_test_pure_comp.json'
-    phase = LiquidPhase(datapath, mole_conc=[0.7, 0.3, 0.0, 0.0], temp=298.15, vol=0.001)
-    stream = LiquidStream(datapath, mole_conc=[0.7, 0.3, 0.0, 0.0], temp=298.15, vol_flow=100.0)
+    datapath = "tests/integration/data/pfr_test_pure_comp.json"
+    phase = LiquidPhase(
+        datapath, mole_conc=[0.7, 0.3, 0.0, 0.0], temp=298.15, vol=0.001
+    )
+    stream = LiquidStream(
+        datapath, mole_conc=[0.7, 0.3, 0.0, 0.0], temp=298.15, vol_flow=100.0
+    )
     return stream
 
 
@@ -106,20 +114,20 @@ def sample_reaction_kinetics():
     """Create sample reaction kinetics for testing."""
     if not PHARMAPY_AVAILABLE:
         pytest.skip("PharmaPy not available")
-    
+
     import json
     from PharmaPy.Kinetics import RxnKinetics
-    
+
     # Load kinetics data from test file (same pattern as reactor tests)
-    datapath = 'tests/integration/data/pfr_test_pure_comp.json'
-    with open('tests/integration/data/pfr_test_constructor_kwargs.json') as f:
+    datapath = "tests/integration/data/pfr_test_pure_comp.json"
+    with open("tests/integration/data/pfr_test_constructor_kwargs.json") as f:
         data_objects = json.load(f)
-    
-    # Set up kinetics parameters 
-    kinetics_data = data_objects['kinetics'].copy()
-    kinetics_data['k_params'] *= 1/60  # Same processing as reactor tests
-    kinetics_data['path'] = datapath
-    
+
+    # Set up kinetics parameters
+    kinetics_data = data_objects["kinetics"].copy()
+    kinetics_data["k_params"] *= 1 / 60  # Same processing as reactor tests
+    kinetics_data["path"] = datapath
+
     # Create real kinetics object
     kinetics = RxnKinetics(**kinetics_data)
     return kinetics
@@ -131,31 +139,19 @@ def test_data_files():
     data_dir = Path(__file__).parent.parent / "data"
     if not data_dir.exists():
         return []
-    
+
     json_files = list(data_dir.glob("*.json"))
     csv_files = list(data_dir.glob("*.csv"))
-    
-    return {
-        "json": json_files,
-        "csv": csv_files,
-        "all": json_files + csv_files
-    }
+
+    return {"json": json_files, "csv": csv_files, "all": json_files + csv_files}
 
 
 def pytest_configure(config):
     """Configure pytest with custom markers and settings."""
-    config.addinivalue_line(
-        "markers", "slow: mark test as slow running"
-    )
-    config.addinivalue_line(
-        "markers", "integration: mark test as integration test"
-    )
-    config.addinivalue_line(
-        "markers", "unit: mark test as unit test"
-    )
-    config.addinivalue_line(
-        "markers", "assimulo: mark test as requiring assimulo"
-    )
+    config.addinivalue_line("markers", "slow: mark test as slow running")
+    config.addinivalue_line("markers", "integration: mark test as integration test")
+    config.addinivalue_line("markers", "unit: mark test as unit test")
+    config.addinivalue_line("markers", "assimulo: mark test as requiring assimulo")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -164,7 +160,7 @@ def pytest_collection_modifyitems(config, items):
         # Add slow marker to tests that might be slow
         if "integration" in item.keywords or "flowsheet" in item.keywords:
             item.add_marker(pytest.mark.slow)
-        
+
         # Add assimulo marker to tests that use assimulo
         if "assimulo" in str(item.fspath).lower() or any(
             "assimulo" in str(arg) for arg in item.fixturenames
@@ -178,10 +174,10 @@ def pytest_report_header(config):
         f"PharmaPy Available: {PHARMAPY_AVAILABLE}",
         f"Assimulo Available: {ASSIMULO_AVAILABLE}",
     ]
-    
+
     if ASSIMULO_AVAILABLE:
         header_lines.append(f"Assimulo Version: {ASSIMULO_VERSION}")
-    
+
     return header_lines
 
 

@@ -50,14 +50,14 @@ def energy_balance(inst, mass_str):
 
 
 class Slurry:
-    """ Create Slurry object.
-    
+    """Create Slurry object.
+
     Parameters
     ----------
     vol : float, optional
         Volume of the Slurry [m**3]. The default is 0.
     moments : array, optional
-        Array of size N, containing the distribution moments in um**n, 
+        Array of size N, containing the distribution moments in um**n,
         for n = 0,...,N - 1. The default is None.
     # mass_slurry : TYPE, optional
         DESCRIPTION. The default is 0.
@@ -73,10 +73,16 @@ class Slurry:
     None.
 
     """
-    def __init__(self, vol=0, moments=None,
-                 # mass_slurry=0,
-                 x_distrib=None, distrib=None):
-       
+
+    def __init__(
+        self,
+        vol=0,
+        moments=None,
+        # mass_slurry=0,
+        x_distrib=None,
+        distrib=None,
+    ):
+
         self._Phases = None
 
         self.vol = vol
@@ -113,7 +119,9 @@ class Slurry:
         # TODO: this is not general enough (Dan - Energetics)
         if self.moments is not None:
             if self.vol == 0:
-                raise ValueError('If the moments are provided, Slurry volume needs to be larger than 0.')
+                raise ValueError(
+                    "If the moments are provided, Slurry volume needs to be larger than 0."
+                )
 
             vol_liq = self.vol * (1 - self.moments[3])
             self.Solid_1.updatePhase(moments=self.moments * self.vol)
@@ -177,7 +185,7 @@ class Slurry:
 
                 mass_liq, mass_sol = mass_phases
 
-                self.vol = np.dot(mass_phases, 1/dens_phases)
+                self.vol = np.dot(mass_phases, 1 / dens_phases)
 
             f_distr = self.vol * self.distrib
 
@@ -185,7 +193,7 @@ class Slurry:
             self.Solid_1.updatePhase(distrib=f_distr, mass=mass_sol)
 
         self.num_species = self.Liquid_1.num_species
-        self.temp = energy_balance(self, 'mass')
+        self.temp = energy_balance(self, "mass")
 
     def __check_distrib(self):
         if self.distrib is None:
@@ -229,7 +237,7 @@ class Slurry:
             self.Solid_1.x_distrib = self.x_distrib
             self.moments = self.Solid_1.getMoments(distrib=self.distrib)
 
-    def getDensity(self, temp=None, basis='mass', total=False):
+    def getDensity(self, temp=None, basis="mass", total=False):
 
         dens_liq = self.Liquid_1.getDensity(temp=temp, basis=basis)
         dens_solid = self.Solid_1.getDensity(temp=temp, basis=basis)
@@ -243,7 +251,7 @@ class Slurry:
 
         return density
 
-    def getSolidsConcentr(self, distrib=None, basis='vol'):
+    def getSolidsConcentr(self, distrib=None, basis="vol"):
         if distrib is None:
             moments = self.moments
         else:
@@ -255,13 +263,13 @@ class Slurry:
             mom_three = moments[:, 3]  # m**3/m**3
 
         vol_frac = mom_three * self.Solid_1.kv
-        dens_solid = self.Solid_1.getDensity(basis='mass')
+        dens_solid = self.Solid_1.getDensity(basis="mass")
 
         concentr_solids = vol_frac * dens_solid  # kg_solids / m**3
 
-        if basis == 'mass':
-            dens_liq = self.Liquid_1.getDensity(basis='mass')
-            concentr_solids *= 1/(1 - vol_frac)/dens_liq
+        if basis == "mass":
+            dens_liq = self.Liquid_1.getDensity(basis="mass")
+            concentr_solids *= 1 / (1 - vol_frac) / dens_liq
 
         return concentr_solids
 
@@ -296,8 +304,8 @@ class Slurry:
 
     def getEnthalpy(self, temp, volfracs=None, densMass=None, volumetric=True):
         # Individual phases
-        hLiq = self.Liquid_1.getEnthalpy(temp=temp, basis='mass')
-        hSol = self.Solid_1.getEnthalpy(temp=temp, basis='mass')
+        hLiq = self.Liquid_1.getEnthalpy(temp=temp, basis="mass")
+        hSol = self.Solid_1.getEnthalpy(temp=temp, basis="mass")
 
         hMass = np.array([hLiq, hSol])
 
@@ -316,8 +324,7 @@ class Slurry:
 
         return hSlurry
 
-    def getCp(self, temp, volfracs=None, density=None, times_vliq=False,
-              basis='mass'):
+    def getCp(self, temp, volfracs=None, density=None, times_vliq=False, basis="mass"):
 
         # Individual phases
         cpLiq = self.Liquid_1.getCp(temp=temp, basis=basis)
@@ -336,7 +343,7 @@ class Slurry:
         self.densities = density
 
         if times_vliq:
-            volfracs[1] *= 1/volfracs[0]
+            volfracs[1] *= 1 / volfracs[0]
 
         cpSlurry = sum(volfracs * density * cpPhases)  # J/m**3/K
 
@@ -344,15 +351,15 @@ class Slurry:
 
 
 class SlurryStream(Slurry):
-    """ Create a slurry stream object.
-    
+    """Create a slurry stream object.
+
     Parameters
     ----------
     vol_flow : float, optional
-        Volumetric flow rate in which the slurry is transfered [m**3/s]. 
+        Volumetric flow rate in which the slurry is transfered [m**3/s].
         The default is 0.
     moments : array, optional
-        Array of size N, containing the distribution moments in um**n, 
+        Array of size N, containing the distribution moments in um**n,
         for n = 0,...,N - 1. The default is None.
     x_distrib : array, optional
         Array of size N, containing the internal grid
@@ -366,6 +373,7 @@ class SlurryStream(Slurry):
     None.
 
     """
+
     def __init__(self, vol_flow=0, moments=None, x_distrib=None, distrib=None):
         super().__init__(vol_flow, moments, x_distrib, distrib)
 
@@ -374,8 +382,8 @@ class SlurryStream(Slurry):
         self.vol_flow = self.vol
 
         self.DynamicInlet = None
-        self.controllable = ['vol_flow', 'temp']
-        self.input_states = ['vol_flow', 'temp', 'distrib']
+        self.controllable = ["vol_flow", "temp"]
+        self.input_states = ["vol_flow", "temp", "distrib"]
 
         # del self.mass
         # del self.moles
@@ -396,7 +404,9 @@ class SlurryStream(Slurry):
 
         if self.moments is not None:
             if self.vol == 0:
-                raise ValueError('If the moments are provided, Slurry volume needs to be larger than 0.')
+                raise ValueError(
+                    "If the moments are provided, Slurry volume needs to be larger than 0."
+                )
 
             dens_liq = self.Liquid_1.getDensity()
             dens_sol = self.Solid_1.getDensity()
@@ -449,8 +459,7 @@ class SlurryStream(Slurry):
                 self.dx = np.diff(x_grid)
 
             # self.Solid_1.x_distrib = self.x_distrib
-            self.moments = self.Solid_1.getMoments(self.x_distrib,
-                                                   self.distrib)
+            self.moments = self.Solid_1.getMoments(self.x_distrib, self.distrib)
 
             if self.vol > 0:
                 dens_liq = self.Liquid_1.getDensity()
@@ -470,7 +479,7 @@ class SlurryStream(Slurry):
 
                 mass_liq, mass_sol = mass_phases
 
-                self.vol = np.dot(mass_phases, 1/dens_phases)
+                self.vol = np.dot(mass_phases, 1 / dens_phases)
 
             f_distr = self.vol * self.distrib
 
@@ -481,15 +490,14 @@ class SlurryStream(Slurry):
             self.Solid_1.vol_flow = vol_phases[1]
 
         self.num_species = self.Liquid_1.num_species
-        self.temp = energy_balance(self, 'mass_flow')
-        self.solid_conc = self.getSolidsConcentr(basis='mass')
+        self.temp = energy_balance(self, "mass_flow")
+        self.solid_conc = self.getSolidsConcentr(basis="mass")
 
     def InterpolateInputs(self, time):
         if isinstance(time, (float, int)):
             time = min(time, self.time_upstream[-1])
 
-            y_interpol = Interpolation(self.time_upstream, self.y_inlet,
-                                       time)
+            y_interpol = Interpolation(self.time_upstream, self.y_inlet, time)
         else:
             interpol = CubicSpline(self.time_upstream, self.y_inlet)
             flags_interpol = time > self.time_upstream[-1]
@@ -498,8 +506,7 @@ class SlurryStream(Slurry):
                 time_interpol = time[~flags_interpol]
                 y_interp = interpol(time_interpol)
 
-                y_extrapol = np.tile(y_interp[-1],
-                                     (sum(flags_interpol), 1))
+                y_extrapol = np.tile(y_interp[-1], (sum(flags_interpol), 1))
                 y_interpol = np.vstack((y_interp, y_extrapol))
             else:
                 y_interpol = interpol(time)
@@ -520,7 +527,7 @@ class SlurryStream(Slurry):
 
 class Cake:
     def __init__(self, z_external=None, num_discr=50, saturation=None):
-        """ Create a cake object.
+        """Create a cake object.
 
         Parameters
         ----------
@@ -528,10 +535,10 @@ class Cake:
             Array of size N, containing the internal spatial grid
             of length coordinate of the cakes [m]. The default is None
         num_discr : integer, optional
-            The number which the cake length coordiante is discretized in. 
+            The number which the cake length coordiante is discretized in.
             The default is 50.
         saturation : array, optional
-            Array of size N (N = num_discr). Volumetric liquid uptake 
+            Array of size N (N = num_discr). Volumetric liquid uptake
             in each spatial node of the cake. The default is None.
 
         Returns
@@ -539,7 +546,6 @@ class Cake:
         None.
 
         """
-    
 
         if z_external is None:
             self.z_external = np.linspace(0, 1, num_discr)
@@ -591,7 +597,7 @@ class Cake:
         # alpha = numerator / (self.Solid_1.moments[0] + eps)
 
         # Calculate irreducible saturation in weighted csd (volume based)
-        vol_frac = vol_cry/ np.sum(vol_cry)
+        vol_frac = vol_cry / np.sum(vol_cry)
         x_grid = node_x_dist
         alpha_x = 180 * (1 - porosity) / porosity**3 / x_grid**2 / rho_sol
         alpha = np.sum(alpha_x * vol_frac)

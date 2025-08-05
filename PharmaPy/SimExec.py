@@ -44,10 +44,18 @@ class SimulationExec:
 
         if len(self.execution_names) < len(self.graph):
             raise PharmaPyNonImplementedError(
-                "Provided flowsheet contains recycle stream(s)")
+                "Provided flowsheet contains recycle stream(s)"
+            )
 
-    def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
-                       steady_state_di=None, tolerances_ss=None, ss_time=0):
+    def SolveFlowsheet(
+        self,
+        kwargs_run=None,
+        pick_units=None,
+        verbose=True,
+        steady_state_di=None,
+        tolerances_ss=None,
+        ss_time=0,
+    ):
 
         if kwargs_run is None:
             kwargs_run = {}
@@ -77,9 +85,9 @@ class SimulationExec:
 
                 if verbose:
                     print()
-                    print('{}'.format('-'*30))
-                    print('Running {}'.format(name))
-                    print('{}'.format('-'*30))
+                    print("{}".format("-" * 30))
+                    print("Running {}".format(name))
+                    print("{}".format("-" * 30))
                     print()
 
                 kwargs_uo = kwargs_run.get(name, {})
@@ -88,41 +96,44 @@ class SimulationExec:
                     kw_ss = steady_state_di[name]
 
                     tau = 0
-                    if hasattr(instance, '_get_tau'):
+                    if hasattr(instance, "_get_tau"):
                         tau = instance._get_tau()
 
                     ss_time += tau
 
-                    if instance.__class__.__name__ == 'Mixer':
+                    if instance.__class__.__name__ == "Mixer":
                         pass
                     else:
-                        defaults = {'time_stop': ss_time,
-                                    # 'threshold': 1e-6,
-                                    'tau': tau}
+                        defaults = {
+                            "time_stop": ss_time,
+                            # 'threshold': 1e-6,
+                            "tau": tau,
+                        }
 
                         for key, val in defaults.items():
                             kw_ss.setdefault(key, val)
 
-                        ss_event = {'callable': check_steady_state,
-                                    'num_conditions': 1,
-                                    'event_name': 'steady_state',
-                                    'kwargs': kw_ss
-                                    }
+                        ss_event = {
+                            "callable": check_steady_state,
+                            "num_conditions": 1,
+                            "event_name": "steady_state",
+                            "kwargs": kw_ss,
+                        }
 
                         # instance.state_event_list = [ss_event]
                         instance.state_event_list.append(ss_event)
-                        kwargs_uo['any_event'] = False
+                        kwargs_uo["any_event"] = False
 
                 # check_modeling_objects(instance, name)
                 instance.solve_unit(**kwargs_uo)
 
                 uo_type = instance.__module__
-                if uo_type != 'PharmaPy.Containers':
+                if uo_type != "PharmaPy.Containers":
                     instance.flatten_states()
 
                 if verbose:
                     print()
-                    print('Done!')
+                    print("Done!")
                     print()
 
                 # Create connection object if needed
@@ -131,9 +142,10 @@ class SimulationExec:
                     uo_next = self.execution_names[ind + 1]
                     connection = Connection(
                         source_uo=getattr(self, name),
-                        destination_uo=getattr(self, uo_next))
+                        destination_uo=getattr(self, uo_next),
+                    )
 
-                    conn_name = 'CONN%i' % count
+                    conn_name = "CONN%i" % count
                     connections[conn_name] = connection
 
                     connection.transfer_data()
@@ -141,7 +153,7 @@ class SimulationExec:
                     count += 1
 
                 # Processing times
-                if hasattr(instance.result, 'time'):
+                if hasattr(instance.result, "time"):
                     time_prof = instance.result.time
                     time_processing[name] = time_prof[-1] - time_prof[0]
 
@@ -149,10 +161,10 @@ class SimulationExec:
             elif isinstance(instance.outputs, dict):
                 connection = Connection(
                     source_uo=getattr(self, name),
-                    destination_uo=getattr(self,
-                                           self.execution_names[ind + 1]))
+                    destination_uo=getattr(self, self.execution_names[ind + 1]),
+                )
 
-                conn_name = 'CONN%i' % count
+                conn_name = "CONN%i" % count
                 connections[conn_name] = connection
 
                 connection.transfer_data()
@@ -164,11 +176,18 @@ class SimulationExec:
         self.result = SimulationResult(self)
         self.connections = connections
 
-    def SetParamEstimation(self, x_data, y_data=None, y_spectra=None,
-                           fit_spectra=False,
-                           wrapper_kwargs=None,
-                           phase_modifiers=None, control_modifiers=None,
-                           pick_unit=None, **inputs_paramest):
+    def SetParamEstimation(
+        self,
+        x_data,
+        y_data=None,
+        y_spectra=None,
+        fit_spectra=False,
+        wrapper_kwargs=None,
+        phase_modifiers=None,
+        control_modifiers=None,
+        pick_unit=None,
+        **inputs_paramest,
+    ):
         """
         Set parameter estimation using the aggregated unit operation to a
         simulation object
@@ -236,8 +255,10 @@ class SimulationExec:
             # target_unit.reset_states = True
         else:
             if pick_unit is None:
-                raise RuntimeError("Two or more unit operations detected. "
-                                   "Select one using the 'pick_unit' argument")
+                raise RuntimeError(
+                    "Two or more unit operations detected. "
+                    "Select one using the 'pick_unit' argument"
+                )
             else:
                 pass  # remember setting reset_states to True!!
 
@@ -258,70 +279,81 @@ class SimulationExec:
 
         if isinstance(x_data, dict):
             kwargs_wrapper = {
-                key: {'modify_phase': phase_modifiers[key],
-                      'modify_controls': control_modifiers[key]}
-                for key in x_data}
+                key: {
+                    "modify_phase": phase_modifiers[key],
+                    "modify_controls": control_modifiers[key],
+                }
+                for key in x_data
+            }
 
             for di in kwargs_wrapper.values():
-                di.update({'run_args': wrapper_kwargs})
+                di.update({"run_args": wrapper_kwargs})
         else:
-            kwargs_wrapper = {'modify_phase': phase_modifiers,
-                              'modify_controls': control_modifiers}
+            kwargs_wrapper = {
+                "modify_phase": phase_modifiers,
+                "modify_controls": control_modifiers,
+            }
 
-            kwargs_wrapper['run_args'] = wrapper_kwargs
+            kwargs_wrapper["run_args"] = wrapper_kwargs
 
         # Get 1D array of parameters from the UO class
-        param_seed = inputs_paramest.pop('param_seed', None)
+        param_seed = inputs_paramest.pop("param_seed", None)
         if param_seed is not None:
             target_unit.Kinetics.set_params(param_seed)
 
-        if hasattr(target_unit, 'Kinetics'):
+        if hasattr(target_unit, "Kinetics"):
             param_seed = target_unit.Kinetics.concat_params()
         else:
             param_seed = target_unit.params
 
-        name_params = inputs_paramest.get('name_params')
+        name_params = inputs_paramest.get("name_params")
 
         if name_params is None:
             name_params = []
             for ind, logic in enumerate(target_unit.mask_params):
                 if logic:
-                    if hasattr(target_unit, 'Kinetics'):
-                        name_params.append(
-                            target_unit.Kinetics.name_params[ind])
+                    if hasattr(target_unit, "Kinetics"):
+                        name_params.append(target_unit.Kinetics.name_params[ind])
                     else:
                         name_params.append(target_unit.name_params[ind])
 
         name_states = target_unit.states_uo
 
-        inputs_paramest['name_states'] = name_states
-        inputs_paramest['name_params'] = name_params
+        inputs_paramest["name_states"] = name_states
+        inputs_paramest["name_params"] = name_params
 
         # Instantiate parameter estimation
         if fit_spectra:
             self.ParamInst = MultipleCurveResolution(
                 target_unit.paramest_wrapper,
-                param_seed=param_seed, time_data=x_data, y_spectra=y_spectra,
+                param_seed=param_seed,
+                time_data=x_data,
+                y_spectra=y_spectra,
                 kwargs_fun=kwargs_wrapper,
-                **inputs_paramest)
+                **inputs_paramest,
+            )
         else:
             self.ParamInst = ParameterEstimation(
                 target_unit.paramest_wrapper,
-                param_seed=param_seed, x_data=x_data, y_data=y_data,
+                param_seed=param_seed,
+                x_data=x_data,
+                y_data=y_data,
                 kwargs_fun=kwargs_wrapper,
-                **inputs_paramest)
+                **inputs_paramest,
+            )
 
-    def EstimateParams(self, optim_options=None, method='LM', bounds=None,
-                       verbose=True):
+    def EstimateParams(
+        self, optim_options=None, method="LM", bounds=None, verbose=True
+    ):
         tic = time.time()
-        results = self.ParamInst.optimize_fn(optim_options=optim_options,
-                                             method=method,
-                                             bounds=bounds, verbose=verbose)
+        results = self.ParamInst.optimize_fn(
+            optim_options=optim_options, method=method, bounds=bounds, verbose=verbose
+        )
         toc = time.time()
 
         elapsed = toc - tic
 
-        print('Optimization time: {:.2e} s.'.format(elapsed))
+        print("Optimization time: {:.2e} s.".format(elapsed))
 
         return results
 
@@ -329,19 +361,27 @@ class SimulationExec:
         size_equipment = {}
 
         for key, instance in self.uos_instances.items():
-            if hasattr(instance, 'vol_tot'):
+            if hasattr(instance, "vol_tot"):
                 size_equipment[key] = instance.vol_tot
-            elif hasattr(instance, 'vol_phase'):
+            elif hasattr(instance, "vol_phase"):
                 off_vol = instance.vol_offset
                 size_equipment[key] = instance.vol_phase / off_vol
 
-            elif hasattr(instance, 'area_filt'):
+            elif hasattr(instance, "area_filt"):
                 size_equipment[key] = instance.area_filt
 
         return size_equipment
 
-    def GetCAPEX(self, size_equipment=None, k_vals=None, b_vals=None,
-                 cepci_vals=None, f_pres=None, f_mat=None, min_capacity=None):
+    def GetCAPEX(
+        self,
+        size_equipment=None,
+        k_vals=None,
+        b_vals=None,
+        cepci_vals=None,
+        f_pres=None,
+        f_mat=None,
+        min_capacity=None,
+    ):
 
         if size_equipment is None:
             size_equipment = self.get_equipment_size()
@@ -368,7 +408,7 @@ class SimulationExec:
                 a_corr = np.maximum(min_capacity, capacities)
 
             k1, k2, k3 = k_vals.T
-            cost_zero = 10**(k1 + k2*np.log10(a_corr) + k3*np.log10(a_corr)**2)
+            cost_zero = 10 ** (k1 + k2 * np.log10(a_corr) + k3 * np.log10(a_corr) ** 2)
 
             b1, b2 = b_vals.T
 
@@ -379,7 +419,7 @@ class SimulationExec:
             if min_capacity is not None:
                 for ind, capac in enumerate(capacities):
                     if capac < min_capacity[ind]:
-                        scale_corr[ind] = (capac / min_capacity[ind])**0.6
+                        scale_corr[ind] = (capac / min_capacity[ind]) ** 0.6
 
             cost_equip *= scale_corr
 
@@ -394,21 +434,22 @@ class SimulationExec:
         uo_names = []
 
         for key, uo in self.uos_instances.items():
-            if uo.__class__.__name__ != 'Mixer':
+            if uo.__class__.__name__ != "Mixer":
 
-                if hasattr(uo, 'Phases'):
+                if hasattr(uo, "Phases"):
                     if isinstance(uo.Phases, (list, tuple)):
-                        is_solid = [phase.__class__.__name__ == 'SolidPhase'
-                                    for phase in uo.Phases]
-                    else:
                         is_solid = [
-                            uo.Phases.__class__.__name__ == 'SolidPhase']
+                            phase.__class__.__name__ == "SolidPhase"
+                            for phase in uo.Phases
+                        ]
+                    else:
+                        is_solid = [uo.Phases.__class__.__name__ == "SolidPhase"]
                 else:
                     is_solid = [False]  # Mixers
 
                 has_solids.append(any(is_solid))
 
-                oper = uo.oper_mode == 'Batch' or uo.oper_mode == 'Semibatch'
+                oper = uo.oper_mode == "Batch" or uo.oper_mode == "Semibatch"
                 is_batch.append(oper)
                 uo_names.append(key)
 
@@ -421,16 +462,17 @@ class SimulationExec:
         hr_week = 40
         labor_cost = 1.20 * num_workers * 5 * (hr_week * num_weeks) * wage  # USD/yr
 
-        labor_array = np.column_stack(
-            (has_solids, is_batch, num_workers, labor_cost))
+        labor_array = np.column_stack((has_solids, is_batch, num_workers, labor_cost))
 
-        labor_df = pd.DataFrame(labor_array, index=uo_names,
-                                columns=('has_solids', 'is_batch',
-                                         'num_workers', 'labor_cost'))
+        labor_df = pd.DataFrame(
+            labor_array,
+            index=uo_names,
+            columns=("has_solids", "is_batch", "num_workers", "labor_cost"),
+        )
         return labor_df
 
     def get_from_phases(self, phases, fields):
-        if phases.__module__ == 'PharmaPy.MixedPhases':
+        if phases.__module__ == "PharmaPy.MixedPhases":
             phases = phases.Phases
         else:
             phases = [phases]
@@ -446,22 +488,25 @@ class SimulationExec:
 
         return out
 
-    def get_raw_inlets(self, uo, basis='mass'):
-        if hasattr(uo, 'Inlet'):
+    def get_raw_inlets(self, uo, basis="mass"):
+        if hasattr(uo, "Inlet"):
             if isinstance(uo.Inlet, dict):
                 inlets = uo.Inlet
             else:
                 inlets = [uo.Inlet]
-        elif uo.__class__.__name__ == 'Mixer':
+        elif uo.__class__.__name__ == "Mixer":
             inlets = uo.Inlets
         else:
             inlets = [None]
 
         if not isinstance(inlets, dict):
-            inlets = {'Inlet_%i' % num: obj for num, obj in enumerate(inlets)}
+            inlets = {"Inlet_%i" % num: obj for num, obj in enumerate(inlets)}
 
-        raws = {key: val for key, val in inlets.items()
-                if val is not None and val.y_upstream is None}
+        raws = {
+            key: val
+            for key, val in inlets.items()
+            if val is not None and val.y_upstream is None
+        }
 
         # inlets = [inlet for inlet in inlets
         #           if inlet is not None and inlet.y_upstream is None]
@@ -469,14 +514,14 @@ class SimulationExec:
         out = {}
 
         for name, inlet in raws.items():
-            if inlet.__class__.__name__ == 'PharmaPy.MixedPhases':
+            if inlet.__class__.__name__ == "PharmaPy.MixedPhases":
                 streams = inlet.Phases
             else:
                 streams = [inlet]
 
             di = {}
             for stream in streams:
-                fields = ['temp', 'pres']
+                fields = ["temp", "pres"]
 
                 name_stream = get_name_object(stream)
 
@@ -484,59 +529,59 @@ class SimulationExec:
 
                 dens = stream.getDensity(basis=basis)
 
-                if uo.oper_mode == 'Batch':
-                    if basis == 'mass':
+                if uo.oper_mode == "Batch":
+                    if basis == "mass":
                         total = stream.mass
-                    elif basis == 'mole':
+                    elif basis == "mole":
                         total = stream.moles
                 elif inlet.DynamicInlet is None:
                     time = uo.result.time[-1] - uo.result.time[0]
-                    if basis == 'mass':
+                    if basis == "mass":
                         flow = inlet.mass_flow
-                        total = flow*time
+                        total = flow * time
 
-                        di[name_stream] = {'mass': total}
-                        fields += ['mass_frac', 'mass_flow', 'vol_flow']
+                        di[name_stream] = {"mass": total}
+                        fields += ["mass_frac", "mass_flow", "vol_flow"]
 
                     else:
                         flow = inlet.mole_flow
-                        total = flow*time
+                        total = flow * time
 
-                        di[name_stream] = {'moles': total}
-                        fields += ['mole_frac', 'mole_flow', 'vol_flow']
+                        di[name_stream] = {"moles": total}
+                        fields += ["mole_frac", "mole_flow", "vol_flow"]
 
                 else:
                     time = uo.result.time
                     inputs = uo.Inlet.DynamicInlet.evaluate_inputs(time)
 
-                    if basis == 'mass':
-                        if 'mass_flow' in inputs:
-                            flow = inputs['mass_flow']
+                    if basis == "mass":
+                        if "mass_flow" in inputs:
+                            flow = inputs["mass_flow"]
                         else:
-                            flow = inputs['mole_flow'] * inlet.mw_av / 1000
+                            flow = inputs["mole_flow"] * inlet.mw_av / 1000
 
                         total = trapezoidal_rule(time, flow)
 
-                        di[name_stream] = {'mass': total}
+                        di[name_stream] = {"mass": total}
 
-                        fields += ['mass_frac']
+                        fields += ["mass_frac"]
 
-                    elif basis == 'mole':
-                        if 'mole_flow' in inputs:
-                            flow = inputs['mole_flow']
+                    elif basis == "mole":
+                        if "mole_flow" in inputs:
+                            flow = inputs["mole_flow"]
                         else:
-                            flow = inputs['mass_flow'] / inlet.mw_av * 1000
+                            flow = inputs["mass_flow"] / inlet.mw_av * 1000
 
                         total = trapezoidal_rule(time, flow)
 
-                        di[name_stream] = {'moles': total}
-                        fields += ['mole_frac']
+                        di[name_stream] = {"moles": total}
+                        fields += ["mole_frac"]
 
                 vol = total / dens
-                if basis == 'mole':
-                    vol *= 1/1000
+                if basis == "mole":
+                    vol *= 1 / 1000
 
-                di[name_stream]['vol'] = vol
+                di[name_stream]["vol"] = vol
 
             from_inlet = self.get_from_phases(inlet, fields)
 
@@ -547,26 +592,26 @@ class SimulationExec:
 
         return out
 
-    def get_holdup(self, uo, basis='mass'):
+    def get_holdup(self, uo, basis="mass"):
         out = {}
 
-        if hasattr(uo, '__original_phase__'):
+        if hasattr(uo, "__original_phase__"):
             phases = uo.__original_phase__
 
-            if basis == 'mass':
-                fields = ['mass', 'mass_frac']
-            elif basis == 'mole':
-                fields = ['moles', 'mole_frac']
+            if basis == "mass":
+                fields = ["mass", "mass_frac"]
+            elif basis == "mole":
+                fields = ["moles", "mole_frac"]
 
-            fields += ['temp', 'pres', 'vol']
+            fields += ["temp", "pres", "vol"]
 
             if not phases.transferred_from_uo:
                 out = self.get_from_phases(phases, fields)
-                out = {'Initial_holdup': out}
+                out = {"Initial_holdup": out}
 
         return out
 
-    def GetRawMaterials(self, basis='mass', totals=True, steady_state=False):
+    def GetRawMaterials(self, basis="mass", totals=True, steady_state=False):
 
         out = {}
         for name, uo in self.uos_instances.items():
@@ -577,54 +622,60 @@ class SimulationExec:
 
             for second in raw_inlets:  # flatten multidimensional states
                 for third in raw_inlets[second]:
-                    di_raw = flatten_dict_fields(raw_inlets[second][third],
-                                                 index=self.NamesSpecies)
+                    di_raw = flatten_dict_fields(
+                        raw_inlets[second][third], index=self.NamesSpecies
+                    )
                     raw_inlets[second][third] = di_raw
 
             for second in raw_holdup:
                 for third in raw_holdup[second]:
-                    di_hold = flatten_dict_fields(raw_holdup[second][third],
-                                                  index=self.NamesSpecies)
+                    di_hold = flatten_dict_fields(
+                        raw_holdup[second][third], index=self.NamesSpecies
+                    )
                     raw_holdup[second][third] = di_hold
 
             out[name].update(raw_inlets)
             out[name].update(raw_holdup)
 
-        di_multiindex = {(i, j, k): out[i][j][k]
-                         for i in out
-                         for j in out[i]
-                         for k in out[i][j]}
+        di_multiindex = {
+            (i, j, k): out[i][j][k] for i in out for j in out[i] for k in out[i][j]
+        }
 
         if len(di_multiindex) == 0:
             raw_df = pd.DataFrame()
         else:
             multi_index = pd.MultiIndex.from_tuples(di_multiindex)
-            raw_df = pd.DataFrame(list(di_multiindex.values()),
-                                  index=multi_index)
+            raw_df = pd.DataFrame(list(di_multiindex.values()), index=multi_index)
 
             if totals:
-                if basis == 'mass':
-                    mass_frac = raw_df.filter(regex='mass_frac').values
+                if basis == "mass":
+                    mass_frac = raw_df.filter(regex="mass_frac").values
 
-                    mass = raw_df['mass'].values[:, np.newaxis]
+                    mass = raw_df["mass"].values[:, np.newaxis]
                     mass_comp = mass_frac * mass
 
-                    cols = ['mass_%s' % comp for comp in self.NamesSpecies]
-                    cols = ['mass'] + cols
+                    cols = ["mass_%s" % comp for comp in self.NamesSpecies]
+                    cols = ["mass"] + cols
 
-                    raw_df = pd.DataFrame(np.column_stack((mass, mass_comp)),
-                                          columns=cols, index=raw_df.index)
+                    raw_df = pd.DataFrame(
+                        np.column_stack((mass, mass_comp)),
+                        columns=cols,
+                        index=raw_df.index,
+                    )
 
-                elif basis == 'moles':
-                    mole_frac = raw_df.filter(regex='mole_frac').values
-                    moles = raw_df['moles'].values[:, np.newaxis]
+                elif basis == "moles":
+                    mole_frac = raw_df.filter(regex="mole_frac").values
+                    moles = raw_df["moles"].values[:, np.newaxis]
                     moles_comp = mole_frac * moles
 
-                    cols = ['moles_%s' % comp for comp in self.NamesSpecies]
-                    cols = ['moles'] + cols
+                    cols = ["moles_%s" % comp for comp in self.NamesSpecies]
+                    cols = ["moles"] + cols
 
-                    raw_df = pd.DataFrame(np.column_stack((moles, moles_comp)),
-                                          columns=cols, index=raw_df.index)
+                    raw_df = pd.DataFrame(
+                        np.column_stack((moles, moles_comp)),
+                        columns=cols,
+                        index=raw_df.index,
+                    )
 
         return raw_df
 
@@ -656,15 +707,16 @@ class SimulationExec:
         duty_ids = []
 
         for key, instance in self.uos_instances.items():
-            if hasattr(instance, 'heat_duty'):
+            if hasattr(instance, "heat_duty"):
                 duty_ids.append(instance.duty_type)
 
                 heat_duties.append(instance.heat_duty)
                 equipment_ids.append(key)
 
         heat_duties = np.array(heat_duties)
-        heat_duties = pd.DataFrame(heat_duties, index=equipment_ids,
-                                   columns=['heating', 'cooling'])
+        heat_duties = pd.DataFrame(
+            heat_duties, index=equipment_ids, columns=["heating", "cooling"]
+        )
 
         duties_ids = np.array(duty_ids)
 
@@ -673,10 +725,16 @@ class SimulationExec:
         else:
             return heat_duties
 
-    def GetOPEX(self, cost_raw, include_holdups=True, steady_raw=False,
-                lumped=False, kwargs_items=None):
+    def GetOPEX(
+        self,
+        cost_raw,
+        include_holdups=True,
+        steady_raw=False,
+        lumped=False,
+        kwargs_items=None,
+    ):
 
-        opex_items = ('duties', 'raw_materials', 'labor')
+        opex_items = ("duties", "raw_materials", "labor")
         if kwargs_items is None:
             kwargs_items = {key: {} for key in opex_items}
 
@@ -684,30 +742,37 @@ class SimulationExec:
 
         # ---------- Heat duties
         # Energy cost (USD/GJ)
-        heat_exchange_cost = [14.12, 8.49, 4.77,  # refrigeration
-                              0.378,  # water
-                              4.54, 4.77, 5.66]  # steam
+        heat_exchange_cost = [
+            14.12,
+            8.49,
+            4.77,  # refrigeration
+            0.378,  # water
+            4.54,
+            4.77,
+            5.66,
+        ]  # steam
 
         heat_exchange_cost = np.array(heat_exchange_cost)
 
-        duties, map_duties = self.GetDuties(full_output=True,
-                                            **kwargs_items.get('duties', {}))
+        duties, map_duties = self.GetDuties(
+            full_output=True, **kwargs_items.get("duties", {})
+        )
         map_duties += 3
 
         duty_unit_cost = np.zeros_like(map_duties, dtype=np.float64)
         for ind, row in enumerate(map_duties):
             duty_unit_cost[ind] = heat_exchange_cost[row]
 
-        duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
+        duty_cost = np.abs(duties) * 1e-9 * duty_unit_cost
 
         # ---------- Raw materials
         raw_materials = self.GetRawMaterials(
-            include_holdups, steady_raw, **kwargs_items.get('raw_materials',
-                                                            {}))
+            include_holdups, steady_raw, **kwargs_items.get("raw_materials", {})
+        )
         raw_cost = cost_raw * raw_materials
 
         # ---------- Labor
-        labor_cost = self.GetLabor(**kwargs_items.get('labor', {}))
+        labor_cost = self.GetLabor(**kwargs_items.get("labor", {}))
 
         if lumped:
             pass

@@ -7,8 +7,10 @@ Created on Mon Apr 27 14:22:20 2020
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
+
 # from autograd import numpy as np
 import numpy as np
+
 try:
     from scipy.integrate import simpson as simps
 except ImportError:
@@ -18,7 +20,7 @@ from itertools import cycle
 
 from assimulo.exception import TerminateSimulation
 
-linestyles = cycle(['-', '--', '-.', ':'])
+linestyles = cycle(["-", "--", "-.", ":"])
 eps = np.finfo(float).eps
 
 
@@ -53,8 +55,10 @@ def flatten_states(state_list):
     else:
         out = {}
         for name in name_states:
-            ar = [di[name] if ind == 0 else di[name][1:]
-                  for ind, di in enumerate(state_list)]
+            ar = [
+                di[name] if ind == 0 else di[name][1:]
+                for ind, di in enumerate(state_list)
+            ]
             if ar[0].ndim == 1:
                 out[name] = np.concatenate(ar)
             else:
@@ -63,8 +67,9 @@ def flatten_states(state_list):
         return out
 
 
-def unpack_discretized(states, num_states, name_states, indexes=None,
-                       state_map=None, inputs=None):
+def unpack_discretized(
+    states, num_states, name_states, indexes=None, state_map=None, inputs=None
+):
 
     acum_len = np.cumsum(num_states)[:-1]
 
@@ -72,8 +77,7 @@ def unpack_discretized(states, num_states, name_states, indexes=None,
         states_reord = states.reshape(-1, sum(num_states))
 
         states_split = np.split(states_reord, acum_len, axis=1)
-        states_split = [a[:, 0] if a.shape[1] == 1 else a
-                        for a in states_split]
+        states_split = [a[:, 0] if a.shape[1] == 1 else a for a in states_split]
 
     elif states.ndim > 1:
         dim_tot = sum(num_states)
@@ -123,40 +127,40 @@ def unpack_states(states, num_states, name_states, state_map=None):
         states_split = [a[0] if len(a) == 1 else a for a in states_split]
     elif states.ndim > 1:
         states_split = np.split(states, acum_len, axis=1)
-        states_split = [a[:, 0] if a.shape[1] == 1 else a
-                        for a in states_split]
+        states_split = [a[:, 0] if a.shape[1] == 1 else a for a in states_split]
 
     if state_map is not None:
-        states_split = [array for ind, array in enumerate(states_split)
-                        if state_map[ind]]
+        states_split = [
+            array for ind, array in enumerate(states_split) if state_map[ind]
+        ]
 
-        name_states = [name for ind, name in enumerate(name_states)
-                       if state_map[ind]]
+        name_states = [name for ind, name in enumerate(name_states) if state_map[ind]]
 
     dict_states = dict(zip(name_states, states_split))
 
     return dict_states
 
 
-def retrieve_pde_result(data, x_name, states=None, time=None, x=None,
-                        idx_time=None, idx_vol=None):
+def retrieve_pde_result(
+    data, x_name, states=None, time=None, x=None, idx_time=None, idx_vol=None
+):
 
     if isinstance(data, dict):
         di = data
-    elif data.__class__.__name__ == 'DynamicResult':
+    elif data.__class__.__name__ == "DynamicResult":
         di = data.__dict__
 
     out = {}
 
     if idx_time is None:
         if time is None:
-            idx_time = np.arange(len(di['time']))
+            idx_time = np.arange(len(di["time"]))
         elif isinstance(time, (list, tuple, np.ndarray)):
             # TODO: Should we interpolate instead?
-            idx_time = [np.argmin(abs(t - di['time'])) for t in time]
+            idx_time = [np.argmin(abs(t - di["time"])) for t in time]
         else:
-            idx_time = np.argmin(abs(time - di['time']))
-            out['time'] = di['time'][idx_time]
+            idx_time = np.argmin(abs(time - di["time"]))
+            out["time"] = di["time"][idx_time]
 
     if idx_vol is None:
         if x is None:
@@ -168,7 +172,7 @@ def retrieve_pde_result(data, x_name, states=None, time=None, x=None,
             idx_vol = np.argmin(abs(x - di[x_name]))
             out[x_name] = di[x_name][idx_vol]
 
-    di_filtered = {key: di[key] for key in di if key != 'time' and key != x_name}
+    di_filtered = {key: di[key] for key in di if key != "time" and key != x_name}
 
     if states is None:
         states = list(di_filtered.keys())
@@ -176,8 +180,9 @@ def retrieve_pde_result(data, x_name, states=None, time=None, x=None,
     for key in states:
         val = di_filtered[key]
         if isinstance(val, dict):
-            out[key] = retrieve_pde_result(val, x_name, idx_time=idx_time,
-                                           idx_vol=idx_vol)
+            out[key] = retrieve_pde_result(
+                val, x_name, idx_time=idx_time, idx_vol=idx_vol
+            )
         elif isinstance(val, np.ndarray):
             # if x_name in di['di_states'][key]['depends_on']:
             out[key] = val[idx_time][:, idx_vol]
@@ -185,15 +190,14 @@ def retrieve_pde_result(data, x_name, states=None, time=None, x=None,
     return out
 
 
-def complete_dict_states(time, di, target_keys, phase, controls,
-                         u_inputs=None, num_discr=1):
+def complete_dict_states(
+    time, di, target_keys, phase, controls, u_inputs=None, num_discr=1
+):
     for key in target_keys:
         if key not in di:
             if key in controls.keys():
                 control = controls[key]
-                di[key] = control['fun'](time,
-                                         *control['args'],
-                                         **control['kwargs'])
+                di[key] = control["fun"](time, *control["args"], **control["kwargs"])
             else:
                 val = getattr(phase, key, None)
 
@@ -219,8 +223,9 @@ def complete_dict_states(time, di, target_keys, phase, controls,
     return di
 
 
-def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
-                       threshold=1e-5, norm_type=None):
+def check_steady_state(
+    time, states, sdot, tau, num_tau=1, time_stop=None, threshold=1e-5, norm_type=None
+):
 
     if not isinstance(threshold, (tuple, list)):
         threshold = [threshold] * len(sdot)
@@ -246,34 +251,42 @@ def check_steady_state(time, states, sdot, tau, num_tau=1, time_stop=None,
     return float(flag)
 
 
-def eval_state_events(time, states, switches,
-                      states_dim, name_states, state_event_list,
-                      sdot=None, discretized_model=False, state_map=None):
+def eval_state_events(
+    time,
+    states,
+    switches,
+    states_dim,
+    name_states,
+    state_event_list,
+    sdot=None,
+    discretized_model=False,
+    state_map=None,
+):
     events = []
 
     if discretized_model:
-        unpack_fn = globals()['unpack_discretized']
+        unpack_fn = globals()["unpack_discretized"]
     else:
-        unpack_fn = globals()['unpack_states']
+        unpack_fn = globals()["unpack_states"]
 
     dict_states = unpack_fn(states, states_dim, name_states)
 
     if sdot is not None:
-        dict_sdot = unpack_fn(sdot, states_dim, name_states,
-                              state_map=state_map)
+        dict_sdot = unpack_fn(sdot, states_dim, name_states, state_map=state_map)
 
     if any(switches):
 
         for di in state_event_list:
-            if 'callable' in di.keys():
-                kwargs_callable = di.get('kwargs', {})
-                event_flag = di['callable'](time, dict_states, dict_sdot,
-                                            **kwargs_callable)
+            if "callable" in di.keys():
+                kwargs_callable = di.get("kwargs", {})
+                event_flag = di["callable"](
+                    time, dict_states, dict_sdot, **kwargs_callable
+                )
             else:
-                state_name = di['state_name']
-                ref_value = di['value']
+                state_name = di["state_name"]
+                ref_value = di["value"]
 
-                state_idx = di.get('state_idx', None)
+                state_idx = di.get("state_idx", None)
 
                 if state_idx is None:
                     checked_value = dict_states[state_name]
@@ -295,13 +308,13 @@ def handle_events(solver, event_info, state_event_list, any_event=True):
 
     flags = []
 
-    dim_events = [event.get('num_conditions', 1) for event in state_event_list]
+    dim_events = [event.get("num_conditions", 1) for event in state_event_list]
 
     idx_state = [[ind] * num for ind, num in enumerate(dim_events)]
     idx_state = np.hstack(idx_state)
 
     for ind, val in enumerate(event_markers):
-        direction = state_event_list[idx_state[ind]].get('direction')
+        direction = state_event_list[idx_state[ind]].get("direction")
         terminate = False
 
         if val:
@@ -317,10 +330,10 @@ def handle_events(solver, event_info, state_event_list, any_event=True):
             idx_true = [ind for (ind, flag) in enumerate(flags) if flag]
 
             for idx in idx_true:
-                id_event = state_event_list[idx].get('event_name')
+                id_event = state_event_list[idx].get("event_name")
                 if flags[idx]:
                     if id_event is None:
-                        print('State event %i was reached' % (idx + 1))
+                        print("State event %i was reached" % (idx + 1))
                     else:
                         print("State event '%s' was reached" % id_event)
 
@@ -331,18 +344,17 @@ def handle_events(solver, event_info, state_event_list, any_event=True):
             raise TerminateSimulation
 
 
-def high_resolution_fvm(y, boundary_cond, limiter_type='Van Leer',
-                        both=False):
+def high_resolution_fvm(y, boundary_cond, limiter_type="Van Leer", both=False):
 
     # Ghost cells -1, 0 and N + 1 (see LeVeque 2002, Chapter 9)
-    y_extrap = 2*y[-1] - y[-2]
-    y_aug = np.concatenate(([boundary_cond]*2, y, [y_extrap]))
+    y_extrap = 2 * y[-1] - y[-2]
+    y_aug = np.concatenate(([boundary_cond] * 2, y, [y_extrap]))
 
     y_diff = np.diff(y_aug, axis=0)
 
     theta = (y_diff[:-1]) / (y_diff[1:] + eps)
 
-    if limiter_type == 'Van Leer':
+    if limiter_type == "Van Leer":
         limiter = (np.abs(theta) + theta) / (1 + np.abs(theta))
     else:  # TODO: include more limiters
         pass
@@ -361,9 +373,9 @@ def upwind_fvm(y, boundary_cond):
 
 
 def geom_series(start, stop, num, rate_out=False):
-    rate = (stop/start)**(1/(num - 1))
+    rate = (stop / start) ** (1 / (num - 1))
 
-    series = start*rate**np.arange(0, num)
+    series = start * rate ** np.arange(0, num)
 
     if rate_out:
         return rate
@@ -374,7 +386,7 @@ def geom_series(start, stop, num, rate_out=False):
 def geom_counts(x_target, x_max, *args_geom):
     rate = geom_series(*args_geom, rate_out=True)
 
-    n_target = np.log(x_target/x_max) / np.log(rate)
+    n_target = np.log(x_target / x_max) / np.log(rate)
     n_target = np.floor(n_target) + args_geom[-1]
 
     return n_target
@@ -385,39 +397,51 @@ def series_erfc(x, num=64):
         x = x[..., np.newaxis]
 
     ind = np.arange(1, num + 1, dtype=np.uint64)
-    odds = np.arange(1, 2*num, 2, dtype=np.uint64)
+    odds = np.arange(1, 2 * num, 2, dtype=np.uint64)
 
-    series = (-1)**ind * np.cumprod(odds) / (2 * x**2)**ind
+    series = (-1) ** ind * np.cumprod(odds) / (2 * x**2) ** ind
     result = 1 / np.sqrt(np.pi) * (1 + series.T.sum(axis=0))
 
     return result
 
 
 def temp_ufun(time, temp_zero, rate, t_zero=0):
-    temp_t = temp_zero + rate*(time - t_zero)
+    temp_t = temp_zero + rate * (time - t_zero)
 
     return temp_t
 
 
 def vol_ufun(time, vol_zero, rate):
-    vol_t = vol_zero + rate*time
+    vol_t = vol_zero + rate * time
     return vol_t
 
 
-def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
-                 t_init=0.0, y_init=None):
+def build_pw_lin(
+    time_vals=None,
+    time_lengths=None,
+    y_vals=None,
+    y_ramps=None,
+    t_init=0.0,
+    y_init=None,
+):
 
     if y_ramps is not None and y_init is None:
-        raise ValueError('If specifying ramp functions, you need to pass an '
-                         'initial state value for y_init')
+        raise ValueError(
+            "If specifying ramp functions, you need to pass an "
+            "initial state value for y_init"
+        )
 
     if time_vals is None and time_lengths is None:
-        raise ValueError('time_vals or time_lengths must be specified to '
-                         'utilize piecewise linear profiles')
+        raise ValueError(
+            "time_vals or time_lengths must be specified to "
+            "utilize piecewise linear profiles"
+        )
 
     if y_vals is None and y_ramps is None:
-        raise ValueError('y_vals or y_ramps must be specified to utilize '
-                         'piecewise linear profiles')
+        raise ValueError(
+            "y_vals or y_ramps must be specified to utilize "
+            "piecewise linear profiles"
+        )
 
     num_segments = 0
     if time_vals is None:
@@ -432,21 +456,24 @@ def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
 
     for j in range(num_segments):
         if time_vals is not None:
-            def fun_logic(x, j=j): return \
-                (time_vals[j] <= x) * (x < time_vals[j + 1])
+
+            def fun_logic(x, j=j):
+                return (time_vals[j] <= x) * (x < time_vals[j + 1])
 
             if y_vals is not None:
-                def function(x, j=j): return \
-                    (x - time_vals[j])/(time_vals[j + 1] - time_vals[j]) *\
-                    (y_vals[j + 1] - y_vals[j]) + y_vals[j]
+
+                def function(x, j=j):
+                    return (x - time_vals[j]) / (time_vals[j + 1] - time_vals[j]) * (
+                        y_vals[j + 1] - y_vals[j]
+                    ) + y_vals[j]
 
                 y_end = y_vals[j + 1]
             else:
                 if j == 0:
                     y_prev = y_init
 
-                def function(x, j=j, y_prev=y_prev): return \
-                    (x - time_vals[j]) * y_ramps[j] + y_prev
+                def function(x, j=j, y_prev=y_prev):
+                    return (x - time_vals[j]) * y_ramps[j] + y_prev
 
                 y_prev += y_ramps[j] * (time_vals[j + 1] - time_vals[j])
                 y_end = y_prev
@@ -458,21 +485,26 @@ def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
                 pw_logic_exprs.append(lambda x, j=j: (x >= time_vals[j + 1]))
                 pw_fncs.append(lambda x, j=j, y_end=y_end: y_end)
         else:
-            def fun_logic(x, j=j): return \
-                (sum(time_lengths[0:j]) <= x)*(x < sum(time_lengths[0:j + 1]))
+
+            def fun_logic(x, j=j):
+                return (sum(time_lengths[0:j]) <= x) * (
+                    x < sum(time_lengths[0 : j + 1])
+                )
 
             if y_vals is not None:
-                def function(x, j=j): return \
-                    (x - sum(time_lengths[0:j])) / (time_lengths[j]) * \
-                    (y_vals[j + 1] - y_vals[j]) + y_vals[j]
+
+                def function(x, j=j):
+                    return (x - sum(time_lengths[0:j])) / (time_lengths[j]) * (
+                        y_vals[j + 1] - y_vals[j]
+                    ) + y_vals[j]
 
                 y_end = y_vals[j + 1]
             else:
                 if j == 0:
                     y_prev = y_init
 
-                def function(x, j=j, y_prev=y_prev): return \
-                    (x - sum(time_lengths[0:j])) * y_ramps[j] + y_prev
+                def function(x, j=j, y_prev=y_prev):
+                    return (x - sum(time_lengths[0:j])) * y_ramps[j] + y_prev
 
                 y_prev += y_ramps[j] * (time_lengths[j])
                 y_end = y_prev
@@ -481,8 +513,9 @@ def build_pw_lin(time_vals=None, time_lengths=None, y_vals=None, y_ramps=None,
             pw_fncs.append(function)
 
             if j == (num_segments - 1):
-                pw_logic_exprs.append(lambda x, j=j:
-                                      (x >= sum(time_lengths[0:j + 1])))
+                pw_logic_exprs.append(
+                    lambda x, j=j: (x >= sum(time_lengths[0 : j + 1]))
+                )
                 pw_fncs.append(lambda x, j=j, y_end=y_end: y_end)
 
     return pw_logic_exprs, pw_fncs
@@ -500,9 +533,16 @@ def temp_pw_lin(time, pw_exprs=None, pw_fncs=None, t_zero=0):
     return temp_t
 
 
-def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
-              name_params=None, mode='per_parameter', black_white=False,
-              time_div=1):
+def plot_sens(
+    time_prof,
+    sensit,
+    fig_size=None,
+    name_states=None,
+    name_params=None,
+    mode="per_parameter",
+    black_white=False,
+    time_div=1,
+):
 
     num_plots = len(sensit)
     num_cols = bool(num_plots // 2) + 1
@@ -511,10 +551,9 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
     time_prof *= 1 / time_div
 
     if fig_size is None:
-        fig_size = (6, 6/num_cols/1.4 * num_rows)
+        fig_size = (6, 6 / num_cols / 1.4 * num_rows)
 
-    fig_sens, axes_sens = plt.subplots(num_rows, num_cols,
-                                       figsize=fig_size)
+    fig_sens, axes_sens = plt.subplots(num_rows, num_cols, figsize=fig_size)
 
     if num_plots == 1:
         axes_sens = np.asarray(axes_sens)[np.newaxis]
@@ -523,33 +562,36 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
     for ax, sens in zip(axes_sens.flatten(), sensit):
         if black_white:
             for col in sens.T:
-                ax.plot(time_prof, col,
-                        # 'k',
-                        linestyle=next(linestyles))
+                ax.plot(
+                    time_prof,
+                    col,
+                    # 'k',
+                    linestyle=next(linestyles),
+                )
         else:
             ax.plot(time_prof, sens)
 
         # ax.set_xscale('log')
 
         if time_div == 1:
-            ax.set_xlabel(r'time (s)')
+            ax.set_xlabel(r"time (s)")
 
-        ax.spines['right'].set_visible(False)
-        ax.spines['top'].set_visible(False)
-        ax.spines['left'].set_position('zero')
-        ax.spines['bottom'].set_position('zero')
+        ax.spines["right"].set_visible(False)
+        ax.spines["top"].set_visible(False)
+        ax.spines["left"].set_position("zero")
+        ax.spines["bottom"].set_position("zero")
 
         ax.xaxis.set_minor_locator(AutoMinorLocator(2))
         ax.yaxis.set_minor_locator(AutoMinorLocator(2))
 
         # ax.set_ylabel(r'$\frac{ds_i}{d \theta_{%i}}$' % count)
 
-        if mode == 'per_parameter':
-            ax.set_ylabel(r'$\dfrac{\partial C_i}{\partial %s}$'
-                          % name_params[count])
-        elif mode == 'per_state':
-            ax.set_ylabel(r'$\dfrac{\partial %s}{\partial \theta_j}$'
-                          % name_states[count])
+        if mode == "per_parameter":
+            ax.set_ylabel(r"$\dfrac{\partial C_i}{\partial %s}$" % name_params[count])
+        elif mode == "per_state":
+            ax.set_ylabel(
+                r"$\dfrac{\partial %s}{\partial \theta_j}$" % name_states[count]
+            )
 
         count += 1
 
@@ -560,14 +602,14 @@ def plot_sens(time_prof, sensit, fig_size=None, name_states=None,
     if num_subplots > num_plots:
         [fig_sens.delaxes(ax) for ax in axes_sens.flatten()[num_plots:]]
 
-    if mode == 'per_parameter':
-        legend = [r'$' + name + r'$' for name in name_states]
+    if mode == "per_parameter":
+        legend = [r"$" + name + r"$" for name in name_states]
         if len(legend) > 4:
             ncols = num_states // 4 + 1
         else:
             ncols = 1
-    elif mode == 'per_state':
-        legend = [r'$' + name + r'$' for name in name_params]
+    elif mode == "per_state":
+        legend = [r"$" + name + r"$" for name in name_params]
         # legend = [r'${}$'.format(name_params[ind])
         #           for ind in range(num_params)]
         if len(legend) > 4:
@@ -648,8 +690,9 @@ def reorder_sens(sens, separate_sens=False, num_rows=None):
         num_rows = sens[0].shape[0]
     elif isinstance(sens, np.ndarray):
         if num_rows is None:
-            raise ValueError("'num_times' argument has to be passed if 'sens' "
-                             "is a numpy array")
+            raise ValueError(
+                "'num_times' argument has to be passed if 'sens' " "is a numpy array"
+            )
 
     big_sens = np.vstack(sens)
 
@@ -689,7 +732,7 @@ def reorder_pde_outputs(state_array, num_fv, size_states, name_states=None):
         list_temp = []
         count = 0
         for size in size_states:
-            state_indiv = array[:, count:size + count]
+            state_indiv = array[:, count : size + count]
             list_temp.append(state_indiv)
 
             count += size
@@ -701,7 +744,7 @@ def reorder_pde_outputs(state_array, num_fv, size_states, name_states=None):
 
     count = 0
     for size in size_states:
-        state_indiv = states_stacked[:, count:size + count]
+        state_indiv = states_stacked[:, count : size + count]
         state_indiv = state_indiv.T.reshape(-1, num_times).T
 
         if size > 1:
@@ -713,6 +756,7 @@ def reorder_pde_outputs(state_array, num_fv, size_states, name_states=None):
 
     if name_states:
         individual_states = {
-            key: value for key, value in zip(name_states, individual_states)}
+            key: value for key, value in zip(name_states, individual_states)
+        }
 
     return states_per_fv, individual_states

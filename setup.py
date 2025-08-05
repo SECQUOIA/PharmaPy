@@ -2,6 +2,7 @@
 Legacy setup.py for backward compatibility.
 The preferred build method is now using pyproject.toml with PEP 517/518.
 """
+
 from setuptools import setup, find_packages
 import os
 
@@ -14,19 +15,19 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name='PharmaPy',
-    version='0.0.1',
+    name="PharmaPy",
+    version="0.0.1",
     packages=find_packages(),
-    author='Daniel Casas-Orozco',
-    author_email='dcasasor@purdue.edu',
-    description='PharmaPy: Dynamic simulation of pharmaceutical manufacturing systems',
+    author="Daniel Casas-Orozco",
+    author_email="dcasasor@purdue.edu",
+    description="PharmaPy: Dynamic simulation of pharmaceutical manufacturing systems",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    license='MIT',
-    url='https://github.com/SECQUOIA/PharmaPy',
+    license="MIT",
+    url="https://github.com/SECQUOIA/PharmaPy",
     project_urls={
-        'Documentation': 'https://pharmapy.readthedocs.io/',
-        'Bug Tracker': 'https://github.com/SECQUOIA/PharmaPy/issues',
+        "Documentation": "https://pharmapy.readthedocs.io/",
+        "Bug Tracker": "https://github.com/SECQUOIA/PharmaPy/issues",
     },
     classifiers=[
         "Development Status :: 4 - Beta",

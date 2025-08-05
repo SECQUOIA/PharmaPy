@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 """
 Spyder Editor
@@ -30,8 +29,7 @@ def dx_jac_p(p, abstol, reltol, eps):
     return dx
 
 
-def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None,
-                  pick_x=None):
+def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None, pick_x=None):
 
     if dx is None:
         dx = np.ones_like(x) * eps
@@ -57,7 +55,7 @@ def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None,
 
     for idx, i in enumerate(pick_x):
         delx[i] = dx[i]
-        jac[:, idx] = (func(x + delx, *args) - f_eval)/dx[i]
+        jac[:, idx] = (func(x + delx, *args) - f_eval) / dx[i]
         delx[i] = 0
 
     return jac
@@ -78,7 +76,7 @@ def numerical_jac_central(func, x, rel_tol, abs_tol, dx=None, args=()):
 
     for j in range(num_x):
         delx[j] = dx[j]
-        jac.append((func(x + delx, *args) - func(x - delx, *args)) /2. / dx[j])
+        jac.append((func(x + delx, *args) - func(x - delx, *args)) / 2.0 / dx[j])
         delx[j] = 0
 
     return np.column_stack(jac)
@@ -107,14 +105,14 @@ def numerical_jac_data(func, x, args=(), dx=None, pick_x=None):
 
     for idx, i in enumerate(pick_x):
         delx[i] = dx[i]
-        jac[:, idx] = (func(x + delx, *args) - f_eval)/dx[i]
+        jac[:, idx] = (func(x + delx, *args) - f_eval) / dx[i]
         delx[i] = 0
 
     return jac
 
 
 def numerical_jacv(func, x, v, args=()):
-    """ Function to evalute the right product J*v. After Hindmarsh and Serban
+    """Function to evalute the right product J*v. After Hindmarsh and Serban
     (2020) (CVODEs 5.1.0 manual, sec. 2.1).
 
     It is not very accurate calculation (compared with performing J*v directly)
@@ -138,10 +136,10 @@ def numerical_jacv(func, x, v, args=()):
         DESCRIPTION.
 
     """
-    sig = 1/norm(v)
+    sig = 1 / norm(v)
 
     f_eval = func(x, *args)
-    jac_v = (func(x + sig*v, *args) - f_eval) / sig
+    jac_v = (func(x + sig * v, *args) - f_eval) / sig
 
     return jac_v
 
@@ -151,15 +149,15 @@ def jac_fun(x):
     dim = len(x)
     jac = np.zeros((dim, dim))
 
-    jac[0, 0] = 2*x1
-    jac[0, 1] = -3/2*x2**2
+    jac[0, 0] = 2 * x1
+    jac[0, 1] = -3 / 2 * x2**2
     jac[1, 0] = 1
-    jac[1, 1] = 1/2/np.sqrt(x2)
+    jac[1, 1] = 1 / 2 / np.sqrt(x2)
 
     return jac
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from autograd import jacobian, make_jvp
     from jax import jvp
 
@@ -167,9 +165,8 @@ if __name__ == '__main__':
     jac_ad = jacobian(fun)
     jacv_ad = make_jvp(fun)
 
-
     # Nominal x
-    x_test = np.array([1., 2.])
+    x_test = np.array([1.0, 2.0])
 
     # Evaluate jacs
     jacfun_eval = jac_fun(x_test)
