@@ -179,10 +179,18 @@ jobs:
         chmod +x InstallOnMac.sh
         echo "pharmapy-test" | bash InstallOnMac.sh
         
-    - name: Verify script installation
+    - name: Verify script installation (Unix)
+      if: matrix.os != 'windows-latest'
+      shell: bash -l {0}
       run: |
         conda activate pharmapy-test
         python -c "import PharmaPy; print('Installation script successful')"
+        
+    - name: Verify script installation (Windows)
+      if: matrix.os == 'windows-latest'
+      shell: cmd /C CALL {0}
+      run: |
+        call conda activate pharmapy-test && python -c "import PharmaPy; print('Installation script successful')"
 
   # Build and distribution tests
   build-tests:

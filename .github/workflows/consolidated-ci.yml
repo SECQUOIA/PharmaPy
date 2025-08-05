@@ -184,7 +184,7 @@ jobs:
       shell: cmd
       run: |
         echo pharmapy-ci-test | InstallOnWindows.bat
-        conda activate pharmapy-ci-test
+        call conda activate pharmapy-ci-test
         python -c "import PharmaPy; print('Windows script installation successful')"
 
     - name: Test macOS/Linux installation script
