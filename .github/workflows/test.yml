@@ -174,7 +174,7 @@ jobs:
         
     - name: Test Unix installation script  
       if: matrix.os != 'windows-latest'
-      shell: bash
+      shell: bash -l {0}
       run: |
         chmod +x InstallOnMac.sh
         echo "pharmapy-test" | bash InstallOnMac.sh
