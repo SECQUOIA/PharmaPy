@@ -12,7 +12,7 @@ import numpy as np
 try:
     from scipy.integrate import simpson as simps
 except ImportError:
-    # For older scipy versions
+    # For scipy < 1.9.0 compatibility - simps was renamed to simpson in scipy 1.9.0
     from scipy.integrate import simps
 from itertools import cycle
 
