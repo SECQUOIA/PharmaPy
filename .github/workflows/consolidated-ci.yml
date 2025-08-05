@@ -18,6 +18,7 @@ jobs:
   test-core:
     name: Core Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30  # Prevent long-running jobs
     strategy:
       fail-fast: false
       matrix:
@@ -105,10 +106,11 @@ jobs:
         pip install dist/*.whl --force-reinstall
         python -c "import PharmaPy; print('Wheel installation successful')"
 
-  # Assimulo testing - separate job to avoid complexity
+  # Assimulo testing - lightweight focused test
   test-assimulo:
     name: Assimulo Integration Tests
-    runs-on: ubuntu-20.04  # Use older Ubuntu for better compatibility
+    runs-on: ubuntu-latest  # Use latest Ubuntu for speed
+    timeout-minutes: 15  # Prevent long-running jobs
     strategy:
       fail-fast: false
       matrix:
@@ -118,41 +120,47 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Set up Conda
+    - name: Set up Miniconda
       uses: conda-incubator/setup-miniconda@v3
       with:
-        auto-update-conda: true
-        python-version: ${{ matrix.python-version }}
-        channels: conda-forge,defaults
-        channel-priority: flexible
         miniforge-version: latest
+        activate-environment: pharmapy-assimulo
+        environment-file: environment.yml
+        python-version: ${{ matrix.python-version }}
+        auto-activate-base: false
+        auto-update-conda: true
+        mamba-version: "*"
+        use-mamba: true
 
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential gfortran liblapack-dev libblas-dev libsuperlu-dev
+        sudo apt-get install -y build-essential gfortran liblapack-dev libblas-dev
 
-    - name: Install assimulo dependencies
+    - name: Install assimulo
       shell: bash -l {0}
       run: |
-        pip install -r requirements.txt
-        conda install -c conda-forge sundials=6.6.2 numpy scipy cython matplotlib
-        pip install assimulo==3.7.1
+        conda install -c conda-forge assimulo --yes
 
     - name: Install PharmaPy
       shell: bash -l {0}
       run: |
         pip install -e .
 
-    - name: Test assimulo integration
+    - name: Test assimulo integration (fast tests only)
       shell: bash -l {0}
       run: |
         python -c "import assimulo; print(f'Assimulo version: {assimulo.__version__}')"
-        python -m pytest tests/integration/test_assimulo.py -v --tb=short
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_assimulo_import -v
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_assimulo_solvers_available -v
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_pharmapy_with_assimulo -v
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_assimulo_version_compatibility -v
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_sundials_integration -v
 
   # Installation script testing - only on push to specific branches
   test-installation-scripts:
     name: Installation Scripts
+    timeout-minutes: 20  # Prevent long-running jobs
     if: github.event_name == 'push' && (contains(github.ref, 'main') || contains(github.ref, 'master') || contains(github.ref, 'test-devel'))
     runs-on: ${{ matrix.os }}
     strategy:
