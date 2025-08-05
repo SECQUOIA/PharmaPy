@@ -66,7 +66,7 @@ jobs:
         conda info
         conda list
         python --version
-        echo "✅ Environment setup successful"
+        echo "Environment setup successful"
         
     - name: Install assimulo (optional)
       shell: bash -l {0}
@@ -78,9 +78,9 @@ jobs:
     - name: Validate environment setup
       shell: bash -l {0}
       run: |
-        python -c "import numpy, scipy, matplotlib, pandas; print('✅ Core scientific packages available')"
-        python -c "import pytest; print('✅ Testing framework available')"
-        python -c "import importlib.util; print('✅ Assimulo available' if importlib.util.find_spec('assimulo') else '⚠️ Assimulo not available')"
+        python -c "import numpy, scipy, matplotlib, pandas; print('Core scientific packages available')"
+        python -c "import pytest; print('Testing framework available')"
+        python -c "import importlib.util; print('Assimulo available' if importlib.util.find_spec('assimulo') else 'Assimulo not available')"
 
     - name: Install PharmaPy
       shell: bash -l {0}
@@ -103,7 +103,7 @@ jobs:
         # Test wheel build and install
         python setup.py bdist_wheel
         pip install dist/*.whl --force-reinstall
-        python -c "import PharmaPy; print('✅ Wheel installation successful')"
+        python -c "import PharmaPy; print('Wheel installation successful')"
 
   # Assimulo testing - separate job to avoid complexity
   test-assimulo:
@@ -177,7 +177,7 @@ jobs:
       run: |
         echo pharmapy-ci-test | InstallOnWindows.bat
         conda activate pharmapy-ci-test
-        python -c "import PharmaPy; print('✅ Windows script installation successful')"
+        python -c "import PharmaPy; print('Windows script installation successful')"
 
     - name: Test macOS/Linux installation script
       if: matrix.os != 'windows-latest'
@@ -185,7 +185,7 @@ jobs:
       run: |
         echo "pharmapy-ci-test" | bash InstallOnMac.sh
         conda activate pharmapy-ci-test
-        python -c "import PharmaPy; print('✅ Unix script installation successful')"
+        python -c "import PharmaPy; print('Unix script installation successful')"
 
   # Code quality and documentation - only on main branches
   quality-and-docs:
