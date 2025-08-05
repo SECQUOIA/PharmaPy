@@ -17,7 +17,7 @@ def discover_test_modules():
     tests_dir = Path("tests")
     
     if not tests_dir.exists():
-        print("❌ Tests directory not found")
+        print("X Tests directory not found")
         return test_modules
     
     # Find all Python files that look like tests
@@ -35,7 +35,7 @@ def discover_test_modules():
 
 def run_module_tests(module_path, test_file):
     """Run tests from a specific module."""
-    print(f"\n🔍 Testing module: {module_path}")
+    print(f"\n Testing module: {module_path}")
     print(f"   File: {test_file}")
     
     try:
@@ -57,20 +57,20 @@ def run_module_tests(module_path, test_file):
         
         # Check if tests passed
         if result.wasSuccessful():
-            print(f"✅ {module_path}: All tests passed")
+            print(f"✓ {module_path}: All tests passed")
             return True, result
         else:
-            print(f"❌ {module_path}: {len(result.failures)} failures, {len(result.errors)} errors")
+            print(f"X {module_path}: {len(result.failures)} failures, {len(result.errors)} errors")
             return False, result
             
     except Exception as e:
-        print(f"❌ {module_path}: Failed to run - {e}")
+        print(f"X {module_path}: Failed to run - {e}")
         traceback.print_exc()
         return False, None
 
 def run_direct_execution_tests():
     """Run tests that are designed for direct execution."""
-    print("\n🚀 Running direct execution tests...")
+    print("\n Running direct execution tests...")
     
     direct_test_files = [
         "tests/integration/reactor_tests.py",
@@ -80,7 +80,7 @@ def run_direct_execution_tests():
     results = []
     for test_file in direct_test_files:
         if not Path(test_file).exists():
-            print(f"⚠️  {test_file} not found, skipping")
+            print(f"!  {test_file} not found, skipping")
             continue
             
         print(f"\n▶️  Executing {test_file}")
@@ -92,11 +92,11 @@ def run_direct_execution_tests():
             
             # Execute the test file
             exec(open(Path(test_file).name).read())
-            print(f"✅ {test_file} executed successfully")
+            print(f"✓ {test_file} executed successfully")
             results.append((test_file, True, None))
             
         except Exception as e:
-            print(f"❌ {test_file} failed: {e}")
+            print(f"X {test_file} failed: {e}")
             traceback.print_exc()
             results.append((test_file, False, e))
         finally:
@@ -106,24 +106,24 @@ def run_direct_execution_tests():
 
 def main():
     """Main test discovery and execution function."""
-    print("🔬 PharmaPy Test Discovery and Execution")
+    print(" PharmaPy Test Discovery and Execution")
     print("=" * 60)
     
     # Test basic imports first
-    print("\n📦 Testing basic imports...")
+    print("\n Testing basic imports...")
     try:
         import PharmaPy
-        print("✅ PharmaPy imported successfully")
+        print("✓ PharmaPy imported successfully")
     except Exception as e:
-        print(f"❌ Failed to import PharmaPy: {e}")
+        print(f"X Failed to import PharmaPy: {e}")
         return 1
     
     # Discover and run unittest-based tests
-    print("\n🔍 Discovering test modules...")
+    print("\n Discovering test modules...")
     test_modules = discover_test_modules()
     
     if not test_modules:
-        print("⚠️  No test modules discovered")
+        print("!  No test modules discovered")
     else:
         print(f"Found {len(test_modules)} test modules:")
         for module_path, test_file in test_modules:
@@ -138,7 +138,7 @@ def main():
     direct_results = run_direct_execution_tests()
     
     # Summary
-    print("\n📊 Test Summary")
+    print("\n Test Summary")
     print("=" * 60)
     
     total_tests = 0
@@ -146,7 +146,7 @@ def main():
     
     print("\nUnittest-based tests:")
     for module_path, success, result in unittest_results:
-        status = "✅ PASS" if success else "❌ FAIL"
+        status = "✓ PASS" if success else "X FAIL"
         print(f"  {module_path:<40} {status}")
         total_tests += 1
         if success:
@@ -154,7 +154,7 @@ def main():
     
     print("\nDirect execution tests:")
     for test_file, success, error in direct_results:
-        status = "✅ PASS" if success else "❌ FAIL"
+        status = "✓ PASS" if success else "X FAIL"
         print(f"  {Path(test_file).name:<40} {status}")
         total_tests += 1
         if success:
@@ -163,10 +163,10 @@ def main():
     print(f"\nOverall: {passed_tests}/{total_tests} tests passed")
     
     if passed_tests == total_tests:
-        print("🎉 All tests passed!")
+        print(" All tests passed!")
         return 0
     else:
-        print(f"❌ {total_tests - passed_tests} test(s) failed")
+        print(f"X {total_tests - passed_tests} test(s) failed")
         return 1
 
 if __name__ == "__main__":

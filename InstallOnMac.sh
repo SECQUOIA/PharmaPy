@@ -37,7 +37,7 @@ fi
 echo ------------------------------
 echo Attempting to install assimulo...
 echo ------------------------------
-pip install -r requirements-assimulo.txt || echo "⚠️ Assimulo installation failed - PharmaPy will work with limited functionality"
+pip install -r requirements-assimulo.txt || echo "! Assimulo installation failed - PharmaPy will work with limited functionality"
 echo ----------------------
 echo Installing PharmaPy...
 echo ----------------------
@@ -51,9 +51,9 @@ fi
 echo ------------------------------
 echo Testing installation...
 echo ------------------------------
-python -c "import PharmaPy; print('✅ PharmaPy installed successfully')"
-python -c "from PharmaPy import Utilities; print('✅ Core modules working')"
-python -c "from PharmaPy import Reactors; print('✅ Simulation modules working')" || echo "⚠️ Simulation modules require assimulo"
+python -c "import PharmaPy; print('✓ PharmaPy installed successfully')"
+python -c "from PharmaPy import Utilities; print('✓ Core modules working')"
+python -c "from PharmaPy import Reactors; print('✓ Simulation modules working')" || echo "! Simulation modules require assimulo"
 echo ------------------------------
 echo Installation complete!
 echo ------------------------------

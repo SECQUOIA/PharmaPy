@@ -32,7 +32,7 @@ def run_command(cmd, cwd=None, timeout=300):
 
 def test_import():
     """Test basic PharmaPy imports."""
-    print("🔍 Testing PharmaPy imports...")
+    print(" Testing PharmaPy imports...")
     
     import_tests = [
         ("import PharmaPy", True),
@@ -52,13 +52,13 @@ def test_import():
     for test, required in import_tests:
         try:
             exec(test)
-            print(f"  ✅ {test}")
+            print(f"  ✓ {test}")
         except Exception as e:
             if required:
-                print(f"  ❌ {test} - {e}")
+                print(f"  X {test} - {e}")
                 failed_imports.append((test, str(e)))
             else:
-                print(f"  ⚠️  {test} - {e} (optional)")
+                print(f"  !  {test} - {e} (optional)")
                 optional_failed += 1
     
     if optional_failed > 0:
@@ -68,11 +68,11 @@ def test_import():
 
 def run_reactor_tests():
     """Run the reactor tests."""
-    print("\n🧪 Running reactor tests...")
+    print("\n Running reactor tests...")
     
     test_dir = Path("tests/integration")
     if not test_dir.exists():
-        print(f"  ❌ Test directory {test_dir} not found")
+        print(f"  X Test directory {test_dir} not found")
         return False, "Test directory not found"
     
     success, stdout, stderr = run_command(
@@ -81,20 +81,20 @@ def run_reactor_tests():
     )
     
     if success:
-        print("  ✅ Reactor tests passed")
+        print("  ✓ Reactor tests passed")
         return True, stdout
     else:
-        print("  ❌ Reactor tests failed")
+        print("  X Reactor tests failed")
         print(f"  Error: {stderr}")
         return False, stderr
 
 def run_flowsheet_tests():
     """Run the flowsheet tests.""" 
-    print("\n🔗 Running flowsheet tests...")
+    print("\n Running flowsheet tests...")
     
     test_dir = Path("tests/Flowsheet")
     if not test_dir.exists():
-        print(f"  ❌ Test directory {test_dir} not found")
+        print(f"  X Test directory {test_dir} not found")
         return False, "Test directory not found"
     
     success, stdout, stderr = run_command(
@@ -103,22 +103,22 @@ def run_flowsheet_tests():
     )
     
     if success:
-        print("  ✅ Flowsheet tests passed")
+        print("  ✓ Flowsheet tests passed")
         return True, stdout
     else:
-        print("  ❌ Flowsheet tests failed")
+        print("  X Flowsheet tests failed")
         print(f"  Error: {stderr}")
         return False, stderr
 
 def run_pytest_tests():
     """Run tests using pytest if available."""
-    print("\n🔬 Running pytest tests...")
+    print("\n Running pytest tests...")
     
     # Check if pytest is available
     try:
         import pytest
     except ImportError:
-        print("  ⚠️  pytest not available, skipping pytest tests")
+        print("  !  pytest not available, skipping pytest tests")
         return True, "pytest not available"
     
     success, stdout, stderr = run_command([
@@ -126,23 +126,23 @@ def run_pytest_tests():
     ])
     
     if success:
-        print("  ✅ Pytest tests passed")
+        print("  ✓ Pytest tests passed")
         return True, stdout
     else:
-        print("  ❌ Pytest tests failed")
+        print("  X Pytest tests failed")
         return False, stderr
 
 def test_installation():
     """Test that the package is properly installed."""
-    print("\n📦 Testing package installation...")
+    print("\n Testing package installation...")
     
     try:
         import pkg_resources
         pkg = pkg_resources.get_distribution('PharmaPy')
-        print(f"  ✅ Package installed: {pkg.project_name} v{pkg.version}")
+        print(f"  ✓ Package installed: {pkg.project_name} v{pkg.version}")
         return True, f"PharmaPy v{pkg.version}"
     except Exception as e:
-        print(f"  ❌ Package installation check failed: {e}")
+        print(f"  X Package installation check failed: {e}")
         return False, str(e)
 
 def main():
@@ -162,7 +162,7 @@ def main():
     
     args = parser.parse_args()
     
-    print("🚀 PharmaPy Test Suite")
+    print(" PharmaPy Test Suite")
     print("=" * 50)
     
     start_time = time.time()
@@ -193,7 +193,7 @@ def main():
     end_time = time.time()
     duration = end_time - start_time
     
-    print(f"\n📊 Test Summary (Duration: {duration:.2f}s)")
+    print(f"\n Test Summary (Duration: {duration:.2f}s)")
     print("=" * 50)
     
     total_tests = len(results)
@@ -201,7 +201,7 @@ def main():
     failed_tests = total_tests - passed_tests
     
     for test_name, (success, details) in results.items():
-        status = "✅ PASS" if success else "❌ FAIL"
+        status = "✓ PASS" if success else "X FAIL"
         print(f"  {test_name.upper():<12} {status}")
         
         if not success and args.verbose:
@@ -210,10 +210,10 @@ def main():
     print(f"\nResults: {passed_tests}/{total_tests} tests passed")
     
     if failed_tests > 0:
-        print(f"❌ {failed_tests} test(s) failed")
+        print(f"X {failed_tests} test(s) failed")
         sys.exit(1)
     else:
-        print("🎉 All tests passed!")
+        print(" All tests passed!")
         sys.exit(0)
 
 if __name__ == "__main__":

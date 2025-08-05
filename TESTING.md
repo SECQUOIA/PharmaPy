@@ -1,10 +1,10 @@
 # PharmaPy Testing Infrastructure
 
-## 📋 Summary
+##  Summary
 
 This document summarizes the robust testing infrastructure implemented for PharmaPy with pytest and conda-forge integration.
 
-## ✅ **Completed Infrastructure**
+## ✓ **Completed Infrastructure**
 
 ### 1. **Updated .gitignore**
 - Comprehensive Python/conda/IDE ignore patterns
@@ -61,9 +61,9 @@ python run_tests_pytest.py --type all --coverage --parallel
 - **Artifact collection**: Coverage reports, documentation, build packages
 - **Comprehensive workflows**: Fast CI and comprehensive scheduled testing
 
-## 📊 **Test Results**
+##  **Test Results**
 
-### ✅ **Working Components**
+### ✓ **Working Components**
 - **Test Collection**: 45 tests discovered
 - **Import Tests**: All PharmaPy modules import successfully
 - **Assimulo Integration**: Version 3.7.1 detected and available
@@ -71,12 +71,12 @@ python run_tests_pytest.py --type all --coverage --parallel
 - **Test Runner**: Custom CLI test runner operational
 - **CI Configuration**: GitHub Actions workflow ready
 
-### ⚠️ **Expected Limitations**
+### ! **Expected Limitations**
 - **Data Dependencies**: Some tests require thermodynamic data files
 - **Assimulo API**: Some solver tests need API refinement
 - **Coverage**: Currently ~3% (baseline - will improve with more tests)
 
-## 🚀 **Usage Examples**
+##  **Usage Examples**
 
 ### Local Development
 ```bash
@@ -102,7 +102,7 @@ pytest tests/integration/ -v -m "assimulo and not slow"
 - run: pytest tests/ -v -m "not slow"
 ```
 
-## 🔧 **Test Configuration Options**
+##  **Test Configuration Options**
 
 ### Pytest Markers
 - `unit`: Unit tests
@@ -119,7 +119,7 @@ pytest tests/integration/ -v -m "assimulo and not slow"
 - `--coverage`: Enable coverage reporting
 - `--parallel`: Parallel execution
 
-## 📈 **Next Steps**
+##  **Next Steps**
 
 1. **Expand Test Coverage**: Add more unit tests for core modules
 2. **Data Fixtures**: Create mock thermodynamic data for testing
@@ -127,12 +127,12 @@ pytest tests/integration/ -v -m "assimulo and not slow"
 4. **Performance Tests**: Benchmarking and regression testing
 5. **Documentation Tests**: Docstring and example validation
 
-## 🎯 **Key Benefits**
+##  **Key Benefits**
 
-- ✅ **Robust CI/CD**: Multi-platform automated testing
-- ✅ **Conda Integration**: Reliable dependency management
-- ✅ **Assimulo Support**: Verified simulation engine integration  
-- ✅ **Flexible Testing**: Multiple test execution strategies
-- ✅ **Future-Ready**: Extensible test framework for growth
+- ✓ **Robust CI/CD**: Multi-platform automated testing
+- ✓ **Conda Integration**: Reliable dependency management
+- ✓ **Assimulo Support**: Verified simulation engine integration  
+- ✓ **Flexible Testing**: Multiple test execution strategies
+- ✓ **Future-Ready**: Extensible test framework for growth
 
-The testing infrastructure is now **production-ready** and provides a solid foundation for PharmaPy development and quality assurance! 🚀
+The testing infrastructure is now **production-ready** and provides a solid foundation for PharmaPy development and quality assurance! 

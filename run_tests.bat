@@ -10,17 +10,17 @@ set FAILED_TESTS=0
 
 echo.
 echo Testing PharmaPy imports...
-python -c "import PharmaPy; print('✅ PharmaPy imported successfully')"
+python -c "import PharmaPy; print('✓ PharmaPy imported successfully')"
 if %ERRORLEVEL% neq 0 (
-    echo ❌ PharmaPy import failed
+    echo X PharmaPy import failed
     set /a FAILED_TESTS+=1
 )
 
 echo.
 echo Testing core module imports...
-python -c "from PharmaPy import Reactors, Streams, Phases; print('✅ Core modules imported successfully')"
+python -c "from PharmaPy import Reactors, Streams, Phases; print('✓ Core modules imported successfully')"
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Core module imports failed
+    echo X Core module imports failed
     set /a FAILED_TESTS+=1
 )
 
@@ -29,10 +29,10 @@ echo Running reactor tests...
 cd tests\integration
 python reactor_tests.py
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Reactor tests failed
+    echo X Reactor tests failed
     set /a FAILED_TESTS+=1
 ) else (
-    echo ✅ Reactor tests passed
+    echo ✓ Reactor tests passed
 )
 cd ..\..
 
@@ -41,18 +41,18 @@ echo Running flowsheet tests...
 cd tests\Flowsheet
 python flowsheet_tests.py
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Flowsheet tests failed
+    echo X Flowsheet tests failed
     set /a FAILED_TESTS+=1
 ) else (
-    echo ✅ Flowsheet tests passed
+    echo ✓ Flowsheet tests passed
 )
 cd ..\..
 
 echo.
 echo Testing package installation...
-python -c "import pkg_resources; pkg = pkg_resources.get_distribution('PharmaPy'); print('✅ Package installed:', pkg.project_name, 'v' + pkg.version)"
+python -c "import pkg_resources; pkg = pkg_resources.get_distribution('PharmaPy'); print('✓ Package installed:', pkg.project_name, 'v' + pkg.version)"
 if %ERRORLEVEL% neq 0 (
-    echo ❌ Package installation check failed
+    echo X Package installation check failed
     set /a FAILED_TESTS+=1
 )
 
@@ -61,9 +61,9 @@ echo ================================================
 echo Test Summary
 echo ================================================
 if %FAILED_TESTS% equ 0 (
-    echo 🎉 All tests passed!
+    echo  All tests passed!
     exit /b 0
 ) else (
-    echo ❌ %FAILED_TESTS% test(s) failed
+    echo X %FAILED_TESTS% test(s) failed
     exit /b 1
 )

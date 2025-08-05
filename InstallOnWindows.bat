@@ -40,9 +40,9 @@ if %ERRORLEVEL% neq 0 (
 echo ------------------------------
 echo Testing installation...
 echo ------------------------------
-python -c "import PharmaPy; print('✅ PharmaPy installed successfully')"
-python -c "from PharmaPy import Utilities; print('✅ Core modules working')"
-python -c "from PharmaPy import Reactors; print('✅ Simulation modules working')" || echo "⚠️ Simulation modules require assimulo"
+python -c "import PharmaPy; print('✓ PharmaPy installed successfully')"
+python -c "from PharmaPy import Utilities; print('✓ Core modules working')"
+python -c "from PharmaPy import Reactors; print('✓ Simulation modules working')" || echo "! Simulation modules require assimulo"
 echo ------------------------------
 echo Installation complete!
 echo ------------------------------
