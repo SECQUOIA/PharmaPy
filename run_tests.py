@@ -146,7 +146,7 @@ def test_installation():
 
     try:
         import importlib.metadata
-        
+
         pkg = importlib.metadata.distribution("PharmaPy")
         print(f"  [OK] Package installed: {pkg.metadata['name']} v{pkg.version}")
         return True, f"PharmaPy v{pkg.version}"
