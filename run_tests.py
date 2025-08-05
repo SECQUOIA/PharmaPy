@@ -51,7 +51,24 @@ def test_import():
     
     for test, required in import_tests:
         try:
-            exec(test)
+            # Parse the import statement and use importlib
+            if test.startswith("import "):
+                # e.g., "import PharmaPy"
+                module_name = test.split("import ")[1].strip()
+                importlib.import_module(module_name)
+            elif test.startswith("from "):
+                # e.g., "from PharmaPy import Utilities"
+                parts = test.split()
+                module = parts[1]
+                imported = parts[3]
+                # Handle multiple imports separated by commas
+                imported_names = [name.strip() for name in imported.split(",")]
+                mod = importlib.import_module(module)
+                for name in imported_names:
+                    if not hasattr(mod, name):
+                        raise ImportError(f"Module '{module}' has no attribute '{name}'")
+            else:
+                raise ValueError(f"Unknown import statement: {test}")
             print(f"  ✅ {test}")
         except Exception as e:
             if required:
