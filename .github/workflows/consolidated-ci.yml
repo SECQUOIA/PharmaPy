@@ -37,13 +37,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Debug environment.yml
-      run: |
-        echo "=== environment.yml content ==="
-        cat environment.yml
-        echo "=== YAML syntax check ==="
-        python -c "import yaml; yaml.safe_load(open('environment.yml')); print('✅ YAML syntax OK')"
-
     - name: Set up Miniconda
       uses: conda-incubator/setup-miniconda@v3
       with:
@@ -73,7 +66,13 @@ jobs:
         conda info
         conda list
         python --version
-        echo "Environment setup successful"
+        echo "✅ Environment setup successful"
+        
+    - name: Validate environment setup
+      shell: bash -l {0}
+      run: |
+        python -c "import numpy, scipy, matplotlib, pandas; print('✅ Core scientific packages available')"
+        python -c "import pytest; print('✅ Testing framework available')"
 
     - name: Install PharmaPy
       shell: bash -l {0}
