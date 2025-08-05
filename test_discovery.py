@@ -90,10 +90,17 @@ def run_direct_execution_tests():
             test_dir = Path(test_file).parent
             os.chdir(test_dir)
             
-            # Execute the test file
-            exec(open(Path(test_file).name).read())
-            print(f"✅ {test_file} executed successfully")
-            results.append((test_file, True, None))
+            # Execute the test file using subprocess
+            result = subprocess.run([sys.executable, Path(test_file).name], capture_output=True, text=True)
+            if result.returncode == 0:
+                print(f"✅ {test_file} executed successfully")
+                print(result.stdout)
+                results.append((test_file, True, None))
+            else:
+                print(f"❌ {test_file} failed with return code {result.returncode}")
+                print(result.stdout)
+                print(result.stderr)
+                results.append((test_file, False, result.stderr))
             
         except Exception as e:
             print(f"❌ {test_file} failed: {e}")
