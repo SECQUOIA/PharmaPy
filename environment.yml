@@ -1,0 +1,19 @@
+name: pharmapy
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.9,<3.13
+  # Core scientific stack
+  - numpy
+  - scipy
+  - matplotlib
+  - pandas
+  - cython
+  # Development and testing tools
+  - pytest>=6.0
+  - pytest-cov
+  - coverage
+  - pip
+  - setuptools
+  - wheel

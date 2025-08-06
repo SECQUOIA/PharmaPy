@@ -77,7 +77,7 @@ class NewtonInterpolation:
             x_eval = x[..., np.newaxis]
 
         for k in range(1, n + 1):
-            p = a[n - k] + (x_eval - self.x_data[n - k])*p
+            p = a[n - k] + (x_eval - self.x_data[n - k]) * p
 
         return p
 
@@ -87,7 +87,7 @@ def smoothstep(x, x_min=0, x_max=1, N=1):
 
     result = 0
     for n in range(0, N + 1):
-        result += comb(N + n, n) * comb(2 * N + 1, N - n) * (-x)**n
+        result += comb(N + n, n) * comb(2 * N + 1, N - n) * (-x) ** n
 
     result *= x ** (N + 1)
 
@@ -109,7 +109,7 @@ def smoothstep(x, x_min=0, x_max=1, N=1):
 class PiecewiseLagrange:
 
     def __init__(self, time_final, y_vals, order=2, time_k=None, time_zero=0):
-        """ Create a piecewise Lagrange interpolation object
+        """Create a piecewise Lagrange interpolation object
 
         Parameters
         ----------
@@ -148,9 +148,11 @@ class PiecewiseLagrange:
             time_k = np.asarray(time_k)
 
             if len(y_vals) != num_interv:
-                raise ValueError("The number of rows in 'y_vals' must match "
-                                 "the number of intervals given by the length "
-                                 "of 'time_k'")
+                raise ValueError(
+                    "The number of rows in 'y_vals' must match "
+                    "the number of intervals given by the length "
+                    "of 'time_k'"
+                )
 
         delta_t = np.diff(time_k)
         if (delta_t < 0).any():
@@ -180,7 +182,7 @@ class PiecewiseLagrange:
             k = np.ceil((time_eval - time_k[0]) / self.dt).astype(int)
             k = np.maximum(1, k)
         else:
-            k = np.searchsorted(self.time_k, time_eval, side='right')
+            k = np.searchsorted(self.time_k, time_eval, side="right")
             k = np.minimum(self.num_interv, k)
 
         k = np.clip(k, 1, self.num_interv)
@@ -212,8 +214,7 @@ class PiecewiseLagrange:
             for ind in np.unique(k):
                 row_map = k == ind
                 poly_k = poly[row_map]
-                u_time[row_map] = np.dot(poly_k,
-                                         self.y_vals[ind - 1]).flatten()
+                u_time[row_map] = np.dot(poly_k, self.y_vals[ind - 1]).flatten()
 
         else:
             poly = np.zeros(self.order)
@@ -228,7 +229,7 @@ class PiecewiseLagrange:
         return u_time
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     from scipy.interpolate import interp1d
 
     case = 2
@@ -248,21 +249,32 @@ if __name__ == '__main__':
             x_c = np.linspace(0, 5)
             y_c = np.sin(x_c)
 
-            plt.plot(x_discr, y_discr, 'o', mfc='None')
+            plt.plot(x_discr, y_discr, "o", mfc="None")
             plt.plot(x_c, y_c)
 
-            plt.plot(x_interp, interp, 's', mfc='None')
+            plt.plot(x_interp, interp, "s", mfc="None")
 
     elif case == 2:  # Saturation example
         sat = np.array(
-            [0.2322061, 0.24866445, 0.25621458, 0.26201002, 0.26689287,
-             0.27117952, 0.27503542, 0.27856042, 0.28181078, 0.28464856])
+            [
+                0.2322061,
+                0.24866445,
+                0.25621458,
+                0.26201002,
+                0.26689287,
+                0.27117952,
+                0.27503542,
+                0.27856042,
+                0.28181078,
+                0.28464856,
+            ]
+        )
         sat_two = 1.2 * sat + 0.05
 
         sat = np.column_stack((sat, sat_two))
         num_nodes = len(sat)
         step_grid = 0.06 / num_nodes
-        z_sat = np.linspace(step_grid/2, 0.06 - step_grid/2, num_nodes)
+        z_sat = np.linspace(step_grid / 2, 0.06 - step_grid / 2, num_nodes)
 
         z_bounds = z_sat[[0, -1]]
         num_interp = 15
@@ -286,7 +298,7 @@ if __name__ == '__main__':
         plot = True
         if plot:
             fig, axis = plt.subplots()
-            axis.plot(z_sat, sat, 'o', mfc='None')
-            axis.plot(nodes_interp, sat_interp, 's', mfc='None')
+            axis.plot(z_sat, sat, "o", mfc="None")
+            axis.plot(nodes_interp, sat_interp, "s", mfc="None")
             axis.plot(nodes_cont, sat_cont)
-            axis.legend(('data', 'model'))
+            axis.legend(("data", "model"))

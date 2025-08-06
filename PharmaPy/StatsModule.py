@@ -25,8 +25,10 @@ class ParallelProblem:
         # Optimize
         params, _, _ = self.instance.optimize_fn(
             method=self.instance.opt_method,
-            verbose=False, store_iter=False,
-            optim_options=self.instance.optim_options)
+            verbose=False,
+            store_iter=False,
+            optim_options=self.instance.optim_options,
+        )
 
         return params
 
@@ -37,7 +39,7 @@ class StatisticsClass:
 
         # Values from the instance
         inst = estimation_instance
-        jac = inst.info_opt['jac']
+        jac = inst.info_opt["jac"]
 
         self.a_matrix = jac.dot(jac.T)
         self.a_inv = np.linalg.inv(self.a_matrix)
@@ -55,7 +57,7 @@ class StatisticsClass:
         # Calculations
         self.dof = inst.num_data_total - inst.num_params
 
-        residuals = inst.info_opt['fun'].copy()
+        residuals = inst.info_opt["fun"].copy()
         resid_squared = np.dot(residuals.T, residuals)  # SSE
         self.var_fun = resid_squared / self.dof
 
@@ -73,7 +75,7 @@ class StatisticsClass:
         self.name_pairs = []
         for comb in self.combs:
             names = [self.param_names[ind] for ind in comb]
-            name_pair = '/'.join(names)
+            name_pair = "/".join(names)
             self.name_pairs.append(name_pair)
 
         # --------------- Output vals
@@ -88,12 +90,11 @@ class StatisticsClass:
 
         sigma_params = np.sqrt(np.diag(covar_params))
 
-        t_stat = stats.t.ppf((1 + self.alpha)/2, self.dof)
+        t_stat = stats.t.ppf((1 + self.alpha) / 2, self.dof)
 
         delta_par = sigma_params * t_stat
 
-        intervals = np.column_stack((self.params - delta_par,
-                                     self.params + delta_par))
+        intervals = np.column_stack((self.params - delta_par, self.params + delta_par))
 
         confidence_int = dict(zip(self.param_names, intervals))
 
@@ -101,25 +102,42 @@ class StatisticsClass:
 
         if verbose:
             alperc = self.alpha * 100
-            print('')
-            print('{:<55}'.format('-'*100))
-            print("{:<12} {:^15} {:^15} {:^15} {:^15} {:^15}".format(
-                    'param', 'lb', 'mean', 'ub',
-                    "%i%% CI (+/-)" % alperc, "%i%% CI (+/- %%)" % alperc))
+            print("")
+            print("{:<55}".format("-" * 100))
+            print(
+                "{:<12} {:^15} {:^15} {:^15} {:^15} {:^15}".format(
+                    "param",
+                    "lb",
+                    "mean",
+                    "ub",
+                    "%i%% CI (+/-)" % alperc,
+                    "%i%% CI (+/- %%)" % alperc,
+                )
+            )
 
-            print('{:<55}'.format('-'*100))
+            print("{:<55}".format("-" * 100))
 
             for ind, (key, val) in enumerate(confidence_int.items()):
                 low, high = val
-                print("{:<12} {:^15.3e} {:^15.3e} {:^15.3e} {:^15.3e} {:^15.5f}".format(
-                        key, low, self.params[ind], high, delta_par[ind], perc_deviation[ind]))
+                print(
+                    "{:<12} {:^15.3e} {:^15.3e} {:^15.3e} {:^15.3e} {:^15.5f}".format(
+                        key,
+                        low,
+                        self.params[ind],
+                        high,
+                        delta_par[ind],
+                        perc_deviation[ind],
+                    )
+                )
 
-            print('{:<55}'.format('-'*100))
+            print("{:<55}".format("-" * 100))
 
         if set_self:
-            self.confid_intervals = {'intervals': confidence_int,
-                                     'delta_param': delta_par,
-                                     'perc_deviation': perc_deviation}
+            self.confid_intervals = {
+                "intervals": confidence_int,
+                "delta_param": delta_par,
+                "perc_deviation": perc_deviation,
+            }
 
             self.covar_params = covar_params
             self.intervals_array = intervals
@@ -170,16 +188,19 @@ class StatisticsClass:
                 a_inv = np.linalg.inv(a_projec)
 
             el, rec, axlengs, recdims = self.__confidence_pair(
-                a_projec, a_inv, param_pair, alphas=alphas)
+                a_projec, a_inv, param_pair, alphas=alphas
+            )
 
-            info_dict[name] = {'ellipses': el, 'rectangles': rec,
-                               'ellipse_axes': axlengs,
-                               'rectangle_dims': recdims}
+            info_dict[name] = {
+                "ellipses": el,
+                "rectangles": rec,
+                "ellipse_axes": axlengs,
+                "rectangle_dims": recdims,
+            }
 
         return info_dict
 
-    def __confidence_pair(self, a_projected, a_inverse, param_pair,
-                          alphas=None):
+    def __confidence_pair(self, a_projected, a_inverse, param_pair, alphas=None):
 
         # Select eigenvals, eigenvecs and params
         eig_vals, eig_vecs = np.linalg.eig(a_projected)
@@ -188,7 +209,9 @@ class StatisticsClass:
         if alphas is None:
             alphas = [self.alpha]
 
-        f_stat = stats.f.ppf(alphas, self.num_par, self.dof)  # TODO: I think self.num_par should be just 2
+        f_stat = stats.f.ppf(
+            alphas, self.num_par, self.dof
+        )  # TODO: I think self.num_par should be just 2
         contours = f_stat * self.num_par * self.var_fun
 
         # Order
@@ -211,17 +234,24 @@ class StatisticsClass:
             axes *= 2
 
             # Draw ellipse
-            ellipse = Ellipse(param_pair, *axes, angle=angle,
-                              alpha=0.2, edgecolor='k', linestyle='--',
-                              zorder=5)
+            ellipse = Ellipse(
+                param_pair,
+                *axes,
+                angle=angle,
+                alpha=0.2,
+                edgecolor="k",
+                linestyle="--",
+                zorder=5,
+            )
 
             # Draw rectangle
             side_len = np.sqrt(contour * np.diag(a_inverse))
             width = side_len[0] * 2
             height = side_len[1] * 2
 
-            rectangle = Rectangle(param_pair - side_len, width, height,
-                                  fill=False, zorder=5, alpha=0.4)
+            rectangle = Rectangle(
+                param_pair - side_len, width, height, fill=False, zorder=5, alpha=0.4
+            )
 
             # Store
             ellipses.append(ellipse)
@@ -232,8 +262,14 @@ class StatisticsClass:
 
         return ellipses, rectangles, axes_len, width_height
 
-    def plot_pairwise(self, boots=None, alphas=None, bounding_box=False,
-                      interval_bounds=True, fig_size=(5, 5)):
+    def plot_pairwise(
+        self,
+        boots=None,
+        alphas=None,
+        bounding_box=False,
+        interval_bounds=True,
+        fig_size=(5, 5),
+    ):
 
         boot_params = boots
 
@@ -243,31 +279,34 @@ class StatisticsClass:
 
         else:
             covar_boots = np.cov(boot_params.T)
-            confid_interv = self.get_intervals(covar_boots, verbose=False,
-                                               set_self=False)
+            confid_interv = self.get_intervals(
+                covar_boots, verbose=False, set_self=False
+            )
 
             confid_interv = np.vstack(list(confid_interv.values()))
 
         if boot_params is None:
-            raise RuntimeError(
-                "No data to plot. Run 'bootstrap_params' method first ")
+            raise RuntimeError("No data to plot. Run 'bootstrap_params' method first ")
 
         params = pd.DataFrame(boot_params)
         param_means = params.mean(axis=0)
 
-        axes = pd.plotting.scatter_matrix(params, figsize=fig_size,
-                                          hist_kwds={'bins': 50}, zorder=10,
-                                          density_kwds={'s': 10})
+        axes = pd.plotting.scatter_matrix(
+            params,
+            figsize=fig_size,
+            hist_kwds={"bins": 50},
+            zorder=10,
+            density_kwds={"s": 10},
+        )
 
         for ind in range(self.num_par):
             axes[ind, 0].set_ylabel(self.inst.name_params_plot[ind])
-            axes[self.num_par - 1, ind].set_xlabel(
-                self.inst.name_params_plot[ind])
+            axes[self.num_par - 1, ind].set_xlabel(self.inst.name_params_plot[ind])
 
         regions = self.confidence_regions(param_means, alphas=alphas)
         for ind, vals in enumerate(regions.values()):
-            ovals = vals['ellipses']
-            bounding = vals['rectangles']
+            ovals = vals["ellipses"]
+            bounding = vals["rectangles"]
             idx = self.combs[ind][::-1]  # lower triangular quadrant index
 
             for region, box in zip(ovals, bounding):
@@ -278,8 +317,8 @@ class StatisticsClass:
                     # Show confidence intervals
                     intervals = confid_interv[idx[::-1], :]
                     for row in intervals.T:
-                        axes[idx].axvline(row[0], ls='--', zorder=0)
-                        axes[idx].axhline(row[1], ls='--', zorder=0)
+                        axes[idx].axvline(row[0], ls="--", zorder=0)
+                        axes[idx].axhline(row[1], ls="--", zorder=0)
 
                 # axes[idx].autoscale()
 
@@ -287,20 +326,22 @@ class StatisticsClass:
                     axes[idx].add_patch(box)
 
             param_pair = param_means[list(idx)[::-1]].values
-            axes[idx].scatter(*param_pair, marker='+', color='k')
+            axes[idx].scatter(*param_pair, marker="+", color="k")
 
-            width_height = vals['rectangle_dims']
+            width_height = vals["rectangle_dims"]
             rect_array = np.array(width_height)
 
             max_dims = rect_array.max(axis=0) * 1.2
 
             fac = 0.5
 
-            axes[idx].set_xlim(param_pair[0] - fac*max_dims[0],
-                               param_pair[0] + fac*max_dims[0])
+            axes[idx].set_xlim(
+                param_pair[0] - fac * max_dims[0], param_pair[0] + fac * max_dims[0]
+            )
 
-            axes[idx].set_ylim(param_pair[1] - fac*max_dims[1],
-                               param_pair[1] + fac*max_dims[1])
+            axes[idx].set_ylim(
+                param_pair[1] - fac * max_dims[1], param_pair[1] + fac * max_dims[1]
+            )
 
         # Hide upper triangular
         mask = np.triu_indices_from(axes, 1)
@@ -324,8 +365,9 @@ class StatisticsClass:
         conc_bootstrap = []
         for sample in samples:
             self.inst.assign_params(sample)
-            self.inst.solve_model(self.c_init, time_eval=self.xgrid,
-                                  print_summary=False)
+            self.inst.solve_model(
+                self.c_init, time_eval=self.xgrid, print_summary=False
+            )
 
             conc_bootstrap.append(self.inst.conc_profile)
 
@@ -338,8 +380,7 @@ class StatisticsClass:
 
             for array in conc_bootstrap:
                 for ind in range(self.inst.num_measured):
-                    axis.plot(self.xgrid, array[:, ind], color=colors[ind],
-                              alpha=0.02)
+                    axis.plot(self.xgrid, array[:, ind], color=colors[ind], alpha=0.02)
 
         return samples, conc_bootstrap, fig, axis
 
@@ -376,9 +417,9 @@ class StatisticsClass:
             for res, y in zip(residual, y_nominal):  # states
                 resid = res[fix_initial:]
 
-                boots = np.random.choice(resid,
-                                         size=(num_samples, len(resid)),
-                                         replace=True)
+                boots = np.random.choice(
+                    resid, size=(num_samples, len(resid)), replace=True
+                )
 
                 y_generated = y[fix_initial:] - boots
 
@@ -408,10 +449,12 @@ class StatisticsClass:
             try:
                 params, hess_inv, info = self.inst.optimize_fn(
                     method=self.inst.opt_method,
-                    verbose=False, store_iter=False,
-                    optim_options=self.inst.optim_options)
+                    verbose=False,
+                    store_iter=False,
+                    optim_options=self.inst.optim_options,
+                )
             except:
-                print('Optimization failed.')
+                print("Optimization failed.")
                 params = [np.nan] * self.inst.num_params
 
             # Store
@@ -425,7 +468,7 @@ class StatisticsClass:
         elapsed = toc - tic
 
         print()
-        print('Bootstrap time: {:.2f} s'.format(elapsed))
+        print("Bootstrap time: {:.2f} s".format(elapsed))
         print()
 
         return boot_params
@@ -443,29 +486,36 @@ class StatisticsClass:
 
         if fig_size is None:
             width = 5  # in
-            height = width/num_cols/mult * num_rows
+            height = width / num_cols / mult * num_rows
             fig_size = (width, height)
 
         fig, axes = plt.subplots(num_rows, num_cols, figsize=fig_size)
         for ind, ax in enumerate(axes.flatten()):
             ax.hist(self.boot_params.T[ind], bins=50)
             ax.set_xlabel(self.inst.param_names_plot[ind])
-            ax.axvline(self.params[ind], linestyle='--', color='k')
+            ax.axvline(self.params[ind], linestyle="--", color="k")
             ylims = ax.get_ylim()
 
-            ax.text(self.params[ind], ylims[1]*1.1,
-                    '{:.3f}'.format(self.params[ind]), ha='center',
-                    fontsize=8)
+            ax.text(
+                self.params[ind],
+                ylims[1] * 1.1,
+                "{:.3f}".format(self.params[ind]),
+                ha="center",
+                fontsize=8,
+            )
 
-        fig.text(-0.02, 0.5,
-                 r'Frequency (%i samples)' % self.num_samples,
-                 rotation=90, va='center')
+        fig.text(
+            -0.02,
+            0.5,
+            r"Frequency (%i samples)" % self.num_samples,
+            rotation=90,
+            va="center",
+        )
         fig.tight_layout()
 
         return fig, axes
 
-    def confid_profiles(sens, hess_inv_params, num_times, variance_resid,
-                        alpha, dof):
+    def confid_profiles(sens, hess_inv_params, num_times, variance_resid, alpha, dof):
 
         sigma_resid = np.sqrt(variance_resid)
         sens_ord = []
@@ -480,7 +530,7 @@ class StatisticsClass:
             cov_y = (sens_ord[ind].dot(hess_inv_params)).dot(sens_ord[ind].T)
             sigma_y[ind] = np.sqrt(np.diag(cov_y)) * sigma_resid
 
-        t_stat = stats.t.ppf((1 + alpha)/2, dof)
+        t_stat = stats.t.ppf((1 + alpha) / 2, dof)
 
         sigma_y *= t_stat
 
@@ -500,8 +550,7 @@ class StatisticsClass:
         axes = np.atleast_1d(axes)
 
         for ind, data in enumerate(y_data):
-            axes.flatten()[ind].plot(self.inst.x_data[0], data.T, '-o',
-                                     mfc='None')
+            axes.flatten()[ind].plot(self.inst.x_data[0], data.T, "-o", mfc="None")
 
         if nplot < len(axes.flatten()):
             fig.delaxes(axes.flatten()[-1])

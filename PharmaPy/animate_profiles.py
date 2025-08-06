@@ -7,6 +7,7 @@ Created on Thu Oct 15 15:01:59 2020
 """
 
 import matplotlib.pyplot as plt
+
 # from matplotlib.animation import FuncAnimation, FFMpegWriter
 from matplotlib.animation import FuncAnimation
 import numpy as np
@@ -31,8 +32,9 @@ def check_inputs(states, sep_states, width=4):
             states = [states]
 
     if sep_states:
-        fig, axes = plt.subplots(len(states), 1,
-                                 figsize=(width, width/1.6*len(states)))
+        fig, axes = plt.subplots(
+            len(states), 1, figsize=(width, width / 1.6 * len(states))
+        )
         axes = np.atleast_1d(axes)
     else:
         fig, axes = plt.subplots()
@@ -41,8 +43,7 @@ def check_inputs(states, sep_states, width=4):
     return states, fig, axes
 
 
-def anim_func(time, states, name_file=None, legend=None, names_y=None,
-              title=None):
+def anim_func(time, states, name_file=None, legend=None, names_y=None, title=None):
     """
 
 
@@ -82,17 +83,16 @@ def anim_func(time, states, name_file=None, legend=None, names_y=None,
         legend = legend
 
     if name_file is None:
-        name_file = 'anim'
+        name_file = "anim"
 
     fig.suptitle(title)
 
     all_lines = []
     time_diff = time[-1] - time[0]
-    xlim = (time[0] - time_diff*0.03, time[-1] + time_diff*0.03)
+    xlim = (time[0] - time_diff * 0.03, time[-1] + time_diff * 0.03)
     for idx_state, state in enumerate(states):
         state_range = state.max() - state.min()
-        ylim = (state.min() - state_range*0.03,
-                state.max() + state_range*0.03)
+        ylim = (state.min() - state_range * 0.03, state.max() + state_range * 0.03)
 
         axes[idx_state].set_xlim(xlim)
         axes[idx_state].set_ylim(ylim)
@@ -110,11 +110,14 @@ def anim_func(time, states, name_file=None, legend=None, names_y=None,
         all_lines.append(lines)
 
     time_tag = axes[0].text(
-                1, 1.04, '$time = {:.1f}$ s'.format(time[0]),
-                horizontalalignment='right',
-                transform=axes[0].transAxes)
+        1,
+        1.04,
+        "$time = {:.1f}$ s".format(time[0]),
+        horizontalalignment="right",
+        transform=axes[0].transAxes,
+    )
 
-    axes[-1].set_xlabel('time (s)')
+    axes[-1].set_xlabel("time (s)")
 
     def fun_anim(ind):
         for idx_state, state in enumerate(states):
@@ -128,18 +131,17 @@ def anim_func(time, states, name_file=None, legend=None, names_y=None,
                 if legend[idx_state] is not None:
                     lines_state[idx].set_label(legend[idx_state][idx])
 
-            time_tag.set_text('$time = {:.1f}$ s'.format(time[ind]))
+            time_tag.set_text("$time = {:.1f}$ s".format(time[ind]))
 
             if legend[idx_state] is not None:
-                axes[idx_state].legend(loc='best')
+                axes[idx_state].legend(loc="best")
 
     fig.tight_layout()
 
-    animation = FuncAnimation(fig, fun_anim,
-                              frames=range(1, len(time)), repeat=True)
+    animation = FuncAnimation(fig, fun_anim, frames=range(1, len(time)), repeat=True)
 
-    writer = 'ffmpeg'
-    suff = '.mp4'
+    writer = "ffmpeg"
+    suff = ".mp4"
 
     # writer = 'imagemagick'
     # suff = '.avi'
@@ -149,9 +151,19 @@ def anim_func(time, states, name_file=None, legend=None, names_y=None,
     return animation, fig, axes
 
 
-def anim_multidim(time, indep_vble, data, filename=None, step_data=1,
-                  title=None, xlabel=None, ylabel=None, invert_x=False,
-                  time_unit=None, legend=None):
+def anim_multidim(
+    time,
+    indep_vble,
+    data,
+    filename=None,
+    step_data=1,
+    title=None,
+    xlabel=None,
+    ylabel=None,
+    invert_x=False,
+    time_unit=None,
+    legend=None,
+):
     """
     Animate states that depend on time and position. This typically arises when
     analyzing the outputs of a PDE model
@@ -188,27 +200,27 @@ def anim_multidim(time, indep_vble, data, filename=None, step_data=1,
     """
 
     if filename is None:
-        filename = 'anim'
+        filename = "anim"
 
     if time_unit is None:
-        time_unit = 's'
+        time_unit = "s"
 
     data, fig_anim, (ax_anim,) = check_inputs(data, sep_states=False)
 
     indep_diff = np.ptp(indep_vble)
-    ax_anim.set_xlim(indep_vble.min() - 0.03*indep_diff,
-                     indep_vble.max() + 0.03*indep_diff)
+    ax_anim.set_xlim(
+        indep_vble.min() - 0.03 * indep_diff, indep_vble.max() + 0.03 * indep_diff
+    )
     fig_anim.suptitle(title)
 
-    fig_anim.subplots_adjust(left=0, bottom=0, right=1, top=1,
-                             wspace=None, hspace=None)
+    fig_anim.subplots_adjust(left=0, bottom=0, right=1, top=1, wspace=None, hspace=None)
 
     data_min = np.vstack(data).min()
     data_max = np.vstack(data).max()
 
     data_diff = data_max - data_min
 
-    ax_anim.set_ylim(data_min - 0.03*data_diff, data_max + data_diff*0.03)
+    ax_anim.set_ylim(data_min - 0.03 * data_diff, data_max + data_diff * 0.03)
 
     ax_anim.set_xlabel(xlabel)
     ax_anim.set_ylabel(ylabel)
@@ -229,9 +241,12 @@ def anim_multidim(time, indep_vble, data, filename=None, step_data=1,
         ax_anim.set_xlim(ax_anim.get_xlim()[::-1])
 
     time_tag = ax_anim.text(
-        1, 1.04, '$time = {:.1f}$ {}'.format(time[0], time_unit),
-        horizontalalignment='right',
-        transform=ax_anim.transAxes)
+        1,
+        1.04,
+        "$time = {:.1f}$ {}".format(time[0], time_unit),
+        horizontalalignment="right",
+        transform=ax_anim.transAxes,
+    )
 
     def func_anim(ind):
         f_vals = func_data(ind)
@@ -241,14 +256,13 @@ def anim_multidim(time, indep_vble, data, filename=None, step_data=1,
         # ax_anim.legend()
         fig_anim.tight_layout()
 
-        time_tag.set_text('$t = {:.1f}$ {}'.format(time[ind], time_unit))
+        time_tag.set_text("$t = {:.1f}$ {}".format(time[ind], time_unit))
 
     frames = np.arange(0, len(time), step_data)
-    animation = FuncAnimation(fig_anim, func_anim, frames=frames,
-                              repeat=True)
+    animation = FuncAnimation(fig_anim, func_anim, frames=frames, repeat=True)
 
-    writer = 'ffmpeg'
-    suff = '.mp4'
+    writer = "ffmpeg"
+    suff = ".mp4"
 
     animation.save(filename + suff, writer=writer)
 

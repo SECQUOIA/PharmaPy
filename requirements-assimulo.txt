@@ -1,0 +1,38 @@
+# PharmaPy Simulation Dependencies - CONDA-FORGE REQUIRED
+# [OK] VERIFIED WORKING INSTALLATION
+
+# IMPORTANT: assimulo and ALL dependencies must come from conda-forge
+# for GitHub Actions and local development consistency
+
+# RECOMMENDED INSTALLATION FOR CI/CD AND LOCAL DEV:
+
+# Option 1: Complete environment setup
+# conda env create -f environment.yml
+
+# Option 2: Install all dependencies from conda-forge
+# conda install -c conda-forge numpy scipy matplotlib pandas cython assimulo
+
+# Option 3: Use conda requirements file
+# conda install -c conda-forge --file requirements-conda.txt
+
+# [OK] VERIFIED WORKING VERSIONS:
+# - assimulo 3.7.1
+# - numpy 2.0.2
+# - scipy 1.11+
+# - sundials 7.4.0 (auto-installed with assimulo)
+# - Python 3.9.23
+
+# CONDA-FORGE ADVANTAGES FOR CI/CD:
+# 1. [OK] Consistent binary packages across platforms
+# 2. [OK] Automatic dependency resolution
+# 3. [OK] No compilation issues in GitHub Actions
+# 4. [OK] Compatible with conda/mamba environments
+# 5. [OK] All Fortran libraries pre-compiled
+# 6. [OK] Fast installation in CI
+
+# GitHub Actions recommendation:
+# - uses: conda-incubator/setup-miniconda@v2
+# - conda install -c conda-forge --file requirements-conda.txt
+
+# Local development:
+assimulo>=3.7.1  # conda install -c conda-forge assimulo

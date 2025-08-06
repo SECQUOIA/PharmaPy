@@ -1,6 +1,15 @@
-numpy<2
+# Core PharmaPy dependencies
+# 
+# IMPORTANT: For GitHub Actions and conda environments, install via conda-forge:
+# conda install -c conda-forge numpy cython scipy matplotlib pandas
+#
+# For pip-only environments, these versions are compatible:
+numpy>=1.26.4
 cython<3
-scipy<1.14
-assimulo==3.4.3
-matplotlib
-pandas
+scipy>=1.11.4
+matplotlib>=3.9.4
+pandas>=2.3.1
+
+# Optional simulation dependency (conda-forge only):
+# assimulo>=3.7.1  # Install via: conda install -c conda-forge assimulo
+# See requirements-assimulo.txt for detailed installation instructions

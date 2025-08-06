@@ -1,0 +1,299 @@
+name: PharmaPy CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master, develop, test-devel ]
+  pull_request:
+    branches: [ main, master, develop ]
+  schedule:
+    # Run tests weekly on Sunday at 3 AM UTC
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+env:
+  FORCE_COLOR: 1
+
+jobs:
+  # Core testing matrix - reduced but comprehensive
+  test-core:
+    name: Core Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30  # Prevent long-running jobs
+    strategy:
+      fail-fast: false
+      matrix:
+        # Reduced OS matrix to essential platforms
+        os: [ubuntu-latest, windows-latest]
+        # Reduced Python versions to LTS and latest
+        python-version: ['3.9', '3.11']
+        include:
+          # Add macOS for latest Python only to reduce jobs
+          - os: macos-latest
+            python-version: '3.11'
+          # Add Python 3.12 for Ubuntu only
+          - os: ubuntu-latest
+            python-version: '3.12'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniforge-version: latest
+        activate-environment: pharmapy-ci
+        environment-file: environment.yml
+        python-version: ${{ matrix.python-version }}
+        auto-activate-base: false
+        auto-update-conda: true
+        mamba-version: "*"
+        use-mamba: true
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gfortran liblapack-dev libblas-dev
+
+    - name: Install system dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install gcc
+
+    - name: Verify conda environment
+      shell: bash -l {0}
+      run: |
+        conda info
+        conda list
+        python --version
+        echo "Environment setup successful"
+        
+    - name: Install assimulo (optional)
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        echo "Attempting to install assimulo..."
+        conda install -c conda-forge assimulo --yes || pip install assimulo || echo "Assimulo installation failed, continuing without it"
+        
+    - name: Validate environment setup
+      shell: bash -l {0}
+      run: |
+        python -c "import numpy, scipy, matplotlib, pandas; print('Core scientific packages available')"
+        python -c "import pytest; print('Testing framework available')"
+        python -c "import importlib.util; print('Assimulo available' if importlib.util.find_spec('assimulo') else 'Assimulo not available')"
+
+    - name: Install PharmaPy
+      shell: bash -l {0}
+      run: |
+        pip install -e .
+
+    - name: Run unit tests
+      shell: bash -l {0}
+      run: |
+        python -m pytest tests/unit/ -v --tb=short
+
+    - name: Run integration tests
+      shell: bash -l {0}
+      run: |
+        python -m pytest tests/integration/ -v --tb=short --run-network-tests
+
+    - name: Test installation methods
+      shell: bash -l {0}
+      run: |
+        # Test wheel build and install
+        python setup.py bdist_wheel
+        pip install dist/*.whl --force-reinstall
+        python -c "import PharmaPy; print('Wheel installation successful')"
+
+  # Assimulo testing - lightweight focused test
+  test-assimulo:
+    name: Assimulo Integration Tests
+    runs-on: ubuntu-latest  # Use latest Ubuntu for speed
+    timeout-minutes: 15  # Prevent long-running jobs
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.9']  # Focus on 3.9 for assimulo compatibility
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Miniconda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniforge-version: latest
+        activate-environment: pharmapy-assimulo
+        environment-file: environment.yml
+        python-version: ${{ matrix.python-version }}
+        auto-activate-base: false
+        auto-update-conda: true
+        mamba-version: "*"
+        use-mamba: true
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential gfortran liblapack-dev libblas-dev
+
+    - name: Install assimulo
+      shell: bash -l {0}
+      run: |
+        conda install -c conda-forge assimulo --yes
+
+    - name: Install PharmaPy
+      shell: bash -l {0}
+      run: |
+        pip install -e .
+
+    - name: Test assimulo integration (fast tests only)
+      shell: bash -l {0}
+      run: |
+        python -c "import assimulo; print(f'Assimulo version: {assimulo.__version__}')"
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_assimulo_import -v
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_assimulo_solvers_available -v
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_pharmapy_with_assimulo -v
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_assimulo_version_compatibility -v
+        python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_sundials_integration -v
+
+  # Installation script testing - only on push to specific branches
+  test-installation-scripts:
+    name: Installation Scripts
+    timeout-minutes: 20  # Prevent long-running jobs
+    if: github.event_name == 'push' && (contains(github.ref, 'main') || contains(github.ref, 'master') || contains(github.ref, 'test-devel'))
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        auto-update-conda: true
+        python-version: '3.9'
+        channels: conda-forge,defaults
+
+    - name: Test Windows installation script
+      if: matrix.os == 'windows-latest'
+      shell: cmd
+      run: |
+        echo pharmapy-ci-test | InstallOnWindows.bat
+        call conda activate pharmapy-ci-test
+        python -c "import PharmaPy; print('Windows script installation successful')"
+
+    - name: Test macOS/Linux installation script
+      if: matrix.os != 'windows-latest'
+      shell: bash -l {0}
+      run: |
+        echo "pharmapy-ci-test" | bash InstallOnMac.sh
+        conda activate pharmapy-ci-test
+        python -c "import PharmaPy; print('Unix script installation successful')"
+
+  # Code quality and documentation - only on main branches
+  quality-and-docs:
+    name: Code Quality & Documentation
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniforge-version: latest
+        activate-environment: pharmapy-ci
+        environment-file: environment.yml
+        python-version: '3.11'
+        auto-activate-base: false
+
+    - name: Install PharmaPy and dev dependencies
+      shell: bash -l {0}
+      run: |
+        pip install -e .
+        pip install -r requirements-dev.txt
+
+    - name: Run linting
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        flake8 PharmaPy/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 PharmaPy/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Generate coverage report
+      shell: bash -l {0}
+      run: |
+        python -m pytest tests/ --cov=PharmaPy --cov-report=html --cov-report=xml --tb=short
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+    - name: Archive coverage HTML report
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: htmlcov/
+
+    - name: Build documentation
+      shell: bash -l {0}
+      run: |
+        cd doc
+        make html
+
+    - name: Archive documentation
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: documentation
+        path: doc/_build/html/
+
+  # Build and packaging - only on main branches and releases
+  build-and-package:
+    name: Build & Package
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Conda
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        miniforge-version: latest
+        activate-environment: pharmapy-build
+        python-version: '3.11'
+        auto-activate-base: false
+
+    - name: Install build dependencies
+      shell: bash -l {0}
+      run: |
+        pip install build wheel twine
+
+    - name: Build source and wheel distributions
+      shell: bash -l {0}
+      run: |
+        python -m build
+
+    - name: Verify build
+      shell: bash -l {0}
+      run: |
+        pip install dist/*.whl
+        python -c "import PharmaPy; print('Package installation successful')"
+
+    - name: Archive build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-packages
+        path: dist/

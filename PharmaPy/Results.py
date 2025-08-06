@@ -11,9 +11,9 @@ import pandas as pd
 
 def get_name_object(obj):
     typ = obj.__class__.__name__
-    identif = repr(obj).split(' ')[-1][:-1]
+    identif = repr(obj).split(" ")[-1][:-1]
 
-    return '.'.join([typ, identif])
+    return ".".join([typ, identif])
 
 
 def get_stream_info(obj, fields):
@@ -49,7 +49,7 @@ def flatten_dict_fields(di, index=None):
                 suff = index[key]
 
             for ind, num in enumerate(val):
-                new_fields['%s_%s' % (key, suff[ind])] = num
+                new_fields["%s_%s" % (key, suff[ind])] = num
 
     for key in target_keys:
         di.pop(key)
@@ -60,10 +60,12 @@ def flatten_dict_fields(di, index=None):
 
 def get_di_multiindex(di):
 
-    out = {(i, j, k): di[i][j][k]
-           for i in di.keys()
-           for j in di[i].keys()
-           for k in di[i][j].keys()}
+    out = {
+        (i, j, k): di[i][j][k]
+        for i in di.keys()
+        for j in di[i].keys()
+        for k in di[i][j].keys()
+    }
 
     return out
 
@@ -109,20 +111,20 @@ def pprint(di, name_items, fields, str_out=True):
 
     # Lenght of remaining columns
     for field in fields:
-        field_vals = [di[name].get(field, '') for name in items]
+        field_vals = [di[name].get(field, "") for name in items]
 
         for ind, val in enumerate(field_vals):
             if isinstance(val, list):
                 if all([type(a) == str for a in val]):
-                    field_vals[ind] = ', '.join(val)
+                    field_vals[ind] = ", ".join(val)
                 else:
-                    field_vals[ind] = '%i, ..., %i' % (val[0], val[-1])
+                    field_vals[ind] = "%i, ..., %i" % (val[0], val[-1])
 
         len_vals = [len(repr(val)) for val in field_vals]
         max_lens[field] = max(len_vals)
 
     # All fields
-    all_fields = {name_items: 's', **fields}
+    all_fields = {name_items: "s", **fields}
     for name in all_fields:
         le = max(len(name), max_lens[name]) + 2
 
@@ -131,25 +133,25 @@ def pprint(di, name_items, fields, str_out=True):
 
         lens_header.append(le)
 
-    form_header = ' '.join(form_header)
-    form_vals = ' '.join(form_vals)
+    form_header = " ".join(form_header)
+    form_vals = " ".join(form_vals)
 
     len_headers = sum(lens_header)
 
-    lines = '-' * len_headers
+    lines = "-" * len_headers
     out.append(lines)
     out.append(form_header.format(*header))
     out.append(lines)
 
     for name in di:
-        field_vals = [di[name].get(field, '') for field in fields]
+        field_vals = [di[name].get(field, "") for field in fields]
 
         for ind, val in enumerate(field_vals):
             if isinstance(val, list):
                 if all([type(a) == str for a in val]):
-                    field_vals[ind] = ', '.join(val)
+                    field_vals[ind] = ", ".join(val)
                 else:
-                    field_vals[ind] = '%i, ..., %i' % (val[0], val[-1])
+                    field_vals[ind] = "%i, ..., %i" % (val[0], val[-1])
 
         item = form_vals.format(*([name] + field_vals))
 
@@ -158,7 +160,7 @@ def pprint(di, name_items, fields, str_out=True):
     out.append(lines)
 
     if str_out:
-        out = '\n'.join(out)
+        out = "\n".join(out)
 
     return out
 
@@ -170,33 +172,35 @@ class DynamicResult:
         self.di_fstates = di_fstates
 
     def __repr__(self):
-        headers = {'dim': '', 'units': 's', 'index': 's'}
+        headers = {"dim": "", "units": "s", "index": "s"}
 
-        str_states = pprint(self.di_states, 'states', headers)
+        str_states = pprint(self.di_states, "states", headers)
 
         state_example = list(self.di_states.keys())[0]
 
-        header = 'PharmaPy result object'
-        lines = '-' * (len(header) + 2)
+        header = "PharmaPy result object"
+        lines = "-" * (len(header) + 2)
 
-        header = '\n'.join([lines, header, lines + '\n\n'])
+        header = "\n".join([lines, header, lines + "\n\n"])
 
-        explain = 'Fields shown in the tables below can be accessed as ' \
-            'result.<field>, e.g. result.%s \n\n' % state_example
+        explain = (
+            "Fields shown in the tables below can be accessed as "
+            "result.<field>, e.g. result.%s \n\n" % state_example
+        )
 
         top_text = header + explain
 
         if self.di_fstates is not None and len(self.di_fstates) > 0:
-            head = {'dim': '', 'units': 's', 'index': 's'}
-            str_fstates = pprint(self.di_fstates, 'f(states)', head)
+            head = {"dim": "", "units": "s", "index": "s"}
+            str_fstates = pprint(self.di_fstates, "f(states)", head)
 
-            out_str = str_states + '\n\n' + str_fstates
+            out_str = str_states + "\n\n" + str_fstates
 
         else:
             out_str = str_states
 
         out_str = top_text + out_str
-        out_str += '\n\nTime vector can be accessed as result.time\n'
+        out_str += "\n\nTime vector can be accessed as result.time\n"
 
         return out_str
 
@@ -210,94 +214,99 @@ class SimulationResult:
 
         names_uos = sim.execution_names
 
-        headers = {'Diff eqns': 'd', 'Alg eqns': 'd',
-                   'Model type': 's', 'PharmaPy type': 's'}
+        headers = {
+            "Diff eqns": "d",
+            "Alg eqns": "d",
+            "Model type": "s",
+            "PharmaPy type": "s",
+        }
 
         for name in names_uos:
             uo = getattr(sim, name)
-            states_di = getattr(uo, 'states_di', None)
+            states_di = getattr(uo, "states_di", None)
 
             num_discr = 1
 
-            if hasattr(uo, 'num_discr'):
+            if hasattr(uo, "num_discr"):
                 num_discr = uo.num_discr
-            elif hasattr(uo, 'number_nodes'):
+            elif hasattr(uo, "number_nodes"):
                 num_discr = uo.number_nodes
 
             if states_di is not None:
                 num_diff = []
                 num_alg = []
                 for var, di in states_di.items():
-                    num = di.get('index', 1)
+                    num = di.get("index", 1)
 
                     if isinstance(num, (list, tuple)):
                         num = len(num)
 
                     num *= num_discr
 
-                    if 'type' in di:
-                        if di['type'] == 'diff':
+                    if "type" in di:
+                        if di["type"] == "diff":
                             num_diff.append(num)
-                        elif di['type'] == 'alg':
+                        elif di["type"] == "alg":
                             num_alg.append(num)
 
                 if sum(num_diff) == 0:
-                    model_type = 'ALG'
+                    model_type = "ALG"
                 elif sum(num_diff) > 0 and sum(num_alg) > 0:
-                    model_type = 'DAE'
+                    model_type = "DAE"
                 else:
-                    model_type = 'ODE'
+                    model_type = "ODE"
 
                 di_uos[name] = {}
 
                 pharmapy_type = getattr(sim, name).__class__.__name__
 
-                di_uos[name]['Diff eqns'] = sum(num_diff)
-                di_uos[name]['Alg eqns'] = sum(num_alg)
-                di_uos[name]['Model type'] = model_type
-                di_uos[name]['PharmaPy type'] = pharmapy_type
+                di_uos[name]["Diff eqns"] = sum(num_diff)
+                di_uos[name]["Alg eqns"] = sum(num_alg)
+                di_uos[name]["Model type"] = model_type
+                di_uos[name]["PharmaPy type"] = pharmapy_type
 
-        out_uos = pprint(di_uos, 'Unit operation', headers, str_out=False)
+        out_uos = pprint(di_uos, "Unit operation", headers, str_out=False)
 
         self.out_uos = out_uos
 
-    def GetStreamTable(self, basis='mass'):
+    def GetStreamTable(self, basis="mass"):
         uo_dict = self.sim.uos_instances
 
-        base = ['temp', 'pres']
+        base = ["temp", "pres"]
 
-        if basis == 'mass':
-            fields_phase = base + ['mass', 'vol', 'mass_frac']
-            fields_stream = base + ['mass_flow', 'vol_flow', 'mass_frac']
+        if basis == "mass":
+            fields_phase = base + ["mass", "vol", "mass_frac"]
+            fields_stream = base + ["mass_flow", "vol_flow", "mass_frac"]
 
-        elif basis == 'mole':
-            fields_phase = base + ['moles', 'vol', 'mole_frac']
-            fields_stream = base + ['mole_flow', 'vol_flow', 'mole_frac']
+        elif basis == "mole":
+            fields_phase = base + ["moles", "vol", "mole_frac"]
+            fields_stream = base + ["mole_flow", "vol_flow", "mole_frac"]
 
         info = {}
         for ind, name in enumerate(uo_dict):
             matter_obj = uo_dict[name].Outlet
 
             if not isinstance(matter_obj, dict):
-                matter_obj = {'Outlet': matter_obj}
+                matter_obj = {"Outlet": matter_obj}
             else:
-                matter_obj = {'Outlet_%s' % key: val
-                              for key, val in matter_obj.items()}
+                matter_obj = {"Outlet_%s" % key: val for key, val in matter_obj.items()}
 
             info[name] = {}
 
             for out_name, matter in matter_obj.items():
-                if 'Stream' in matter.__class__.__name__:
+                if "Stream" in matter.__class__.__name__:
                     fields = fields_stream
                 else:
                     fields = fields_phase
 
-                if matter.__module__ == 'PharmaPy.MixedPhases':
+                if matter.__module__ == "PharmaPy.MixedPhases":
                     matter = matter.Phases
 
                 entries = get_stream_info(matter, fields)
-                entries = {key: flatten_dict_fields(val, self.sim.NamesSpecies)
-                           for key, val in entries.items()}
+                entries = {
+                    key: flatten_dict_fields(val, self.sim.NamesSpecies)
+                    for key, val in entries.items()
+                }
 
                 info[name][out_name] = entries
 
@@ -322,12 +331,12 @@ class SimulationResult:
 
     def __repr__(self):
         # Welcome message
-        welcome = 'Welcome to PharmaPy'
+        welcome = "Welcome to PharmaPy"
         len_header = len(welcome) + 2
-        lines = '-' * len_header
+        lines = "-" * len_header
 
         names_uos = self.sim.execution_names
-        out = [lines, welcome, lines + '\n']
+        out = [lines, welcome, lines + "\n"]
 
         # Flowsheet ASCII diagram (if the graph is simple)
         if names_uos is not None:
@@ -335,11 +344,11 @@ class SimulationResult:
 
             if is_simple:
 
-                flow_diagram = ' --> '.join(names_uos)
+                flow_diagram = " --> ".join(names_uos)
 
-                out += ['Flowsheet structure:', flow_diagram + '\n']
+                out += ["Flowsheet structure:", flow_diagram + "\n"]
 
         # Include UOs table
-        out_str = '\n'.join(out + self.out_uos)
+        out_str = "\n".join(out + self.out_uos)
 
         return out_str
