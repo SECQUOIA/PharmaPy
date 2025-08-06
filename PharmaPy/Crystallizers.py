@@ -14,6 +14,8 @@ from PharmaPy.Commons import (
     reorder_sens,
     plot_sens,
     trapezoidal_rule,
+    upwind_fvm,
+    high_resolution_fvm,
     eval_state_events,
     handle_events,
     unpack_states,
@@ -23,14 +25,16 @@ from PharmaPy.Commons import (
 
 from PharmaPy.ProcessControl import analyze_controls
 
-from PharmaPy.jac_module import numerical_jac_central, dx_jac_x
-from PharmaPy.Connections import get_inputs_new
+from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
+from PharmaPy.Connections import get_inputs, get_inputs_new
 
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_function, plot_distrib
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from matplotlib.ticker import AutoMinorLocator
+from matplotlib.colors import LightSource
 
 from scipy.optimize import newton
 
@@ -2145,7 +2149,7 @@ class MSMPR(_BaseCryst):
                 num_distr=dp["distrib"]
             )
 
-            if isinstance(self, MSMPR):
+            if type(self) == MSMPR:
                 vol_slurry = self.Slurry.vol
                 self.Solid_1.updatePhase(distrib=dp["distrib"][-1] * vol_slurry)
 
@@ -2167,7 +2171,7 @@ class MSMPR(_BaseCryst):
         self.Solid_1.temp = dp["temp"][-1]
         self.Liquid_1.temp = dp["temp"][-1]
 
-        if isinstance(self, MSMPR):
+        if type(self) == MSMPR:
             vol_slurry = self.Slurry.vol
             vol_liq = (1 - self.Solid_1.kv * dp["mu_n"][-1, 3]) * vol_slurry
 
@@ -2209,7 +2213,7 @@ class MSMPR(_BaseCryst):
         solid_comp = np.zeros(self.num_species)
         solid_comp[self.target_ind] = 1
 
-        if isinstance(self, MSMPR):
+        if type(self) == MSMPR:
             liquid_out = LiquidStream(
                 path,
                 mass_conc=dp["mass_conc"][-1],
@@ -2422,6 +2426,7 @@ class SemibatchCryst(MSMPR):
         vol,
         mu_n,
         h_in,
+        heat_prof=False,
     ):
 
         rho_susp, rho_in = rhos
