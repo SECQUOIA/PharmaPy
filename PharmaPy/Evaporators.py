@@ -1229,7 +1229,7 @@ class Evaporator:
             The default is None.
         **fig_kwargs : keyword arguments
             keyword arguments to be passed to the construction of fig and
-            axes object of matplotlib (plt.subplots(**kwargs)).
+            axes object of matplotlib (``plt.subplots(**kwargs)``).
             Do not use nrows or ncols arguments, since the plot grid is already
             defined by PharmaPy
 
@@ -2092,7 +2092,7 @@ class ContinuousEvaporator:
             mol_liq-mol_vap vs t is plotted.
         **fig_kwargs : keyword arguments
             keyword arguments to be passed to the construction of fig and
-            axes objects of matplotlib (plt.subplots(**kwargs)).
+            axes objects of matplotlib (``plt.subplots(**kwargs)``).
             Do not use nrows or ncols arguments, since the plot grid is already
             defined by PharmaPy
 

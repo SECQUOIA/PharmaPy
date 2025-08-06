@@ -822,6 +822,9 @@ class BatchReactor(_BaseReactor):
     ):
         """
         Batch reactor method for solving the individual unit directly.
+
+        Parameters
+        ----------
         runtime : float (default = None)
             Value for total unit runtime.
         time_grid : list of float (optional, default = None)

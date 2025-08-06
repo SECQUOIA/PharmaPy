@@ -125,14 +125,17 @@ class RxnKinetics:
     r"""
     Create a reaction kinetics object. Reaction rate r\ :sub:`i` is assumed to
     have the following functional form:
-        r\ :sub:`i` = f\ :sub:`1` (T) * f\ :sub:`2` ( C\ :sub:`1`, ..., C\ :sub:`n_comp`)
+
+    r\ :sub:`i` = f\ :sub:`1` (T) * f\ :sub:`2` ( C\ :sub:`1`, ..., C\ :sub:`n_comp`)
 
     with the temperature-dependent term f\ :sub:`1` given by:
-        f\ :sub:`1` = k\ :sub:`i` * exp(- Ea\ :sub:`i`/R/T)
+
+    f\ :sub:`1` = k\ :sub:`i` * exp(- Ea\ :sub:`i`/R/T)
 
     Composition-dependent term f\ :sub:`2` can be passed as a user-defined
     function. If not given, f\ :sub:`2` is assumed to be of the form:
-        f\ :sub:`2` = prod\ :sub:`j in reactants for rxn i` C\ :sub:`j` (alpha\ :sub:`{i,j}`)
+
+    f\ :sub:`2` = prod\ :sub:`j in reactants for rxn i` C\ :sub:`j` (alpha\ :sub:`{i,j}`)
 
     where alpha\ :sub:`{i,j}` values are determined automatically by PharmaPy from
     the stoichiometric matrix of the reaction system. Custom reaction
@@ -167,6 +170,7 @@ class RxnKinetics:
         pure-component json file. If 'rxn_list' is None, then both
         stoichiometric_matrix' and 'partic_species' have to be passed
         (see below). The default is None.
+
     stoiciometric_matrix : numpy array, optional
         stoichiometric matrix for the set of reactions. It must have
         n_rxn rows and n_comp columns, so the element (i, j) represents
