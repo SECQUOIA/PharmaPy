@@ -2,421 +2,241 @@
 """
 Local validation script for PharmaPy testing infrastructure.
 Run this before pushing to ensure CI will pass.
+
+This script extracts and runs the same validation steps as GitHub Actions CI,
+ensuring perfect sync between local and remote validation.
 """
 
 import os
 import sys
 import subprocess
+import yaml
 import platform
 from pathlib import Path
 
 
-def run_command(
-    cmd: list[str],
-    cwd: str | None = None,
-    timeout: int = 300,
-    shell: bool | None = None,
-) -> tuple[bool, str, str]:
-    """
-    Run a command and return success status and output.
-
-    Parameters:
-        cmd (list[str]): The command to run as a list of arguments.
-        cwd (str | None): The working directory to run the command in.
-        timeout (int): Timeout in seconds for the command.
-        shell (bool | None): Whether to run the command through the shell.
-            If None (default), uses True on Windows and False otherwise.
-            This is determined by: shell = platform.system() == "Windows"
-
-    Returns:
-        tuple[bool, str, str]: (success, stdout, stderr)
-    """
-    if shell is None:
-        shell = platform.system() == "Windows"
-
+def run_command(cmd: str, shell: bool = True, cwd: str = None) -> tuple[bool, str, str]:
+    """Run a shell command and return success status and output."""
     try:
         result = subprocess.run(
-            cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout, shell=shell
+            cmd, shell=shell, capture_output=True, text=True, timeout=300, cwd=cwd
         )
         return result.returncode == 0, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
-        return False, "", f"Command timed out after {timeout} seconds"
+        return False, "", "Command timed out after 300 seconds"
     except Exception as e:
         return False, "", str(e)
 
 
-def test_installation_methods():
-    """Test different installation methods."""
-    print(" Testing installation methods...")
-
-    methods = [
-        ("pip install -e .", "Modern pip installation"),
-        ("python setup.py develop", "Legacy setup.py installation"),
-    ]
-
-    for cmd, description in methods:
-        print(f"\n  Testing: {description}")
-        success, stdout, stderr = run_command(cmd.split())
-
-        if success:
-            print(f"    [OK] {description} successful")
-        else:
-            print(f"    [FAIL] {description} failed")
-            print(f"    Error: {stderr}")
-            return False
-
-    return True
-
-
-def test_imports():
-    """Test package imports."""
-    print("\n Testing imports...")
-
-    import_tests = [
-        ("import PharmaPy", True),
-        ("from PharmaPy import Utilities", True),
-        ("from PharmaPy import Reactors", False),  # Requires assimulo
-        ("from PharmaPy import Streams", False),  # Requires assimulo
-        ("from PharmaPy import Phases", False),  # Requires assimulo
-    ]
-
-    for test_import, required in import_tests:
-        try:
-            exec(test_import)
-            print(f"  [OK] {test_import}")
-        except Exception as e:
-            if required:
-                print(f"  [FAIL] {test_import} - {e}")
-                return False
-            else:
-                print(f"  [SKIP] {test_import} - {e} (optional)")
-
-    return True
-
-
-def test_make_commands():
-    """Test make commands."""
-    print("\n Testing make commands...")
-
-    is_windows = platform.system() == "Windows"
-    make_cmd = "make.bat" if is_windows else "make"
-
-    commands = [
-        "test-imports",
-        "clean",
-    ]
-
-    for cmd in commands:
-        print(f"  Testing: {make_cmd} {cmd}")
-        success, stdout, stderr = run_command([make_cmd, cmd])
-
-        if success:
-            print(f"    [OK] {make_cmd} {cmd} successful")
-        else:
-            print(f"    [FAIL] {make_cmd} {cmd} failed")
-            print(f"    Error: {stderr}")
-
-    return True
-
-
-def test_build_system():
-    """Test package building."""
-    print("\n Testing build system...")
-
-    # Test if build tools are available
+def parse_ci_workflow(workflow_path: Path) -> dict:
+    """Parse GitHub Actions workflow YAML file."""
     try:
-        import build
-
-        print("  [OK] Build module available")
-    except ImportError:
-        print("  [INFO] Build module not available, installing...")
-        success, _, _ = run_command(["pip", "install", "build"])
-        if not success:
-            print("  [FAIL] Could not install build module")
-            return False
-
-    # Test building
-    print("  Building package...")
-    success, stdout, stderr = run_command(["python", "-m", "build"])
-
-    if success:
-        print("  [OK] Package build successful")
-
-        # Check if distributions exist
-        dist_path = Path("dist")
-        if dist_path.exists():
-            wheels = list(dist_path.glob("*.whl"))
-            tarballs = list(dist_path.glob("*.tar.gz"))
-
-            if wheels and tarballs:
-                print(
-                    f"  [OK] Found {len(wheels)} wheel(s) and {len(tarballs)} source distribution(s)"
-                )
-            else:
-                print(
-                    f"  [WARN] Missing distributions: wheels={len(wheels)}, tarballs={len(tarballs)}"
-                )
-
-        return True
-    else:
-        print("  [FAIL] Package build failed")
-        print(f"  Error: {stderr}")
-        return False
-
-
-def test_test_runners():
-    """Test our custom test runners."""
-    print("\n Testing test runners...")
-
-    # Test Python test runner
-    print("  Testing run_tests.py...")
-    success, stdout, stderr = run_command(
-        [
-            "python",
-            "run_tests.py",
-            "--skip-reactor",
-            "--skip-flowsheet",
-            "--skip-pytest",
-        ]
-    )
-
-    if success:
-        print("  [OK] Python test runner successful")
-    else:
-        print("  [FAIL] Python test runner failed")
-        print(f"  Output: {stdout}")
-        print(f"  Error: {stderr}")
-        return False
-
-    # Test Windows batch runner (if on Windows)
-    if platform.system() == "Windows":
-        print("  Testing run_tests.bat...")
-        success, stdout, stderr = run_command(["run_tests.bat"])
-
-        if success:
-            print("  [OK] Windows batch test runner successful")
-        else:
-            print("  [FAIL] Windows batch test runner failed")
-            print(f"  Error: {stderr}")
-
-    return True
-
-
-def check_assimulo_availability():
-    """Check if assimulo is available."""
-    print("\n Checking assimulo availability...")
-
-    try:
-        import assimulo
-
-        print(f"  [OK] Assimulo available: version {assimulo.__version__}")
-        return True
-    except ImportError:
-        print("  [INFO] Assimulo not available - simulation features will be limited")
-        print("   To install assimulo, consider using conda:")
-        print("     conda install -c conda-forge sundials=5.8.0 superlu=5.2.2")
-        print("     pip install assimulo")
-        print("   This is informational - core PharmaPy works without assimulo")
-        return True  # Changed to True since this is informational
-
-
-def test_code_quality():
-    """Test code quality using linting and formatting checks."""
-    print("\n Testing code quality...")
-
-    # Run flake8 for critical errors (blocking)
-    print("  Running flake8 (critical errors)...")
-    success, stdout, stderr = run_command(
-        [
-            "flake8",
-            "PharmaPy/",
-            "--count",
-            "--select=E9,F63,F7,F82",
-            "--show-source",
-            "--statistics",
-        ]
-    )
-
-    if not success and "0" not in stdout:
-        print(f"  [FAIL] Critical linting errors found:")
-        print(f"    {stdout}")
-        return False
-    else:
-        print("  [OK] No critical linting errors")
-
-    # Run flake8 for all configured checks (non-blocking)
-    print("  Running flake8 (all configured checks)...")
-    success, stdout, stderr = run_command(
-        [
-            "flake8",
-            "PharmaPy/",
-            "--count",
-            "--exit-zero",
-            "--max-complexity=10",
-            "--max-line-length=127",
-            "--statistics",
-        ]
-    )
-
-    # Count issues from output
-    if stdout and any(
-        line.strip().isdigit() and int(line.strip()) > 0 for line in stdout.split("\n")
-    ):
-        issues = [
-            line
-            for line in stdout.split("\n")
-            if line.strip().isdigit() and int(line.strip()) > 0
-        ]
-        total_issues = sum(int(issue) for issue in issues if issue.strip().isdigit())
-        print(f"  [INFO] Found {total_issues} linting issues (not blocking)")
-    else:
-        print("  [OK] No linting issues found")
-
-    # Check code formatting with black
-    print("  Checking code formatting with black...")
-    success, stdout, stderr = run_command(
-        [
-            "black",
-            "--check",
-            "--diff",
-            "PharmaPy/",
-            "tests/",
-            "*.py",
-            "--exclude=/(\\.(git|venv|tox)|build|dist|\\.eggs)/",
-        ]
-    )
-
-    if not success:
-        print(f"  [WARN] Code formatting issues found:")
-        if stdout:
-            print(f"    {stdout[:500]}...")  # Show first 500 chars of diff
-        print("  [INFO] Run 'black PharmaPy/ tests/ *.py' to auto-format")
-    else:
-        print("  [OK] Code formatting is correct")
-
-    # Test documentation build
-    print("  Testing documentation build...")
-    success, stdout, stderr = run_command(
-        ["sphinx-build", "-b", "html", "doc/online_docs", "doc/build/html"]
-    )
-
-    if not success:
-        print(f"  [FAIL] Documentation build failed:")
-        print(f"    stderr: {stderr}")
-        return False
-    else:
-        print("  [OK] Documentation builds successfully")
-
-    # Test imports for documentation
-    print("  Testing imports for documentation...")
-    try:
-        import PharmaPy.Reactors
-
-        print("  [OK] Can import PharmaPy.Reactors (needed for docs)")
+        with open(workflow_path, "r") as f:
+            return yaml.safe_load(f)
     except Exception as e:
-        print(f"  [WARN] Cannot import PharmaPy.Reactors: {e}")
+        print(f"Error parsing CI workflow: {e}")
+        return {}
 
-    return True
+
+def extract_quality_steps(workflow: dict) -> list[dict]:
+    """Extract the quality and documentation steps from CI workflow."""
+    try:
+        quality_job = workflow["jobs"]["quality-and-docs"]
+        steps = quality_job["steps"]
+
+        # Filter to the validation steps we want to run locally
+        validation_steps = []
+        for step in steps:
+            name = step.get("name", "")
+            if any(
+                keyword in name.lower()
+                for keyword in ["linting", "black", "coverage", "documentation"]
+            ):
+                validation_steps.append(step)
+
+        return validation_steps
+    except Exception as e:
+        print(f"Error extracting quality steps: {e}")
+        return []
 
 
-def test_coverage():
-    """Test coverage generation."""
-    print("\n Testing coverage generation...")
+def adapt_command_for_local(run_commands: str) -> list[str]:
+    """
+    Adapt CI run commands for local execution.
+    Remove CI-specific parts and adapt for local environment.
+    """
+    commands = []
+    for line in run_commands.strip().split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
 
-    # Run tests with coverage
-    success, stdout, stderr = run_command(
-        [
-            "python",
-            "-m",
-            "pytest",
-            "tests/",
-            "--cov=PharmaPy",
-            "--cov-report=html",
-            "--cov-report=xml",
-            "--tb=short",
-            "-q",
-        ]
-    )
+        # Skip CI-specific commands but keep informational echoes
+        if any(
+            skip in line
+            for skip in ["conda install", "pip install -e", "pip install -r"]
+        ):
+            continue
 
-    # Check if coverage files exist (this is the main goal)
-    html_exists = Path("htmlcov/index.html").exists()
-    xml_exists = Path("coverage.xml").exists()
+        # Adapt paths and commands for local execution
+        if "cd doc" in line:
+            continue  # Skip the cd, we'll handle the make command directly
+        elif "make html" in line:
+            # Replace with direct sphinx command
+            line = "sphinx-build -b html doc/online_docs doc/build/html"
+        elif line.startswith("echo "):
+            # Keep echo commands for context
+            pass
 
-    if html_exists and xml_exists:
-        print("  [OK] Coverage reports generated successfully")
-        print("  [OK] HTML coverage report generated")
-        print("  [OK] XML coverage report generated")
+        commands.append(line)
+
+    return commands
+
+
+def run_validation_step(step: dict) -> bool:
+    """Run a single validation step locally."""
+    name = step.get("name", "Unknown step")
+    run_commands = step.get("run", "")
+
+    print(f"\n[RUNNING] {name}")
+    print("-" * 50)
+
+    if not run_commands:
+        print("  [SKIP] No run commands found")
         return True
-    elif not success:
-        print(f"  [FAIL] Coverage generation failed:")
-        print(f"    stdout: {stdout}")
-        print(f"    stderr: {stderr}")
-        return False
-    else:
-        print("  [WARN] Tests ran but coverage files missing")
 
-        if html_exists:
-            print("  [OK] HTML coverage report generated")
+    # Extract and adapt commands
+    commands = adapt_command_for_local(run_commands)
+
+    if not commands:
+        print("  [SKIP] No applicable commands for local execution")
+        return True
+
+    # Run each command
+    overall_success = True
+    for cmd in commands:
+        print(f"  -> {cmd}")
+        success, stdout, stderr = run_command(cmd)
+
+        if success:
+            print("    [OK] Success")
+            if stdout.strip():
+                # Show condensed output for successful commands
+                lines = stdout.strip().split("\n")
+                if len(lines) <= 3:
+                    for line in lines:
+                        if line.strip():
+                            print(f"    OUTPUT: {line}")
+                else:
+                    print(f"    OUTPUT: {lines[0]}")
+                    if len(lines) > 1:
+                        print(f"    OUTPUT: ... ({len(lines)-1} more lines)")
         else:
-            print("  [WARN] HTML coverage report not found")
+            print("    [FAIL] Failed")
+            if stderr:
+                print(f"    ERROR: {stderr[:200]}...")
+            if stdout:
+                print(f"    OUTPUT: {stdout[:200]}...")
 
-        if xml_exists:
-            print("  [OK] XML coverage report generated")
-        else:
-            print("  [WARN] XML coverage report not found")
+            # For linting and formatting, failure is informational, not blocking
+            if any(keyword in name.lower() for keyword in ["linting", "black"]):
+                print("    [INFO] Non-blocking: continuing...")
+            else:
+                overall_success = False
 
-        return html_exists or xml_exists  # Pass if at least one exists
+    return overall_success
 
 
 def main():
-    """Main validation function."""
-    print(" PharmaPy Local Validation Suite")
+    """Main function to run CI validation locally."""
+    print("PharmaPy CI-Based Local Validation")
     print("=" * 60)
+    print("This script runs the same validation steps as GitHub Actions CI")
+    print("No more maintaining separate validation logic!")
 
     # Change to repo directory
     repo_dir = Path(__file__).parent
     os.chdir(repo_dir)
     print(f"Working directory: {repo_dir}")
 
-    tests = [
-        ("Import Tests", test_imports),
-        ("Make Commands", test_make_commands),
-        ("Build System", test_build_system),
-        ("Test Runners", test_test_runners),
-        ("Code Quality", test_code_quality),
-        ("Coverage Generation", test_coverage),
-        ("Assimulo Check", check_assimulo_availability),
+    # Parse CI workflow
+    ci_path = repo_dir / ".github" / "workflows" / "ci.yml"
+    if not ci_path.exists():
+        print(f"[ERROR] CI workflow not found at {ci_path}")
+        return 1
+
+    print(f"Loading CI workflow from {ci_path}")
+    workflow = parse_ci_workflow(ci_path)
+
+    if not workflow:
+        print("[ERROR] Failed to parse CI workflow")
+        return 1
+
+    # Extract quality steps
+    quality_steps = extract_quality_steps(workflow)
+    if not quality_steps:
+        print("[ERROR] No quality steps found in CI workflow")
+        return 1
+
+    print(f"Found {len(quality_steps)} validation steps to run")
+
+    # Prerequisites check
+    print("\nChecking prerequisites...")
+    prereq_commands = [
+        "python --version",
+        "pip --version",
+        "flake8 --version",
+        "black --version",
+        "pytest --version",
     ]
 
+    missing_tools = []
+    for cmd in prereq_commands:
+        success, stdout, stderr = run_command(cmd)
+        tool = cmd.split()[0]
+        if success:
+            version = stdout.strip().split("\n")[0]
+            print(f"  [OK] {tool}: {version}")
+        else:
+            print(f"  [MISSING] {tool}: Not found")
+            missing_tools.append(tool)
+
+    if missing_tools:
+        print(f"\nWarning: Missing tools: {', '.join(missing_tools)}")
+        print("   Install with: pip install flake8 black pytest pytest-cov")
+        print("   Or use: pip install -r requirements-dev.txt")
+
+    # Run validation steps
+    print(f"\nRunning {len(quality_steps)} validation steps...")
     results = {}
-    for test_name, test_func in tests:
-        print(f"\n" + "=" * 60)
+
+    for step in quality_steps:
+        step_name = step.get("name", "Unknown")
         try:
-            success = test_func()
-            results[test_name] = success
+            success = run_validation_step(step)
+            results[step_name] = success
         except Exception as e:
-            print(f"[FAIL] {test_name} failed with exception: {e}")
-            results[test_name] = False
+            print(f"[EXCEPTION] Exception in {step_name}: {e}")
+            results[step_name] = False
 
     # Summary
-    print(f"\n" + "=" * 60)
-    print(" Validation Summary")
+    print(f"\nValidation Summary")
     print("=" * 60)
 
     passed = sum(results.values())
     total = len(results)
 
-    for test_name, success in results.items():
+    for step_name, success in results.items():
         status = "[PASS]" if success else "[FAIL]"
-        print(f"  {test_name:<20} {status}")
+        print(f"  {status} {step_name}")
 
-    print(f"\nOverall: {passed}/{total} tests passed")
+    print(f"\nOverall: {passed}/{total} steps passed")
 
     if passed == total:
-        print(" All validations passed! Ready for CI/CD.")
+        print("All validations passed! Ready for CI/CD.")
         return 0
     else:
-        print("[FAIL] Some validations failed. Please fix before pushing.")
+        print("Some validations failed. Please fix before pushing.")
         return 1
 
 

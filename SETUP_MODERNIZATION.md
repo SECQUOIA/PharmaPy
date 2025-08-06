@@ -234,12 +234,12 @@ make test-imports      # Import testing
 ### Test Coverage
 
 #### Current Test Status
-- ✓ **Package Installation**: Multiple methods validated
-- ✓ **Core Imports**: Basic PharmaPy functionality
-- ! **Simulation Features**: Require assimulo (compatibility issues)
-- ✓ **Cross-Platform**: Windows, macOS, Linux support
-- ✓ **Multi-Python**: 3.9-3.12 installation testing
-- ✓ **Build System**: Modern packaging standards
+- [OK] **Package Installation**: Multiple methods validated
+- [OK] **Core Imports**: Basic PharmaPy functionality
+- [WARN] **Simulation Features**: Require assimulo (compatibility issues)
+- [OK] **Cross-Platform**: Windows, macOS, Linux support
+- [OK] **Multi-Python**: 3.9-3.12 installation testing
+- [OK] **Build System**: Modern packaging standards
 
 #### Known Limitations
 - `assimulo` compatibility issues with Python 3.10+
