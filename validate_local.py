@@ -23,8 +23,8 @@ def run_command(
     Automatically detects shell usage based on platform and command type.
     """
     if shell is None:
-        # Use shell=True for string commands on Windows, False otherwise
-        shell = isinstance(cmd, str) and platform.system() == "Windows"
+        # Use shell=True for string commands, False for list commands
+        shell = isinstance(cmd, str)
     try:
         result = subprocess.run(
             cmd,
@@ -93,10 +93,11 @@ def adapt_command_for_local(run_commands: str) -> list[str]:
 
         # Adapt paths and commands for local execution
         if "cd doc" in line:
-            continue  # Skip the cd, we'll handle the make command directly
+            # Keep track that we need to change directory for subsequent commands
+            continue
         elif "make html" in line:
-            # Replace with direct sphinx command
-            line = "sphinx-build -b html doc/online_docs doc/build/html"
+            # Use the fixed Makefile approach
+            line = "cd doc && make html"
         elif line.startswith("echo "):
             # Keep echo commands for context
             pass
