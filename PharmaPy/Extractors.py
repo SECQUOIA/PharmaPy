@@ -11,7 +11,6 @@ from scipy.optimize import newton
 from PharmaPy.Commons import mid_fn
 from PharmaPy.Phases import LiquidPhase
 from PharmaPy.Streams import LiquidStream
-from PharmaPy.Connections import get_inputs_new
 
 from PharmaPy.Results import DynamicResult
 

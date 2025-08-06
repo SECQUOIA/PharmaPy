@@ -14,8 +14,6 @@ from PharmaPy.Commons import (
     reorder_sens,
     plot_sens,
     trapezoidal_rule,
-    upwind_fvm,
-    high_resolution_fvm,
     eval_state_events,
     handle_events,
     unpack_states,
@@ -25,16 +23,14 @@ from PharmaPy.Commons import (
 
 from PharmaPy.ProcessControl import analyze_controls
 
-from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
-from PharmaPy.Connections import get_inputs, get_inputs_new
+from PharmaPy.jac_module import numerical_jac_central, dx_jac_x
+from PharmaPy.Connections import get_inputs_new
 
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_function, plot_distrib
 
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from matplotlib.ticker import AutoMinorLocator
-from matplotlib.colors import LightSource
 
 from scipy.optimize import newton
 

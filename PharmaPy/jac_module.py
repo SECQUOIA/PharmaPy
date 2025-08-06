@@ -157,25 +157,57 @@ def jac_fun(x):
     return jac
 
 
+def fun(x):
+    """Test function for which jac_fun computes the analytical Jacobian."""
+    x1, x2 = x
+    f1 = x1**2 - 0.5 * x2**3
+    f2 = x1 + np.sqrt(x2)
+    return np.array([f1, f2])
+
+
 if __name__ == "__main__":
-    from autograd import jacobian, make_jvp
-    from jax import jvp
+    try:
+        from autograd import jacobian, make_jvp
+        
+        # Autograd fns
+        jac_ad = jacobian(fun)
+        jacv_ad = make_jvp(fun)
 
-    # Autograd fns
-    jac_ad = jacobian(fun)
-    jacv_ad = make_jvp(fun)
+        # Nominal x
+        x_test = np.array([1.0, 2.0])
 
-    # Nominal x
-    x_test = np.array([1.0, 2.0])
+        # Evaluate jacs
+        jacfun_eval = jac_fun(x_test)
+        # jacauto_eval = jac_ad(x_test)
+        jacnum_eval = numerical_jac(fun, x_test)
 
-    # Evaluate jacs
-    jacfun_eval = jac_fun(x_test)
-    # jacauto_eval = jac_ad(x_test)
-    jacnum_eval = numerical_jac(fun, x_test)
-
-    # Evaluate J*v
-    v_test = np.array([0.5, 0.5])
-    jacv_analytic = np.dot(jacfun_eval, v_test)
-    jacv_numeric = numerical_jacv(fun, x_test, v_test)
-    _, jacv_autograd = jacv_ad(x_test)(v_test)
-    # _, jacv_jax = jvp(fun, (x_test,), (v_test,))
+        # Evaluate J*v
+        v_test = np.array([0.5, 0.5])
+        jacv_analytic = np.dot(jacfun_eval, v_test)
+        jacv_numeric = numerical_jacv(fun, x_test, v_test)
+        _, jacv_autograd = jacv_ad(x_test)(v_test)
+        # _, jacv_jax = jvp(fun, (x_test,), (v_test,))
+        
+        print("Jacobian tests completed successfully!")
+        print(f"Analytical Jacobian at {x_test}:")
+        print(jacfun_eval)
+        print(f"Numerical Jacobian at {x_test}:")
+        print(jacnum_eval)
+        print(f"Jacobians match: {np.allclose(jacfun_eval, jacnum_eval)}")
+        
+    except ImportError as e:
+        print(f"Optional dependencies not available: {e}")
+        print("Testing basic functionality without autograd/jax...")
+        
+        # Test basic functionality without optional dependencies
+        x_test = np.array([1.0, 2.0])
+        fun_result = fun(x_test)
+        jac_result = jac_fun(x_test)
+        jac_numerical = numerical_jac(fun, x_test)
+        
+        print(f"Test function result: {fun_result}")
+        print(f"Analytical Jacobian:")
+        print(jac_result)
+        print(f"Numerical Jacobian:")
+        print(jac_numerical)
+        print(f"Jacobians match: {np.allclose(jac_result, jac_numerical)}")

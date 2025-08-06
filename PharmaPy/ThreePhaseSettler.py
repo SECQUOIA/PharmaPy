@@ -12,7 +12,6 @@ from PharmaPy.Connections import get_inputs_new
 from PharmaPy.Streams import LiquidStream, SolidStream
 from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.Results import DynamicResult
-from PharmaPy.Plotting import plot_distrib
 
 from assimulo.solvers import IDA
 
@@ -20,7 +19,6 @@ import scipy.optimize
 import scipy.sparse
 
 # from itertools import cycle
-from matplotlib.ticker import AutoMinorLocator, MaxNLocator
 
 
 class ThreePhaseSettler:

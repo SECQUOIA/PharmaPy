@@ -8,7 +8,6 @@ Created on Tue Mar  7 14:49:31 2023
 import json
 import pathlib
 
-from PharmaPy.Errors import PharmaPySpecificationError
 import warnings
 
 

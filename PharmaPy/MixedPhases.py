@@ -7,7 +7,6 @@ Created on Tue Jun 16 15:43:14 2020
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
-from PharmaPy.Commons import trapezoidal_rule
 
 import numpy as np
 from scipy.optimize import newton

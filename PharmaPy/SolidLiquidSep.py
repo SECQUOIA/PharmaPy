@@ -6,21 +6,16 @@ Created on Wed May 13 02:03:18 2020
 """
 
 import numpy as np
-from PharmaPy.Commons import trapezoidal_rule, series_erfc
+from PharmaPy.Commons import trapezoidal_rule
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Slurry, Cake
 from PharmaPy.general_interpolation import define_initial_state
 
 from PharmaPy.Commons import (
     unpack_states,
-    reorder_pde_outputs,
-    eval_state_events,
-    handle_events,
     unpack_discretized,
 )
-from PharmaPy.Connections import get_inputs_new
 from PharmaPy.Results import DynamicResult
-from PharmaPy.NameAnalysis import get_dict_states
 
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator

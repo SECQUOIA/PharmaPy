@@ -9,18 +9,13 @@ import numpy.matlib
 from assimulo.problem import Explicit_Problem
 from assimulo.solvers import CVode
 import matplotlib.pyplot as plt
-import scipy
 from scipy.interpolate import CubicSpline
 
 from PharmaPy.Phases import classify_phases
-from PharmaPy.MixedPhases import Cake
 from PharmaPy.SolidLiquidSep import high_resolution_fvm, get_sat_inf, upwind_fvm
-from PharmaPy.NameAnalysis import get_dict_states
 
 # from PharmaPy.Interpolation import SplineInterpolation
-from PharmaPy.general_interpolation import define_initial_state
 from PharmaPy.Commons import (
-    reorder_pde_outputs,
     eval_state_events,
     handle_events,
     unpack_discretized,
