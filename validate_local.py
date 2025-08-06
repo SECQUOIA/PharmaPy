@@ -15,15 +15,28 @@ import platform
 from pathlib import Path
 
 
-def run_command(cmd: str, shell: bool = True, cwd: str = None) -> tuple[bool, str, str]:
-    """Run a shell command and return success status and output."""
+def run_command(
+    cmd, shell: bool = None, cwd: str = None, timeout: int = 300
+) -> tuple[bool, str, str]:
+    """
+    Run a shell command (string or list) and return (success, stdout, stderr).
+    Automatically detects shell usage based on platform and command type.
+    """
+    if shell is None:
+        # Use shell=True for string commands on Windows, False otherwise
+        shell = isinstance(cmd, str) and platform.system() == "Windows"
     try:
         result = subprocess.run(
-            cmd, shell=shell, capture_output=True, text=True, timeout=300, cwd=cwd
+            cmd,
+            shell=shell,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=cwd,
         )
         return result.returncode == 0, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
-        return False, "", "Command timed out after 300 seconds"
+        return False, "", f"Command timed out after {timeout} seconds"
     except Exception as e:
         return False, "", str(e)
 
