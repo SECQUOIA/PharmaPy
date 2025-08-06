@@ -195,10 +195,9 @@ jobs:
         conda activate pharmapy-ci-test
         python -c "import PharmaPy; print('Unix script installation successful')"
 
-  # Code quality and documentation - only on main branches
+  # Code quality and documentation - run on every push
   quality-and-docs:
     name: Code Quality & Documentation
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
     steps:

@@ -220,6 +220,111 @@ def check_assimulo_availability():
         return True  # Changed to True since this is informational
 
 
+def test_code_quality():
+    """Test code quality checks (linting and formatting)."""
+    print("\n Testing code quality...")
+    
+    # Test flake8 linting (critical errors only)
+    print("  Running flake8 (critical errors)...")
+    success, stdout, stderr = run_command([
+        "flake8", "PharmaPy/", "--count", "--select=E9,F63,F7,F82", 
+        "--show-source", "--statistics"
+    ])
+    
+    if not success:
+        print(f"  [FAIL] Critical linting errors found:")
+        print(f"    stdout: {stdout}")
+        print(f"    stderr: {stderr}")
+        return False
+    else:
+        print("  [OK] No critical linting errors")
+    
+    # Test flake8 linting (all configured checks)
+    print("  Running flake8 (all configured checks)...")
+    success, stdout, stderr = run_command([
+        "flake8", "PharmaPy/", "--count", "--statistics"
+    ])
+    
+    if success:
+        print("  [OK] No linting issues found")
+    else:
+        # Count the issues
+        lines = stdout.split('\n')
+        # Last line usually contains the count
+        count_line = [line for line in lines if line.strip().isdigit()]
+        if count_line:
+            count = count_line[-1].strip()
+            print(f"  [INFO] Found {count} linting issues (not blocking)")
+        else:
+            print("  [INFO] Some linting issues found (not blocking)")
+    
+    # Test documentation build
+    print("  Testing documentation build...")
+    # Try building from online_docs directory directly
+    success, stdout, stderr = run_command([
+        "sphinx-build", "-b", "html", "online_docs", "build/html"
+    ], cwd="doc")
+    
+    if not success:
+        print(f"  [FAIL] Documentation build failed:")
+        print(f"    stdout: {stdout}")
+        print(f"    stderr: {stderr}")
+        return False
+    else:
+        print("  [OK] Documentation builds successfully")
+    
+    # Test that imports work (needed for documentation)
+    print("  Testing imports for documentation...")
+    try:
+        import PharmaPy.Reactors
+        print("  [OK] Can import PharmaPy.Reactors (needed for docs)")
+    except ImportError as e:
+        print(f"  [FAIL] Cannot import PharmaPy.Reactors: {e}")
+        return False
+    
+    return True
+
+
+def test_coverage():
+    """Test coverage generation."""
+    print("\n Testing coverage generation...")
+    
+    # Run tests with coverage
+    success, stdout, stderr = run_command([
+        "python", "-m", "pytest", "tests/", "--cov=PharmaPy", 
+        "--cov-report=html", "--cov-report=xml", "--tb=short", "-q"
+    ])
+    
+    # Check if coverage files exist (this is the main goal)
+    html_exists = Path("htmlcov/index.html").exists()
+    xml_exists = Path("coverage.xml").exists()
+    
+    if html_exists and xml_exists:
+        print("  [OK] Coverage reports generated successfully")
+        print("  [OK] HTML coverage report generated")
+        print("  [OK] XML coverage report generated")
+        return True
+    elif not success:
+        print(f"  [FAIL] Coverage generation failed:")
+        print(f"    stdout: {stdout}")
+        print(f"    stderr: {stderr}")
+        return False
+    else:
+        print("  [WARN] Tests ran but coverage files missing")
+        
+        if html_exists:
+            print("  [OK] HTML coverage report generated")
+        else:
+            print("  [WARN] HTML coverage report not found")
+            
+        if xml_exists:
+            print("  [OK] XML coverage report generated")
+        else:
+            print("  [WARN] XML coverage report not found")
+            
+        return html_exists or xml_exists  # Pass if at least one exists
+
+
 def main():
     """Main validation function."""
     print(" PharmaPy Local Validation Suite")
@@ -235,6 +340,8 @@ def main():
         ("Make Commands", test_make_commands),
         ("Build System", test_build_system),
         ("Test Runners", test_test_runners),
+        ("Code Quality", test_code_quality),
+        ("Coverage Generation", test_coverage),
         ("Assimulo Check", check_assimulo_availability),
     ]
 
