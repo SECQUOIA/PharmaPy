@@ -168,7 +168,7 @@ def fun(x):
 if __name__ == "__main__":
     try:
         from autograd import jacobian, make_jvp
-        
+
         # Autograd fns
         jac_ad = jacobian(fun)
         jacv_ad = make_jvp(fun)
@@ -187,27 +187,27 @@ if __name__ == "__main__":
         jacv_numeric = numerical_jacv(fun, x_test, v_test)
         _, jacv_autograd = jacv_ad(x_test)(v_test)
         # _, jacv_jax = jvp(fun, (x_test,), (v_test,))
-        
+
         print("Jacobian tests completed successfully!")
         print(f"Analytical Jacobian at {x_test}:")
         print(jacfun_eval)
         print(f"Numerical Jacobian at {x_test}:")
         print(jacnum_eval)
         print(f"Jacobians match: {np.allclose(jacfun_eval, jacnum_eval)}")
-        
+
     except ImportError as e:
         print(f"Optional dependencies not available: {e}")
         print("Testing basic functionality without autograd/jax...")
-        
+
         # Test basic functionality without optional dependencies
         x_test = np.array([1.0, 2.0])
         fun_result = fun(x_test)
         jac_result = jac_fun(x_test)
         jac_numerical = numerical_jac(fun, x_test)
-        
+
         print(f"Test function result: {fun_result}")
-        print(f"Analytical Jacobian:")
+        print("Analytical Jacobian:")
         print(jac_result)
-        print(f"Numerical Jacobian:")
+        print("Numerical Jacobian:")
         print(jac_numerical)
         print(f"Jacobians match: {np.allclose(jac_result, jac_numerical)}")

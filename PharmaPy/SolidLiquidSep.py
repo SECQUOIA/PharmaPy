@@ -1159,7 +1159,7 @@ class DisplacementWashing:
                 "units": "kg/m**3",
                 "type": "alg",
             },
-            "washing_time": {"dim": 1, "units": "s", "type": "alg"},  #'index': index_z,
+            "washing_time": {"dim": 1, "units": "s", "type": "alg"},  # 'index': index_z,
         }
 
         self.name_states = list(self.states_di.keys())

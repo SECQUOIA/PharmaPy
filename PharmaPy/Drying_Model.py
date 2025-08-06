@@ -478,7 +478,7 @@ class Drying:
 
         dTcond_dt = (-drying_terms + heat_transf - heat_loss_cond) / denom_cond
 
-        ## ---- Trial for lumping both cond/gas phase into one
+        # ---- Trial for lumping both cond/gas phase into one
         # dTtotal_dt = (conv_term + sensible_heat - drying_terms - heat_loss_cond)/ (denom_gas + denom_cond)
 
         # dTg_dt, dTcond_dt = dTtotal_dt, dTtotal_dt

@@ -2145,7 +2145,7 @@ class MSMPR(_BaseCryst):
                 num_distr=dp["distrib"]
             )
 
-            if type(self) == MSMPR:
+            if isinstance(self, MSMPR):
                 vol_slurry = self.Slurry.vol
                 self.Solid_1.updatePhase(distrib=dp["distrib"][-1] * vol_slurry)
 
@@ -2167,7 +2167,7 @@ class MSMPR(_BaseCryst):
         self.Solid_1.temp = dp["temp"][-1]
         self.Liquid_1.temp = dp["temp"][-1]
 
-        if type(self) == MSMPR:
+        if isinstance(self, MSMPR):
             vol_slurry = self.Slurry.vol
             vol_liq = (1 - self.Solid_1.kv * dp["mu_n"][-1, 3]) * vol_slurry
 
@@ -2209,7 +2209,7 @@ class MSMPR(_BaseCryst):
         solid_comp = np.zeros(self.num_species)
         solid_comp[self.target_ind] = 1
 
-        if type(self) == MSMPR:
+        if isinstance(self, MSMPR):
             liquid_out = LiquidStream(
                 path,
                 mass_conc=dp["mass_conc"][-1],
