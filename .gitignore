@@ -159,7 +159,6 @@ Thumbs.db
 
 # Output files
 *.pdf
-*.png
 *.wav
 *.jpg
 *.mp4
