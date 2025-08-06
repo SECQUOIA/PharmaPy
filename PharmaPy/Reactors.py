@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
-
-from assimulo.solvers import CVode, LSODAR
+from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
 
 from PharmaPy.Phases import classify_phases

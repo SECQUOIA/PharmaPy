@@ -220,6 +220,12 @@ jobs:
         pip install -e .
         pip install -r requirements-dev.txt
 
+    - name: Install assimulo (for code quality checks)
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        conda install -c conda-forge assimulo --yes || pip install assimulo || echo "Assimulo installation failed, but continuing"
+
     - name: Run linting
       shell: bash -l {0}
       continue-on-error: true
