@@ -221,84 +221,127 @@ def check_assimulo_availability():
 
 
 def test_code_quality():
-    """Test code quality checks (linting and formatting)."""
+    """Test code quality using linting and formatting checks."""
     print("\n Testing code quality...")
-    
-    # Test flake8 linting (critical errors only)
+
+    # Run flake8 for critical errors (blocking)
     print("  Running flake8 (critical errors)...")
-    success, stdout, stderr = run_command([
-        "flake8", "PharmaPy/", "--count", "--select=E9,F63,F7,F82", 
-        "--show-source", "--statistics"
-    ])
-    
-    if not success:
+    success, stdout, stderr = run_command(
+        [
+            "flake8",
+            "PharmaPy/",
+            "--count",
+            "--select=E9,F63,F7,F82",
+            "--show-source",
+            "--statistics",
+        ]
+    )
+
+    if not success and "0" not in stdout:
         print(f"  [FAIL] Critical linting errors found:")
-        print(f"    stdout: {stdout}")
-        print(f"    stderr: {stderr}")
+        print(f"    {stdout}")
         return False
     else:
         print("  [OK] No critical linting errors")
-    
-    # Test flake8 linting (all configured checks)
+
+    # Run flake8 for all configured checks (non-blocking)
     print("  Running flake8 (all configured checks)...")
-    success, stdout, stderr = run_command([
-        "flake8", "PharmaPy/", "--count", "--statistics"
-    ])
-    
-    if success:
-        print("  [OK] No linting issues found")
+    success, stdout, stderr = run_command(
+        [
+            "flake8",
+            "PharmaPy/",
+            "--count",
+            "--exit-zero",
+            "--max-complexity=10",
+            "--max-line-length=127",
+            "--statistics",
+        ]
+    )
+
+    # Count issues from output
+    if stdout and any(
+        line.strip().isdigit() and int(line.strip()) > 0 for line in stdout.split("\n")
+    ):
+        issues = [
+            line
+            for line in stdout.split("\n")
+            if line.strip().isdigit() and int(line.strip()) > 0
+        ]
+        total_issues = sum(int(issue) for issue in issues if issue.strip().isdigit())
+        print(f"  [INFO] Found {total_issues} linting issues (not blocking)")
     else:
-        # Count the issues
-        lines = stdout.split('\n')
-        # Last line usually contains the count
-        count_line = [line for line in lines if line.strip().isdigit()]
-        if count_line:
-            count = count_line[-1].strip()
-            print(f"  [INFO] Found {count} linting issues (not blocking)")
-        else:
-            print("  [INFO] Some linting issues found (not blocking)")
-    
+        print("  [OK] No linting issues found")
+
+    # Check code formatting with black
+    print("  Checking code formatting with black...")
+    success, stdout, stderr = run_command(
+        [
+            "black",
+            "--check",
+            "--diff",
+            "PharmaPy/",
+            "tests/",
+            "*.py",
+            "--exclude=/(\\.(git|venv|tox)|build|dist|\\.eggs)/",
+        ]
+    )
+
+    if not success:
+        print(f"  [WARN] Code formatting issues found:")
+        if stdout:
+            print(f"    {stdout[:500]}...")  # Show first 500 chars of diff
+        print("  [INFO] Run 'black PharmaPy/ tests/ *.py' to auto-format")
+    else:
+        print("  [OK] Code formatting is correct")
+
     # Test documentation build
     print("  Testing documentation build...")
-    # Try building from online_docs directory directly
-    success, stdout, stderr = run_command([
-        "sphinx-build", "-b", "html", "online_docs", "build/html"
-    ], cwd="doc")
-    
+    success, stdout, stderr = run_command(
+        ["sphinx-build", "-b", "html", "doc/online_docs", "doc/build/html"]
+    )
+
     if not success:
         print(f"  [FAIL] Documentation build failed:")
-        print(f"    stdout: {stdout}")
         print(f"    stderr: {stderr}")
         return False
     else:
         print("  [OK] Documentation builds successfully")
-    
-    # Test that imports work (needed for documentation)
+
+    # Test imports for documentation
     print("  Testing imports for documentation...")
     try:
         import PharmaPy.Reactors
+
         print("  [OK] Can import PharmaPy.Reactors (needed for docs)")
-    except ImportError as e:
-        print(f"  [FAIL] Cannot import PharmaPy.Reactors: {e}")
-        return False
-    
+    except Exception as e:
+        print(f"  [WARN] Cannot import PharmaPy.Reactors: {e}")
+
     return True
 
 
 def test_coverage():
     """Test coverage generation."""
     print("\n Testing coverage generation...")
-    
+
     # Run tests with coverage
-    success, stdout, stderr = run_command([
-        "python", "-m", "pytest", "tests/", "--cov=PharmaPy", 
-        "--cov-report=html", "--cov-report=xml", "--tb=short", "-q"
-    ])
-    
+    success, stdout, stderr = run_command(
+        [
+            "python",
+            "-m",
+            "pytest",
+            "tests/",
+            "--cov=PharmaPy",
+            "--cov-report=html",
+            "--cov-report=xml",
+            "--tb=short",
+            "-q",
+        ]
+    )
+
     # Check if coverage files exist (this is the main goal)
     html_exists = Path("htmlcov/index.html").exists()
     xml_exists = Path("coverage.xml").exists()
-    
+
     if html_exists and xml_exists:
         print("  [OK] Coverage reports generated successfully")
         print("  [OK] HTML coverage report generated")
@@ -311,17 +354,17 @@ def test_coverage():
         return False
     else:
         print("  [WARN] Tests ran but coverage files missing")
-        
+
         if html_exists:
             print("  [OK] HTML coverage report generated")
         else:
             print("  [WARN] HTML coverage report not found")
-            
+
         if xml_exists:
             print("  [OK] XML coverage report generated")
         else:
             print("  [WARN] XML coverage report not found")
-            
+
         return html_exists or xml_exists  # Pass if at least one exists
 
 

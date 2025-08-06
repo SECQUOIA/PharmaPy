@@ -232,6 +232,13 @@ jobs:
         flake8 PharmaPy/ --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 PharmaPy/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
+    - name: Check code formatting with black
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        echo "Checking code formatting with black..."
+        black --check --diff PharmaPy/ tests/ *.py --exclude="/(\.git|\.venv|\.tox|build|dist|\.eggs)/"
+
     - name: Generate coverage report
       shell: bash -l {0}
       run: |
