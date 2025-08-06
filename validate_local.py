@@ -63,7 +63,13 @@ def extract_quality_steps(workflow: dict) -> list[dict]:
             name = step.get("name", "")
             if any(
                 keyword in name.lower()
-                for keyword in ["linting", "black", "coverage", "documentation"]
+                for keyword in [
+                    "linting",
+                    "black",
+                    "coverage",
+                    "documentation",
+                    "pandoc",
+                ]
             ):
                 validation_steps.append(step)
 
@@ -85,11 +91,14 @@ def adapt_command_for_local(run_commands: str) -> list[str]:
             continue
 
         # Skip CI-specific commands but keep informational echoes
-        if any(
-            skip in line
-            for skip in ["conda install", "pip install -e", "pip install -r"]
-        ):
+        if any(skip in line for skip in ["pip install -e", "pip install -r"]):
             continue
+
+        # For conda install commands, convert to availability checks
+        if "conda install" in line and "pandoc" in line:
+            line = "pandoc --version"  # Check if pandoc is available
+        elif "conda install" in line:
+            continue  # Skip other conda installs
 
         # Adapt paths and commands for local execution
         if "cd doc" in line:
