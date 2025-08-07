@@ -2426,6 +2426,7 @@ class SemibatchCryst(MSMPR):
         vol,
         mu_n,
         h_in,
+        heat_prof=False,
     ):
 
         rho_susp, rho_in = rhos

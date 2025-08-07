@@ -13,7 +13,7 @@ from PharmaPy.Commons import (
     unpack_states,
     flatten_states,
 )
-from PharmaPy.Connections import get_inputs, get_inputs_new
+from PharmaPy.Connections import get_inputs_new
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase, classify_phases
 
@@ -21,7 +21,6 @@ from PharmaPy.Results import DynamicResult
 from PharmaPy.Plotting import plot_function
 
 from scipy.optimize import fsolve
-import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
 from assimulo.problem import Implicit_Problem
@@ -1230,7 +1229,7 @@ class Evaporator:
             The default is None.
         **fig_kwargs : keyword arguments
             keyword arguments to be passed to the construction of fig and
-            axes object of matplotlib (plt.subplots(**kwargs)).
+            axes object of matplotlib (``plt.subplots(**kwargs)``).
             Do not use nrows or ncols arguments, since the plot grid is already
             defined by PharmaPy
 
@@ -2093,7 +2092,7 @@ class ContinuousEvaporator:
             mol_liq-mol_vap vs t is plotted.
         **fig_kwargs : keyword arguments
             keyword arguments to be passed to the construction of fig and
-            axes objects of matplotlib (plt.subplots(**kwargs)).
+            axes objects of matplotlib (``plt.subplots(**kwargs)``).
             Do not use nrows or ncols arguments, since the plot grid is already
             defined by PharmaPy
 

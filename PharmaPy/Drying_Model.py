@@ -9,18 +9,13 @@ import numpy.matlib
 from assimulo.problem import Explicit_Problem
 from assimulo.solvers import CVode
 import matplotlib.pyplot as plt
-import scipy
 from scipy.interpolate import CubicSpline
 
 from PharmaPy.Phases import classify_phases
-from PharmaPy.MixedPhases import Cake
 from PharmaPy.SolidLiquidSep import high_resolution_fvm, get_sat_inf, upwind_fvm
-from PharmaPy.NameAnalysis import get_dict_states
 
 # from PharmaPy.Interpolation import SplineInterpolation
-from PharmaPy.general_interpolation import define_initial_state
 from PharmaPy.Commons import (
-    reorder_pde_outputs,
     eval_state_events,
     handle_events,
     unpack_discretized,
@@ -483,7 +478,7 @@ class Drying:
 
         dTcond_dt = (-drying_terms + heat_transf - heat_loss_cond) / denom_cond
 
-        ## ---- Trial for lumping both cond/gas phase into one
+        # ---- Trial for lumping both cond/gas phase into one
         # dTtotal_dt = (conv_term + sensible_heat - drying_terms - heat_loss_cond)/ (denom_gas + denom_cond)
 
         # dTg_dt, dTcond_dt = dTtotal_dt, dTtotal_dt

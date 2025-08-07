@@ -80,6 +80,8 @@ PharmaPy has been made with the collaboration and support from the following ins
    examples/index
    publications
    advanced_usage
+   general_features
+   simulation_executive
 
 Indices and tables
 ==================

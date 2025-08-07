@@ -8,3 +8,4 @@ Examples
    param_estimation_solved
    PFR_Batch_solved
    PharmaPy_guide
+   PharmaPy_SOP

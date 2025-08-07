@@ -115,7 +115,7 @@ def pprint(di, name_items, fields, str_out=True):
 
         for ind, val in enumerate(field_vals):
             if isinstance(val, list):
-                if all([type(a) == str for a in val]):
+                if all(isinstance(a, str) for a in val):
                     field_vals[ind] = ", ".join(val)
                 else:
                     field_vals[ind] = "%i, ..., %i" % (val[0], val[-1])
@@ -148,7 +148,7 @@ def pprint(di, name_items, fields, str_out=True):
 
         for ind, val in enumerate(field_vals):
             if isinstance(val, list):
-                if all([type(a) == str for a in val]):
+                if all(isinstance(a, str) for a in val):
                     field_vals[ind] = ", ".join(val)
                 else:
                     field_vals[ind] = "%i, ..., %i" % (val[0], val[-1])

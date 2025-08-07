@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 
-
-from assimulo.solvers import CVode, LSODAR
+from assimulo.solvers import CVode
 from assimulo.problem import Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
@@ -823,6 +822,9 @@ class BatchReactor(_BaseReactor):
     ):
         """
         Batch reactor method for solving the individual unit directly.
+
+        Parameters
+        ----------
         runtime : float (default = None)
             Value for total unit runtime.
         time_grid : list of float (optional, default = None)

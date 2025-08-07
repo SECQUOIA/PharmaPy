@@ -1,11 +1,10 @@
 import numpy as np
-from scipy import linalg
 from scipy.optimize import root
 from assimulo.problem import Implicit_Problem
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Connections import get_inputs_new
-from PharmaPy.Commons import unpack_discretized, retrieve_pde_result, flatten_states
+from PharmaPy.Commons import unpack_discretized, retrieve_pde_result
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Streams import LiquidStream
 
@@ -13,7 +12,6 @@ from PharmaPy.Extractors import BatchExtractor
 from PharmaPy.Plotting import plot_distrib
 
 from assimulo.solvers import IDA
-from assimulo.solvers import Radau5DAE
 
 import copy
 

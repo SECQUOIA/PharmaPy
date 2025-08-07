@@ -2,7 +2,7 @@ name: PharmaPy CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master, develop, test-devel ]
+    branches: [ main, master, develop ]
   pull_request:
     branches: [ main, master, develop ]
   schedule:
@@ -157,11 +157,11 @@ jobs:
         python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_assimulo_version_compatibility -v
         python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_sundials_integration -v
 
-  # Installation script testing - only on push to specific branches
+  # Installation script testing - runs on all pushes
   test-installation-scripts:
     name: Installation Scripts
     timeout-minutes: 20  # Prevent long-running jobs
-    if: github.event_name == 'push' && (contains(github.ref, 'main') || contains(github.ref, 'master') || contains(github.ref, 'test-devel'))
+    if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -195,10 +195,9 @@ jobs:
         conda activate pharmapy-ci-test
         python -c "import PharmaPy; print('Unix script installation successful')"
 
-  # Code quality and documentation - only on main branches
+  # Code quality and documentation - run on every push
   quality-and-docs:
     name: Code Quality & Documentation
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
 
     steps:
@@ -220,12 +219,30 @@ jobs:
         pip install -e .
         pip install -r requirements-dev.txt
 
+    - name: Install pandoc (for documentation)
+      shell: bash -l {0}
+      run: |
+        conda install -c conda-forge pandoc --yes
+
+    - name: Install assimulo (for code quality checks)
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        conda install -c conda-forge assimulo --yes || pip install assimulo || echo "Assimulo installation failed, but continuing"
+
     - name: Run linting
       shell: bash -l {0}
       continue-on-error: true
       run: |
         flake8 PharmaPy/ --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 PharmaPy/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Check code formatting with black
+      shell: bash -l {0}
+      continue-on-error: true
+      run: |
+        echo "Checking code formatting with black..."
+        black --check --diff PharmaPy/ tests/ *.py --exclude="/(\.git|\.venv|\.tox|build|dist|\.eggs)/"
 
     - name: Generate coverage report
       shell: bash -l {0}
@@ -258,10 +275,9 @@ jobs:
         name: documentation
         path: doc/_build/html/
 
-  # Build and packaging - only on main branches and releases
+  # Build and packaging - runs on all pushes
   build-and-package:
     name: Build & Package
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 
     steps:
