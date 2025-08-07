@@ -2,7 +2,7 @@ name: PharmaPy CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master, develop, test-devel ]
+    branches: [ main, master, develop ]
   pull_request:
     branches: [ main, master, develop ]
   schedule:
@@ -157,11 +157,11 @@ jobs:
         python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_assimulo_version_compatibility -v
         python -m pytest tests/integration/test_assimulo.py::TestAssimuloIntegration::test_sundials_integration -v
 
-  # Installation script testing - only on push to specific branches
+  # Installation script testing - runs on all pushes
   test-installation-scripts:
     name: Installation Scripts
     timeout-minutes: 20  # Prevent long-running jobs
-    if: github.event_name == 'push' && (contains(github.ref, 'main') || contains(github.ref, 'master') || contains(github.ref, 'test-devel'))
+    if: github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -275,10 +275,9 @@ jobs:
         name: documentation
         path: doc/_build/html/
 
-  # Build and packaging - only on main branches and releases
+  # Build and packaging - runs on all pushes
   build-and-package:
     name: Build & Package
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
 
     steps:

@@ -36,7 +36,7 @@ A single, comprehensive workflow that replaces multiple separate workflows, redu
 
 ## Triggers
 
-- **Push**: main, master, develop, test-devel branches
+- **Push**: main, master, develop branches
 - **Pull Request**: main, master, develop branches  
 - **Schedule**: Weekly on Sundays at 3 AM UTC
 - **Manual**: Via workflow_dispatch
