@@ -16,15 +16,18 @@ from pathlib import Path
 
 
 def run_command(
-    cmd, shell: bool = None, cwd: str = None, timeout: int = 300
+    cmd: str | list[str], 
+    shell: bool | None = None, 
+    cwd: str | None = None, 
+    timeout: int = 300
 ) -> tuple[bool, str, str]:
     """
     Run a shell command (string or list) and return (success, stdout, stderr).
     Automatically detects shell usage based on platform and command type.
     """
     if shell is None:
-        # Use shell=True for string commands, False for list commands
-        shell = isinstance(cmd, str)
+        # Use shell=True for string commands on Windows, False otherwise (for cross-platform compatibility)
+        shell = isinstance(cmd, str) and platform.system() == "Windows"
     try:
         result = subprocess.run(
             cmd,
