@@ -158,7 +158,27 @@ def jac_fun(x):
 
 
 def fun(x):
-    """Test function for which jac_fun computes the analytical Jacobian."""
+    """
+    Test function for which jac_fun computes the analytical Jacobian.
+
+    This function is defined as:
+        f1(x1, x2) = x1^2 - 0.5 * x2^3
+        f2(x1, x2) = x1 + sqrt(x2)
+
+    Parameters
+    ----------
+    x : array_like
+        Input array with two elements [x1, x2].
+
+    Returns
+    -------
+    ndarray
+        Array containing [f1, f2].
+
+    Purpose
+    -------
+    Used for testing the correctness of analytical and numerical Jacobian computations.
+    """
     x1, x2 = x
     f1 = x1**2 - 0.5 * x2**3
     f2 = x1 + np.sqrt(x2)
@@ -186,7 +206,6 @@ if __name__ == "__main__":
         jacv_analytic = np.dot(jacfun_eval, v_test)
         jacv_numeric = numerical_jacv(fun, x_test, v_test)
         _, jacv_autograd = jacv_ad(x_test)(v_test)
-        # _, jacv_jax = jvp(fun, (x_test,), (v_test,))
 
         print("Jacobian tests completed successfully!")
         print(f"Analytical Jacobian at {x_test}:")
@@ -197,7 +216,7 @@ if __name__ == "__main__":
 
     except ImportError as e:
         print(f"Optional dependencies not available: {e}")
-        print("Testing basic functionality without autograd/jax...")
+        print("Testing basic functionality without autograd...")
 
         # Test basic functionality without optional dependencies
         x_test = np.array([1.0, 2.0])
