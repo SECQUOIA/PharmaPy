@@ -147,7 +147,8 @@ class progress_checker():
             self.old_time = time
         if self.counter % 3000 == 0 and self.counter >1000:
             print(f'{self.flag} Sticking at time: ',round(time,2), 'Total Time:',int(timef())-self.starttime, 'Count:', self.counter)
-        if int(timef())-self.starttime > 150:
+        if int(timef())-self.starttime > 10:
+            raise StuckException
             if (self.counter > self.max_count):# or (int(timef())-self.starttime > 1.25*time):
                 print(self.flag, round(time,2), int(timef())-self.starttime, 'STUCK, Escaping')
                 payload=f'{time},{int(timef())-self.starttime},{self.counter}'
