@@ -19,8 +19,9 @@ def interpolate_inputs(time, t_inlet, y_inlet, **kwargs_interp_fn):
         # Assume steady state for extrapolation
         time = min(time, t_inlet[-1])
 
-        y_interp = local_newton_interpolation(time, t_inlet, y_inlet,
-                                              **kwargs_interp_fn)
+        y_interp = local_newton_interpolation(
+            time, t_inlet, y_inlet, **kwargs_interp_fn
+        )
     else:
         interpol = CubicSpline(t_inlet, y_inlet, **kwargs_interp_fn)
         flags_extrapol = time > t_inlet[-1]
@@ -95,14 +96,13 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
     time = np.atleast_1d(time)
     for phase, di in dict_states_in.items():
         di_out[phase] = {}
-        if 'inlet' in phase.lower():
+        if "inlet" in phase.lower():
             for state in di:
                 if state not in inlets[phase]:
                     field = getattr(stream, state, None)
 
                     if field is None:
-                        field = get_missing_field(
-                            di[state], len(time))
+                        field = get_missing_field(di[state], len(time))
 
                     elif len(time) > 1:
                         field = np.outer(np.ones_like(time), field)
@@ -117,8 +117,7 @@ def get_remaining_states(dict_states_in, stream, inlets, time):
                     field = getattr(sub_phase, state, None)
 
                     if field is None:
-                        field = get_missing_field(
-                            di[state], len(time))
+                        field = get_missing_field(di[state], len(time))
 
                     di_out[phase][state] = field
     return di_out
@@ -149,7 +148,7 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
 
     if stream.DynamicInlet is not None:
         inputs = stream.DynamicInlet.evaluate_inputs(time, **kwargs_interp)
-        inputs = {'Inlet': inputs}
+        inputs = {"Inlet": inputs}
 
     elif stream.y_upstream is not None and stream.time_upstream is not None:
         t_inlet = stream.time_upstream
@@ -157,8 +156,7 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
 
         ins = {}
         for key, val in y_inlet.items():
-            ins[key] = interpolate_inputs(time, t_inlet, val,
-                                          **kwargs_interp)
+            ins[key] = interpolate_inputs(time, t_inlet, val, **kwargs_interp)
 
         inputs = {}
         for phase, names in dict_states_in.items():
@@ -194,7 +192,7 @@ def get_inputs_new(time, stream, dict_states_in, **kwargs_interp):
 
 
 def get_inputs(time, uo, num_species, num_distr=0):
-    Inlet = getattr(uo, 'Inlet', None)
+    Inlet = getattr(uo, "Inlet", None)
 
     names_upstream = uo.names_upstream
     names_states_in = uo.names_states_in
@@ -212,7 +210,7 @@ def get_inputs(time, uo, num_species, num_distr=0):
             if name not in input_dict.keys():
                 val = getattr(Inlet, name, None)
                 if val is None:  # search in subphases inside Inlet
-                # if hasattr(uo, 'states_in_phaseid'):
+                    # if hasattr(uo, 'states_in_phaseid'):
                     obj_id = uo.states_in_phaseid[name]
                     instance = getattr(Inlet, obj_id)
                     val = getattr(instance, name)
@@ -221,8 +219,9 @@ def get_inputs(time, uo, num_species, num_distr=0):
 
     else:
         all_inputs = Inlet.InterpolateInputs(time)
-        input_upstream = get_dict_states(names_upstream, num_species,
-                                         num_distr, all_inputs)
+        input_upstream = get_dict_states(
+            names_upstream, num_species, num_distr, all_inputs
+        )
 
         input_dict = {}
         for key in names_states_in:
@@ -259,7 +258,7 @@ def topological_bfs(graph):
 
 
 def convert_str_flowsheet(flowsheet):
-    seq = [a.strip() for a in flowsheet.split('-->')]
+    seq = [a.strip() for a in flowsheet.split("-->")]
 
     out = {}
     num_uos = len(seq)
@@ -301,38 +300,38 @@ class Connection:
         mode_source = self.source_uo.oper_mode
         mode_dest = self.destination_uo.oper_mode
 
-        flow_flag = (mode_source == 'Continuous' and mode_dest != 'Batch')
-        btf_flag = self.source_uo.__class__.__name__ == 'BatchToFlowConnector'
+        flow_flag = mode_source == "Continuous" and mode_dest != "Batch"
+        btf_flag = self.source_uo.__class__.__name__ == "BatchToFlowConnector"
 
         if flow_flag:
             states_up = self.source_uo.names_states_out
 
             class_destination = self.destination_uo.__class__.__name__
-            if class_destination == 'DynamicCollector':
-                if self.source_uo.__class__.__name__ == 'MSMPR':
-                    states_down = self.destination_uo.names_states_in['crystallizer']
+            if class_destination == "DynamicCollector":
+                if self.source_uo.__class__.__name__ == "MSMPR":
+                    states_down = self.destination_uo.names_states_in["crystallizer"]
                 else:
-                    states_down = self.destination_uo.names_states_in['liquid_mixer']
+                    states_down = self.destination_uo.names_states_in["liquid_mixer"]
 
             else:
                 states_down = self.destination_uo.names_states_in
-            
+
             # if hasattr(self.Matter, 'moments'):
             #     num_distr = len(self.Matter.moments)
-            
+
             # elif hasattr(self.Matter, 'distrib'):
             #     num_distr = len(self.Matter.distrib)
-            
-            if 'mu_n' in states_up:
+
+            if "mu_n" in states_up:
                 num_distr = len(self.Matter.moments)
-            elif 'distrib' in states_up:
+            elif "distrib" in states_up:
                 num_distr = len(self.Matter.distrib)
             else:
                 num_distr = 0
-                
+
             name_analyzer = NameAnalyzer(
-                states_up, states_down, self.num_species,
-                num_distr)
+                states_up, states_down, self.num_species, num_distr
+            )
 
             # Convert units and pass states to self.Matter
             converted_states = name_analyzer.convertUnits(self.Matter)
@@ -342,19 +341,21 @@ class Connection:
             states_up = self.source_uo.names_states_out
 
             class_destination = self.destination_uo.__class__.__name__
-            if class_destination == 'DynamicCollector':
-                if self.source_uo.__class__.__name__ == 'MSMPR':
-                    states_down = self.destination_uo.names_states_in['crystallizer']
+            if class_destination == "DynamicCollector":
+                if self.source_uo.__class__.__name__ == "MSMPR":
+                    states_down = self.destination_uo.names_states_in["crystallizer"]
                 else:
-                    states_down = self.destination_uo.names_states_in['liquid_mixer']
+                    states_down = self.destination_uo.names_states_in["liquid_mixer"]
 
             else:
                 states_down = self.destination_uo.names_states_in
 
             name_analyzer = NameAnalyzer(
-                states_up, states_down, self.num_species,
-                len(getattr(self.Matter, 'distrib', []))
-                )
+                states_up,
+                states_down,
+                self.num_species,
+                len(getattr(self.Matter, "distrib", [])),
+            )
 
             # Convert units and pass states to self.Matter
             converted_states = name_analyzer.convertUnits(self.Matter)
@@ -368,33 +369,34 @@ class Connection:
 
         transfered_matter.transferred_from_uo = True
 
-        if class_destination == 'Mixer':
+        if class_destination == "Mixer":
             self.destination_uo.Inlets = transfered_matter
 
-        elif mode_dest == 'Batch':
+        elif mode_dest == "Batch":
             self.destination_uo.Phases = transfered_matter
             # if class_destination == 'BatchToFlowConnector':
             #     self.destination_uo.names_states_out = self.source_uo.names_states_out
 
-        elif mode_dest == 'Semibatch':
-            if class_destination == 'DynamicCollector':
+        elif mode_dest == "Semibatch":
+            if class_destination == "DynamicCollector":
                 self.destination_uo.Inlet = transfered_matter
                 self.destination_uo.material_from_upstream = True
 
-                if self.source_uo.__module__ == 'PharmaPy.Crystallizers':
+                if self.source_uo.__module__ == "PharmaPy.Crystallizers":
                     self.destination_uo.KinCryst = self.source_uo.Kinetics
                     self.destination_uo.kwargs_cryst = {
-                        'target_ind': self.source_uo.target_ind,
-                        'target_comp': self.source_uo.target_comp,
-                        'scale': self.source_uo.scale}
+                        "target_ind": self.source_uo.target_ind,
+                        "target_comp": self.source_uo.target_comp,
+                        "scale": self.source_uo.scale,
+                    }
 
             elif self.destination_uo.Phases is None:
                 self.destination_uo.Phases = transfered_matter
                 self.destination_uo.material_from_upstream = True
 
-        elif mode_dest == 'Continuous':  # Continuous
+        elif mode_dest == "Continuous":  # Continuous
             # Transfering from batch to continuous (how to approach this?)
-            if self.source_uo.oper_mode != 'Continuous':
+            if self.source_uo.oper_mode != "Continuous":
                 pass
                 # TODO: big TODO. We need to define how Batch/Semibatch
                 # followed by continuous will be handled. The most practical
@@ -403,7 +405,7 @@ class Connection:
                 # last discontinuous UO is depleted, as stated in the paper.
                 # Reference date: (2022/06/28)
 
-            if class_destination == 'DynamicExtractor':
-                self.destination_uo.Inlet = {'feed': transfered_matter}
+            if class_destination == "DynamicExtractor":
+                self.destination_uo.Inlet = {"feed": transfered_matter}
             else:
                 self.destination_uo.Inlet = transfered_matter

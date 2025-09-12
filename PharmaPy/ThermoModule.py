@@ -31,7 +31,7 @@ def ParseDatabase(path_datafile, to_arrays=True):
         entries.append(dat.keys())
 
     # Extract interaction data, if existent
-    interac = original_data.pop('interaction', None)
+    interac = original_data.pop("interaction", None)
 
     # Collect data with the same key
     entries = set().union(*entries)
@@ -44,17 +44,17 @@ def ParseDatabase(path_datafile, to_arrays=True):
         for val in original_data.values():
             item = val.get(entry)
             if isinstance(item, dict):
-                item = item['value']
+                item = item["value"]
 
-                if entry == 'delta_hvap':
-                    tref_hvap.append(val.get(entry)['temp_ref'])
+                if entry == "delta_hvap":
+                    tref_hvap.append(val.get(entry)["temp_ref"])
 
             vals.append(item)
 
         dd[entry] = vals
 
         if len(tref_hvap) > 0:
-            dd['tref_hvap'] = tref_hvap
+            dd["tref_hvap"] = tref_hvap
 
     # Convert to arrays  # TODO: improve this
     if to_arrays:
@@ -72,7 +72,7 @@ def ParseDatabase(path_datafile, to_arrays=True):
                         props.append([0] * length)
                     else:
                         val_array = np.zeros(length)
-                        val_array[:len(val)] = val
+                        val_array[: len(val)] = val
                         props.append(val_array)
 
             else:
@@ -84,21 +84,22 @@ def ParseDatabase(path_datafile, to_arrays=True):
 
             dd_arrays[key] = props
 
-        dd_arrays['name_species'] = list(original_data.keys())
+        dd_arrays["name_species"] = list(original_data.keys())
 
         if interac is not None:
             # Convert interaction parameters
-            interac['amk'] = np.array(interac.get('amk', None))
-            interac['vk'] = np.array(interac.get('vk', None))
+            interac["amk"] = np.array(interac.get("amk", None))
+            interac["vk"] = np.array(interac.get("vk", None))
 
-            if 'unifac_groups' in interac:  # Avoid pandas xs warning
-                interac['unifac_groups'] = [
-                    tuple(pair) for pair in interac['unifac_groups']]
+            if "unifac_groups" in interac:  # Avoid pandas xs warning
+                interac["unifac_groups"] = [
+                    tuple(pair) for pair in interac["unifac_groups"]
+                ]
 
             dd_arrays.update(interac)
         return dd_arrays
     else:
-        dd['name_species'] = list(original_data.keys())
+        dd["name_species"] = list(original_data.keys())
         return dd
 
 
@@ -107,14 +108,14 @@ class ThermoPhysicalManager:
 
         props_dict = ParseDatabase(path_data)
         self.__dict__ = props_dict
-        self.name_species = props_dict['name_species']
+        self.name_species = props_dict["name_species"]
 
         self.num_species = len(self.name_species)
 
         self.path_data = path_data
 
         # UNIFAC
-        if 'unifac_groups' in props_dict:
+        if "unifac_groups" in props_dict:
             rk, qk, a_mat, b_mat, c_mat = self.get_UNIFACParams()
             self.Rk = rk
             self.Qk = qk
@@ -123,8 +124,7 @@ class ThermoPhysicalManager:
             self.c_unifac = c_mat
 
     def selectProperties(self, names):
-        mapping = dict((key, ind)
-                       for ind, key in enumerate(self.compound_names))
+        mapping = dict((key, ind) for ind, key in enumerate(self.compound_names))
 
         idx_selection = [mapping[key] for key in names]
 
@@ -140,15 +140,15 @@ class ThermoPhysicalManager:
     def set_object(self):
         self.cpLiqPure = self.getCpLiqPure(temp=5)
 
-    def getCpPure(self, temp, phase='liquid'):
+    def getCpPure(self, temp, phase="liquid"):
         temp = np.atleast_1d(temp)
         num_temp = len(temp)
 
-        if phase == 'liquid':
+        if phase == "liquid":
             cp_cts = np.atleast_2d(self.cp_liq)
-        elif phase == 'solid':
+        elif phase == "solid":
             cp_cts = np.atleast_2d(self.cp_solid)
-        elif phase == 'vapor':
+        elif phase == "vapor":
             cp_cts = np.atleast_2d(self.cp_vapor)
 
         num_sp = len(cp_cts)
@@ -166,13 +166,14 @@ class ThermoPhysicalManager:
 
         return cpMass, cpMole
 
-    def getCpMix(self, temp, mass_frac=None, mole_frac=None, phase='liquid',
-                 basis='mass'):
+    def getCpMix(
+        self, temp, mass_frac=None, mole_frac=None, phase="liquid", basis="mass"
+    ):
         # mass_frac = np.asarray(mass_frac)
 
         cp_mass, cp_mole = self.getCpPure(temp, phase=phase)
 
-        if basis == 'mass':
+        if basis == "mass":
             if mass_frac is None:
                 mass_frac = self.frac_to_frac(mole_frac=mole_frac)
 
@@ -181,7 +182,7 @@ class ThermoPhysicalManager:
             elif mass_frac.ndim == 2:
                 cpMix = (mass_frac * cp_mass).sum(axis=1)
 
-        elif basis == 'mole':
+        elif basis == "mole":
             if mole_frac is None:
                 mole_frac = self.frac_to_frac(mass_frac)
 
@@ -192,19 +193,27 @@ class ThermoPhysicalManager:
 
         return cpMix
 
-    def getEnthalpy(self, temp, temp_ref=298.15, mass_frac=None,
-                    mole_frac=None, phase='liquid', basis='mass', idx=None,
-                    total_h=True):
+    def getEnthalpy(
+        self,
+        temp,
+        temp_ref=298.15,
+        mass_frac=None,
+        mole_frac=None,
+        phase="liquid",
+        basis="mass",
+        idx=None,
+        total_h=True,
+    ):
         temp = np.atleast_1d(temp)
 
         if idx is None:
             idx = np.arange(len(self.mw))
 
-        if phase == 'liquid':
+        if phase == "liquid":
             cp_cts = np.atleast_2d(self.cp_liq)
-        elif phase == 'solid':
+        elif phase == "solid":
             cp_cts = np.atleast_2d(self.cp_solid)
-        elif phase == 'vapor':
+        elif phase == "vapor":
             cp_cts = np.atleast_2d(self.cp_vapor)
 
         cp_cts = cp_cts[idx]
@@ -220,7 +229,7 @@ class ThermoPhysicalManager:
         integral = np.vstack(integral)
 
         if total_h:
-            if basis == 'mass':
+            if basis == "mass":
                 integralMass = integral * 1000 / self.mw[idx]  # J/kg_i
                 if mass_frac is None:
                     mass_frac = self.frac_to_frac(mole_frac=mole_frac, ind=ind)
@@ -231,7 +240,7 @@ class ThermoPhysicalManager:
                     mass_fr = mass_frac[:, idx]
 
                 enthalpyOut = (integralMass * mass_fr).sum(axis=1)
-            elif basis == 'mole':
+            elif basis == "mole":
                 if mole_frac is None:
                     mole_frac = self.frac_to_frac(mass_frac, ind=ind)
 
@@ -248,7 +257,7 @@ class ThermoPhysicalManager:
 
             return enthalpyOut
         else:
-            if basis == 'mass':
+            if basis == "mass":
                 integralOut = integral * 1000 / self.mw[idx]  # J/kg_i
             else:
                 integralOut = integral
@@ -281,25 +290,26 @@ class ThermoPhysicalManager:
 
         return heat_of_rxn  # J/mol
 
-    def getDensityPure(self, phase='liquid', temp=None):
-        if phase == 'liquid':
+    def getDensityPure(self, phase="liquid", temp=None):
+        if phase == "liquid":
             rhoMass = self.rho_liq  # TODO: T-dependent rho
-        elif phase == 'solid':
+        elif phase == "solid":
             rhoMass = self.rho_solid
 
         rhoMole = rhoMass / self.mw  # kmol/m**3  (mol/L)
 
         return rhoMass, rhoMole
 
-    def getDensityMix(self, mass_frac=None, mole_frac=None, phase='liquid',
-                      temp=None, basis='mass'):
+    def getDensityMix(
+        self, mass_frac=None, mole_frac=None, phase="liquid", temp=None, basis="mass"
+    ):
 
         if temp is None:
             temp = self.temp
 
         rhoMass, rhoMole = self.getDensityPure(phase, temp)
 
-        if basis == 'mass':
+        if basis == "mass":
             if mass_frac is None:
                 mass_frac = self.frac_to_frac(mole_frac=mole_frac)
 
@@ -323,24 +333,25 @@ class ThermoPhysicalManager:
 
         return mw_av
 
-    def getViscosityPure(self, phase='liquid', temp=None):
+    def getViscosityPure(self, phase="liquid", temp=None):
         if temp is None:
             temp = self.temp
 
-        if phase == 'liquid':
+        if phase == "liquid":
             visc_cts = np.atleast_2d(self.visc_liq)
-            temp_term = np.array([1, 1/temp, temp, temp**2])
+            temp_term = np.array([1, 1 / temp, temp, temp**2])
 
-            viscosity = 10**(np.dot(visc_cts, temp_term))/1000  # Pa*s
+            viscosity = 10 ** (np.dot(visc_cts, temp_term)) / 1000  # Pa*s
 
-        elif phase == 'vapor':
+        elif phase == "vapor":
             # to be impelemented
             viscosity = self.visc_gas
 
         return viscosity
 
-    def getViscosityMix(self, temp=None, mass_frac=None, mole_frac=None,
-                        phase='liquid'):
+    def getViscosityMix(
+        self, temp=None, mass_frac=None, mole_frac=None, phase="liquid"
+    ):
 
         if temp is None:
             temp = self.temp
@@ -353,17 +364,17 @@ class ThermoPhysicalManager:
             mole_frac = self.frac_to_frac(mass_frac=mass_frac)
 
         # Mixing rules
-        if phase == 'liquid':
-            viscMix = np.exp(
-                np.dot(mole_frac, np.log(visc_comp)))
+        if phase == "liquid":
+            viscMix = np.exp(np.dot(mole_frac, np.log(visc_comp)))
 
-        elif phase == 'vapor':
+        elif phase == "vapor":
             if visc_comp.ndim == 1:
-                visc_term = np.outer(visc_comp, 1/visc_comp)
-                mw_term = np.outer(self.mw, 1/self.mw)
+                visc_term = np.outer(visc_comp, 1 / visc_comp)
+                mw_term = np.outer(self.mw, 1 / self.mw)
 
-                phi_mix = (1 + visc_term**0.5 * mw_term**0.25)**2 / \
-                    np.sqrt(8*(1 + mw_term))
+                phi_mix = (1 + visc_term**0.5 * mw_term**0.25) ** 2 / np.sqrt(
+                    8 * (1 + mw_term)
+                )
 
                 interactions = np.dot(mole_frac, phi_mix.T)
 
@@ -373,10 +384,10 @@ class ThermoPhysicalManager:
 
     def getDiffusivityPure(self, wrt, temp=None):
         diffusivity = self.diffusivity[:, wrt]
-       # diffusivity =  0.00442005
+        # diffusivity =  0.00442005
         return diffusivity
 
-    def frac_to_conc(self, mass_frac=None, mole_frac=None, basis='mole'):
+    def frac_to_conc(self, mass_frac=None, mole_frac=None, basis="mole"):
         densMass, densMole = self.getDensityPure()
         if mass_frac is None:
             if mole_frac.ndim == 1:
@@ -386,14 +397,12 @@ class ThermoPhysicalManager:
                 concentr = concentr.T
         else:
             if mass_frac.ndim == 1:
-                concentr = (mass_frac / self.mw) / np.dot(mass_frac,
-                                                          1 / densMass)
+                concentr = (mass_frac / self.mw) / np.dot(mass_frac, 1 / densMass)
             else:
-                concentr = (mass_frac / self.mw).T / np.dot(mass_frac,
-                                                            1 / densMass)
+                concentr = (mass_frac / self.mw).T / np.dot(mass_frac, 1 / densMass)
                 concentr = concentr.T
 
-        if basis == 'mass':
+        if basis == "mass":
             concentr *= self.mw
 
         return concentr  # mol/L (kmol/m**3) - kg/m**3
@@ -408,10 +417,10 @@ class ThermoPhysicalManager:
                 frac_out = mass_frac.T
         else:
             if mass_frac.ndim == 1:
-                mole_frac = (mass_frac / self.mw) / np.dot(mass_frac, 1/self.mw)
+                mole_frac = (mass_frac / self.mw) / np.dot(mass_frac, 1 / self.mw)
                 frac_out = mole_frac
             else:
-                mole_frac = (mass_frac / self.mw).T / np.dot(mass_frac, 1/self.mw)
+                mole_frac = (mass_frac / self.mw).T / np.dot(mass_frac, 1 / self.mw)
                 frac_out = mole_frac.T
 
         return frac_out
@@ -420,14 +429,15 @@ class ThermoPhysicalManager:
         conc = np.asarray(conc)
 
         if solvent_ind is not None:
-            _, densMole = self.getDensityPure(phase='liquid')
+            _, densMole = self.getDensityPure(phase="liquid")
             molVol = 1 / densMole  # mol/L, kmol/m3
 
             mask_solv = np.ones_like(conc, dtype=bool)
             mask_solv[solvent_ind] = False
 
-            conc_solv = (1 - np.dot(conc[mask_solv], molVol[mask_solv])) / \
-                molVol[solvent_ind]
+            conc_solv = (1 - np.dot(conc[mask_solv], molVol[mask_solv])) / molVol[
+                solvent_ind
+            ]
 
             conc[solvent_ind] = conc_solv
 
@@ -436,13 +446,13 @@ class ThermoPhysicalManager:
         else:
             mole_frac = (conc.T / conc.sum(axis=1)).T
 
-        if basis == 'mole':
+        if basis == "mole":
             if solvent_ind:
                 return mole_frac, conc
             else:
                 return mole_frac
 
-        elif basis == 'mass':
+        elif basis == "mass":
             mass_frac = self.frac_to_frac(mole_frac=mole_frac)
             if solvent_ind:
                 return mass_frac, conc
@@ -459,13 +469,13 @@ class ThermoPhysicalManager:
         conc = np.asarray(conc)
 
         if solvent_ind is not None:
-            dens_mass, _ = self.getDensityPure(phase='liquid')
+            dens_mass, _ = self.getDensityPure(phase="liquid")
             mask_solv = np.ones_like(conc, dtype=bool)
             mask_solv[solvent_ind] = False
 
             conc_solv = (
-                1 - np.dot(conc[mask_solv], 1/dens_mass[mask_solv])) * \
-                dens_mass[solvent_ind]
+                1 - np.dot(conc[mask_solv], 1 / dens_mass[mask_solv])
+            ) * dens_mass[solvent_ind]
 
             conc[solvent_ind] = conc_solv
 
@@ -474,13 +484,13 @@ class ThermoPhysicalManager:
         else:
             mass_frac = (conc.T / conc.sum(axis=1)).T
 
-        if basis == 'mass':
+        if basis == "mass":
             if solvent_ind:
                 return mass_frac, conc
             else:
                 return mass_frac
 
-        elif basis == 'mole':
+        elif basis == "mole":
             mole_frac = self.frac_to_frac(mass_frac=mass_frac)
             if solvent_ind:
                 return mole_frac, conc
@@ -516,7 +526,7 @@ class ThermoPhysicalManager:
 
             vap_pressure = a_ct - b_ct / (temp + c_ct)
 
-            return 10**(vap_pressure)
+            return 10 ** (vap_pressure)
 
         else:
             if isinstance(pres, np.ndarray):
@@ -526,8 +536,9 @@ class ThermoPhysicalManager:
 
             return temp_sat
 
-    def getKeqVLE(self, temp=None, pres=None, x_liq=None, y_vap=None,
-                  gamma_model='ideal'):
+    def getKeqVLE(
+        self, temp=None, pres=None, x_liq=None, y_vap=None, gamma_model="ideal"
+    ):
 
         if temp is None:
             temp = self.temp
@@ -551,11 +562,11 @@ class ThermoPhysicalManager:
             if any(supercrit):
                 p_vap[supercrit] = self.henry_constant[supercrit]
 
-        if gamma_model == 'ideal':
+        if gamma_model == "ideal":
             gamma = np.ones_like(x_liq)
-        elif gamma_model == 'UNIFAC':
+        elif gamma_model == "UNIFAC":
             gamma = self.UNIFAC_DMD(x_liq, temp)
-        elif gamma_model == 'UNIQUAC':
+        elif gamma_model == "UNIQUAC":
             gamma = self.UNIQUAC(x_liq, temp)
 
         k_vals = p_vap * gamma / pres
@@ -654,7 +665,7 @@ class ThermoPhysicalManager:
 
         temp = np.asarray(temp)
         one_dimensional_output = False
-    #    temp = temp[np.newaxis]
+        #    temp = temp[np.newaxis]
 
         if x_liq.ndim == 1:
             one_dimensional_output = True
@@ -681,11 +692,15 @@ class ThermoPhysicalManager:
         phi = ri / (ri * x_liq).sum(axis=1)[:, np.newaxis]
         theta = qi / (qi * x_liq).sum(axis=1)[:, np.newaxis]
 
-        li = 5*(ri - qi) - (ri - 1)
+        li = 5 * (ri - qi) - (ri - 1)
 
         # -------------------- Combinatorial term (same as non-modified UNIFAC)
-        gamma_combinatorial = np.log(phi) + 5 * qi * np.log(theta / phi) +\
-            li - phi * (li * x_liq).sum(axis=1)[:, np.newaxis]
+        gamma_combinatorial = (
+            np.log(phi)
+            + 5 * qi * np.log(theta / phi)
+            + li
+            - phi * (li * x_liq).sum(axis=1)[:, np.newaxis]
+        )
 
         # -------------------- Residual term, with qip instead of qi
         theta_p = x_liq * qip / (qip * x_liq).sum(axis=1)[:, np.newaxis]
@@ -698,7 +713,7 @@ class ThermoPhysicalManager:
         for ind, row in enumerate(theta_p):
             tau_theta_residual[ind] = (tau[ind] * row / tau_theta[ind]).sum(axis=1)
 
-        gamma_residual = qip*(1 - np.log(tau_theta) - tau_theta_residual)
+        gamma_residual = qip * (1 - np.log(tau_theta) - tau_theta_residual)
 
         # -------------------- Unify terms
         log_gamma = gamma_residual + gamma_combinatorial
@@ -711,44 +726,44 @@ class ThermoPhysicalManager:
             return gamma
 
     def get_UNIFACParams(self, dataframes=False):
-        """ Get UNIFAC-Dortmund constants by specifying the indexes of the groups
-            present in the mixture
+        """Get UNIFAC-Dortmund constants by specifying the indexes of the groups
+        present in the mixture
 
-            Parameters
-            ----------
-            group_idx : list of tuples
-                list containing 2-tuples, which describe the main and secondary
-                group index (without repetition) for each group in the mixture.
+        Parameters
+        ----------
+        group_idx : list of tuples
+            list containing 2-tuples, which describe the main and secondary
+            group index (without repetition) for each group in the mixture.
 
-            Returns
-            -------
+        Returns
+        -------
 
-            Example
-            -------
-                For a water ethanol mixture, group_idx would be:
+        Example
+        -------
+            For a water ethanol mixture, group_idx would be:
 
-                    >>> water_ethanol = [(7, 16), (1, 1), (1, 2), (5, 14)]
+                >>> water_ethanol = [(7, 16), (1, 1), (1, 2), (5, 14)]
 
-                The first tuple (7, 16) corresponds to water, and the next three
-                conform ethanol: [CH3, CH2 and OH(p)]. For information on the
-                group numbers, refer to [1]
+            The first tuple (7, 16) corresponds to water, and the next three
+            conform ethanol: [CH3, CH2 and OH(p)]. For information on the
+            group numbers, refer to [1]
 
-            References
-            ----------
-            [1] Gmehling, J.; Li, J.; Schiller, M. Ind. Eng. Chem. Res. 1993,
-            32 (1), 178–193.
+        References
+        ----------
+        [1] Gmehling, J.; Li, J.; Schiller, M. Ind. Eng. Chem. Res. 1993,
+        32 (1), 178–193.
 
         """
         group_tuples = self.unifac_groups
         group_idx = np.array(self.unifac_groups)
 
         # Import data
-        root = str(pathlib.Path(__file__).parents[1]) + '/data/thermodynamics/'
-        interac_path = root + 'unifac_interaction_params.csv'
+        root = str(pathlib.Path(__file__).parents[1]) + "/data/thermodynamics/"
+        interac_path = root + "unifac_interaction_params.csv"
 
         interac_data = pd.read_csv(interac_path, index_col=(0, 1))
 
-        rq_path = root + 'unifac_rk_qk.csv'
+        rq_path = root + "unifac_rk_qk.csv"
         rk_qk = pd.read_csv(rq_path, index_col=(2, 0))
 
         # Create empty arrays
@@ -769,30 +784,27 @@ class ThermoPhysicalManager:
                 if i == j:
                     pass
                 elif i < j:
-                    a_matrix[m, n] = interac_data.loc[i, j]['anm']
-                    b_matrix[m, n] = interac_data.loc[i, j]['bnm']
-                    c_matrix[m, n] = interac_data.loc[i, j]['cnm']
+                    a_matrix[m, n] = interac_data.loc[i, j]["anm"]
+                    b_matrix[m, n] = interac_data.loc[i, j]["bnm"]
+                    c_matrix[m, n] = interac_data.loc[i, j]["cnm"]
                 else:
-                    a_matrix[m, n] = interac_data.loc[j, i]['amn']
-                    b_matrix[m, n] = interac_data.loc[j, i]['bmn']
-                    c_matrix[m, n] = interac_data.loc[j, i]['cmn']
+                    a_matrix[m, n] = interac_data.loc[j, i]["amn"]
+                    b_matrix[m, n] = interac_data.loc[j, i]["bmn"]
+                    c_matrix[m, n] = interac_data.loc[j, i]["cmn"]
 
         r_k = []
         q_k = []
         for ind in group_tuples:
-            r_k.append(rk_qk['Rk'].xs(ind))
-            q_k.append(rk_qk['Qk'].xs(ind))
+            r_k.append(rk_qk["Rk"].xs(ind))
+            q_k.append(rk_qk["Qk"].xs(ind))
 
         r_k = np.array(r_k)
         q_k = np.array(q_k)
 
         if dataframes:
-            a_matrix = pd.DataFrame(a_matrix, index=group_tuples,
-                                    columns=group_tuples)
-            b_matrix = pd.DataFrame(b_matrix, index=group_tuples,
-                                    columns=group_tuples)
-            c_matrix = pd.DataFrame(c_matrix, index=group_tuples,
-                                    columns=group_tuples)
+            a_matrix = pd.DataFrame(a_matrix, index=group_tuples, columns=group_tuples)
+            b_matrix = pd.DataFrame(b_matrix, index=group_tuples, columns=group_tuples)
+            c_matrix = pd.DataFrame(c_matrix, index=group_tuples, columns=group_tuples)
 
             r_k = pd.Series(r_k, index=group_tuples)
             q_k = pd.Series(q_k, index=group_tuples)
@@ -800,8 +812,7 @@ class ThermoPhysicalManager:
         return [r_k, q_k, a_matrix, b_matrix, c_matrix]
 
     def UNIFAC_DMD(self, x_i=None, temp=None):
-
-        """ Calculate activity coefficients of a liquid mixture using the UNIFAC
+        """Calculate activity coefficients of a liquid mixture using the UNIFAC
         group-contribution method
 
         Parameters
@@ -857,8 +868,11 @@ class ThermoPhysicalManager:
         def get_gamma_log(psi_matrix, theta_vec, q_vec):
             psi_divided = psi_matrix / np.dot(psi_matrix.T, theta_vec)
 
-            log_gamma = q_vec * (1 - np.log(np.dot(psi_matrix.T, theta_vec)) -
-                                 np.dot(psi_divided, theta_vec))
+            log_gamma = q_vec * (
+                1
+                - np.log(np.dot(psi_matrix.T, theta_vec))
+                - np.dot(psi_divided, theta_vec)
+            )
 
             return log_gamma
 
@@ -888,11 +902,10 @@ class ThermoPhysicalManager:
         q_i = np.dot(v_matrix, q_k)
 
         V = r_i / (r_i * x_i).sum(axis=1)[:, np.newaxis]
-        V_prime = r_i**(3/4) / (x_i * r_i**(3/4)).sum(axis=1)[:, np.newaxis]
+        V_prime = r_i ** (3 / 4) / (x_i * r_i ** (3 / 4)).sum(axis=1)[:, np.newaxis]
         F = q_i / (q_i * x_i).sum(axis=1)[:, np.newaxis]
 
-        g_comb = 1 - V_prime + np.log(V_prime) - 5 * q_i * \
-            (1 - V/F + np.log(V/F))
+        g_comb = 1 - V_prime + np.log(V_prime) - 5 * q_i * (1 - V / F + np.log(V / F))
 
         # --------------- Residual term
         x_upper_i = v_matrix / v_matrix.sum(axis=1)[:, np.newaxis]
@@ -900,8 +913,7 @@ class ThermoPhysicalManager:
 
         g_resid = []
         for frac, tp in zip(x_i, temp):
-            x_upper = np.dot(v_matrix.T, frac) / \
-                np.sum(v_matrix * frac[:, np.newaxis])
+            x_upper = np.dot(v_matrix.T, frac) / np.sum(v_matrix * frac[:, np.newaxis])
             theta = q_k * x_upper / np.dot(q_k, x_upper)
 
             psi = np.exp(-(a_inter + b_inter * tp + c_inter * tp**2) / tp)

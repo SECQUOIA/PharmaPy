@@ -1,0 +1,2 @@
+This directory contains image files for the documentation examples.
+The pfd_flowsheet.png file should be added here when available.

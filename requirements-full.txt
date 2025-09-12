@@ -1,0 +1,27 @@
+# Requirements for full PharmaPy functionality with simulation capabilities
+# Use this for environments where assimulo is required
+
+# Core numerical dependencies
+numpy>=1.20,<2
+scipy>=1.7,<2
+matplotlib>=3.0
+pandas>=1.3
+
+# Build dependencies  
+cython>=0.29,<4
+
+# Simulation dependency (may require specific environment setup)
+# Note: assimulo installation often requires:
+# - Python 3.9 (compatibility issues with 3.10+)
+# - System dependencies: sundials, superlu, blas/lapack
+# - Specific compiler setup on Windows
+assimulo>=3.0,<4
+
+# Optional development dependencies
+# Uncomment for development environments:
+# pytest>=6.0
+# black
+# flake8  
+# isort
+# sphinx
+# sphinx-rtd-theme

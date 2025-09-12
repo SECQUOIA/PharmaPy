@@ -9,7 +9,7 @@ import numpy as np
 
 
 def gaussian(x, mu=0, sigma=1, ampl=1):
-    func = ampl/sigma/np.sqrt(2*np.pi) * np.exp(-0.5*((x - mu) / sigma)**2)
+    func = ampl / sigma / np.sqrt(2 * np.pi) * np.exp(-0.5 * ((x - mu) / sigma) ** 2)
 
     return func
 
@@ -24,8 +24,9 @@ def multiple_gaussian(x, mus, sigmas, ampls, separated=False):
 
     equal = num_mu == num_sigma == num_ampl
     if not equal:
-        raise RuntimeError("'mus', 'sigmas' and 'ampls' must have the same "
-                           "number of elements")
+        raise RuntimeError(
+            "'mus', 'sigmas' and 'ampls' must have the same " "number of elements"
+        )
 
     gaussians = np.zeros((num_mu, num_x))
     for ind in range(num_mu):
@@ -43,7 +44,7 @@ def gaussian_dparam(x, mu=0, sigma=1, ampl=1):
     gauss = gaussian(x, mu, sigma, ampl)
 
     df_dmu = gauss * (x - mu) / sigma**2
-    df_dsigma = gauss / sigma * (((x - mu) / sigma)**2 - 1)
+    df_dsigma = gauss / sigma * (((x - mu) / sigma) ** 2 - 1)
     df_dampl = gauss / ampl
 
     return df_dmu, df_dsigma, df_dampl
@@ -60,7 +61,7 @@ def gaussian_dx(x, mu=0, sigma=1, ampl=1):
 def gaussian_dxdx(x, mu=0, sigma=1, ampl=1):
     gauss = gaussian(x, mu, sigma, ampl)
 
-    df_dxdx = gauss / sigma**2 * (((x - mu) / sigma)**2 - 1)
+    df_dxdx = gauss / sigma**2 * (((x - mu) / sigma) ** 2 - 1)
 
     return df_dxdx
 
@@ -74,16 +75,18 @@ def gauss_dparam_mult(x, mus, sigmas, ampls):
 
     equal = num_mu == num_sigma == num_ampl
     if not equal:
-        raise RuntimeError("'mus', 'sigmas' and 'ampls' must have the same "
-                           "number of elements")
+        raise RuntimeError(
+            "'mus', 'sigmas' and 'ampls' must have the same " "number of elements"
+        )
 
     dgauss_dmu = np.zeros((num_x, num_mu))
     dgauss_dsigma = np.zeros_like(dgauss_dmu)
     dgauss_dampl = np.zeros_like(dgauss_dmu)
 
     for ind in range(num_mu):
-        df_dmu, df_dsigma, df_dampl = gaussian_dparam(x, mus[ind], sigmas[ind],
-                                                      ampls[ind])
+        df_dmu, df_dsigma, df_dampl = gaussian_dparam(
+            x, mus[ind], sigmas[ind], ampls[ind]
+        )
 
         dgauss_dmu[:, ind] = df_dmu
         dgauss_dsigma[:, ind] = df_dsigma
@@ -103,8 +106,9 @@ def gauss_dx_mult(x, mus, sigmas, ampls):
 
     equal = num_mu == num_sigma == num_ampl
     if not equal:
-        raise RuntimeError("'mus', 'sigmas' and 'ampls' must have the same "
-                           "number of elements")
+        raise RuntimeError(
+            "'mus', 'sigmas' and 'ampls' must have the same " "number of elements"
+        )
 
     dgauss_dx = np.zeros((num_mu, num_x))
 
@@ -125,8 +129,9 @@ def gauss_dxdx_mult(x, mus, sigmas, ampls):
 
     equal = num_mu == num_sigma == num_ampl
     if not equal:
-        raise RuntimeError("'mus', 'sigmas' and 'ampls' must have the same "
-                           "number of elements")
+        raise RuntimeError(
+            "'mus', 'sigmas' and 'ampls' must have the same " "number of elements"
+        )
 
     dgauss_dxdx = np.zeros((num_mu, num_x))
 

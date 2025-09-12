@@ -20,4 +20,3 @@ class PharmaPySpecificationError(AttributeError):
 
 class PharmaPyTypeError(TypeError):
     pass
-

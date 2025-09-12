@@ -13,8 +13,15 @@ from matplotlib.ticker import AutoMinorLocator
 
 
 class PCR_calibration:
-    def __init__(self, data, num_comp=None, standardize=True, snv=False,
-                 y_name=None, y_suffixes=None):
+    def __init__(
+        self,
+        data,
+        num_comp=None,
+        standardize=True,
+        snv=False,
+        y_name=None,
+        y_suffixes=None,
+    ):
 
         self.data = data
         self.standardize = standardize
@@ -32,16 +39,17 @@ class PCR_calibration:
         self.data_mean = data_mean
         self.data_std = data_std
 
-        (self.projections, self.explained_variance,
-         self.svd_dict) = self.__get_projections()
+        (self.projections, self.explained_variance, self.svd_dict) = (
+            self.__get_projections()
+        )
 
         if num_comp is None:
-            self.num_comp = len(self.svd_dict['sv'])
+            self.num_comp = len(self.svd_dict["sv"])
         else:
             self.num_comp = num_comp
 
         if y_name is None:
-            y_name = 'y_'
+            y_name = "y_"
 
         self.y_name = y_name
         self.y_suffixes = y_suffixes
@@ -71,9 +79,9 @@ class PCR_calibration:
         explained_var = sv**2 / (sv**2).sum() * 100
 
         # Store SVD in a dict
-        v_trunc = v_nt[:len(sv)].T
+        v_trunc = v_nt[: len(sv)].T
 
-        svd_dict = {'U': u_m, 'sv': sv, 'V': v_n, 'V_trunc': v_trunc}
+        svd_dict = {"U": u_m, "sv": sv, "V": v_n, "V_trunc": v_trunc}
 
         # Projections
         projections = np.dot(data, v_n)
@@ -108,25 +116,37 @@ class PCR_calibration:
             axis = axes_flat[ind]
             pc_one, pc_two = combs[ind]
 
-            my_map = plt.get_cmap('Reds')
+            my_map = plt.get_cmap("Reds")
             data_plot = self.projections[:, combs[ind]].T
-            axis.scatter(data_plot[0], data_plot[1],
-                         # 'o', mfc='None',
-                         s=30/(num_axes/2), c=range(data_plot.shape[1]),
-                         cmap=my_map,
-                         marker='o', edgecolor='k')
+            axis.scatter(
+                data_plot[0],
+                data_plot[1],
+                # 'o', mfc='None',
+                s=30 / (num_axes / 2),
+                c=range(data_plot.shape[1]),
+                cmap=my_map,
+                marker="o",
+                edgecolor="k",
+            )
 
-            axis.text(0.5, -0.08, 'PC%i' % (pc_one + 1),
-                      transform=axis.transAxes, ha='center')
+            axis.text(
+                0.5, -0.08, "PC%i" % (pc_one + 1), transform=axis.transAxes, ha="center"
+            )
 
-            axis.text(-0.08, 0.5, 'PC%i' % (pc_two + 1), rotation=90,
-                      transform=axis.transAxes, va='center')
+            axis.text(
+                -0.08,
+                0.5,
+                "PC%i" % (pc_two + 1),
+                rotation=90,
+                transform=axis.transAxes,
+                va="center",
+            )
 
-            axis.spines['bottom'].set_position('zero')
-            axis.spines['left'].set_position('zero')
+            axis.spines["bottom"].set_position("zero")
+            axis.spines["left"].set_position("zero")
 
-            axis.spines['top'].set_visible(False)
-            axis.spines['right'].set_visible(False)
+            axis.spines["top"].set_visible(False)
+            axis.spines["right"].set_visible(False)
 
         if num_plots < num_axes:
             fig.delaxes(axes_flat[-1])
@@ -138,10 +158,11 @@ class PCR_calibration:
     def get_regression(self, y_data, num_comp=None, update_instance=True):
 
         if self.y_suffixes is None:
-            self.y_suffixes = ['%i' % num for num in range(1, len(y_data))]
+            self.y_suffixes = ["%i" % num for num in range(1, len(y_data))]
 
-        self.y_labels = [r'$' + self.y_name + ('{%s}' % suffix) + '$'
-                         for suffix in self.y_suffixes]
+        self.y_labels = [
+            r"$" + self.y_name + ("{%s}" % suffix) + "$" for suffix in self.y_suffixes
+        ]
 
         if num_comp is None:
             num_comp = self.num_comp
@@ -177,7 +198,6 @@ class PCR_calibration:
         # regression_coeff = np.dot(self.svd_dict['V'][:, :num_comp],
         #                           q_coeff)
 
-
         # if update_instance:
         #     self.regression_coeff = regression_coeff
 
@@ -187,8 +207,7 @@ class PCR_calibration:
 
         return regression_coeff
 
-    def predict(self, inputs, num_comp=None, regression_coeff=None,
-                full_output=False):
+    def predict(self, inputs, num_comp=None, regression_coeff=None, full_output=False):
         inputs = np.atleast_2d(inputs)
 
         if self.snv:
@@ -204,18 +223,16 @@ class PCR_calibration:
         if num_comp is None:
             num_comp = self.num_comp
 
-        p_matrix = self.svd_dict['V'][:, :num_comp]
+        p_matrix = self.svd_dict["V"][:, :num_comp]
         new_projections = np.dot(inputs_centered, p_matrix)
 
-        resid_x = inputs_centered[0] - np.dot(new_projections[0],
-                                              p_matrix.T)
+        resid_x = inputs_centered[0] - np.dot(new_projections[0], p_matrix.T)
 
         SPE_x = np.dot(resid_x, resid_x)
         print(SPE_x)
 
         # new_projections, _, di = self.__get_projections(inputs_centered,
         #                                                 num_comp)
-
 
         response = np.dot(new_projections, coeff) + self.y_means
 
@@ -224,8 +241,7 @@ class PCR_calibration:
         if full_output:
             resid = response - self.y_data
             mse = 1 / num_data * np.dot(resid.T, resid)
-            info_out = {'x_projected': new_projections, 'y_pred': response,
-                        'MSE': mse}
+            info_out = {"x_projected": new_projections, "y_pred": response, "MSE": mse}
 
             return info_out
         else:
@@ -235,7 +251,7 @@ class PCR_calibration:
     def evaluate_mse(self, num_comp=None):
 
         if num_comp is None:
-            pc_counter = range(len(self.svd_dict['sv']))
+            pc_counter = range(len(self.svd_dict["sv"]))
         else:
             pc_counter = range(num_comp)
 
@@ -244,11 +260,13 @@ class PCR_calibration:
 
         n_data = np.prod(self.y_data.shape)
         for n_component in pc_counter:
-            coeff = self.get_regression(self.y_data, n_component + 1,
-                                        update_instance=False)
+            coeff = self.get_regression(
+                self.y_data, n_component + 1, update_instance=False
+            )
 
-            pred = self.predict(self.data, regression_coeff=coeff,
-                                num_comp=n_component + 1)
+            pred = self.predict(
+                self.data, regression_coeff=coeff, num_comp=n_component + 1
+            )
 
             resid = self.y_data - pred
 
@@ -264,7 +282,7 @@ class PCR_calibration:
             figsize = (4, 3.5)
         fig, axis = plt.subplots(figsize=figsize)
 
-        markers = ['o', 's', 'd', '*']
+        markers = ["o", "s", "d", "*"]
 
         y_pred = self.y_data - self.residuals
 
@@ -273,26 +291,36 @@ class PCR_calibration:
 
         range_vals = maxim - minim
 
-        left_bottom = [minim - range_vals*0.01]*2
-        right_top = [maxim + range_vals*0.01]*2
+        left_bottom = [minim - range_vals * 0.01] * 2
+        right_top = [maxim + range_vals * 0.01] * 2
 
-        axis.plot(*zip(left_bottom, right_top), '--k', alpha=0.5)
+        axis.plot(*zip(left_bottom, right_top), "--k", alpha=0.5)
 
         for ind in range(self.y_data.shape[1]):
-            axis.plot(self.y_data[:, ind], y_pred[:, ind],
-                      marker=markers[ind], mfc='None', ls='',
-                      label=self.y_labels[ind])
+            axis.plot(
+                self.y_data[:, ind],
+                y_pred[:, ind],
+                marker=markers[ind],
+                mfc="None",
+                ls="",
+                label=self.y_labels[ind],
+            )
 
         axis.legend()
 
-        axis.set_xlabel('$%s{data}$' % self.y_name)
-        axis.set_ylabel('$%s{model}$' % self.y_name)
+        axis.set_xlabel("$%s{data}$" % self.y_name)
+        axis.set_ylabel("$%s{model}$" % self.y_name)
 
         axis.xaxis.set_minor_locator(AutoMinorLocator(2))
         axis.yaxis.set_minor_locator(AutoMinorLocator(2))
 
-        axis.text(1, 1.04, 'num_components = %i' % self.num_comp,
-                  transform=axis.transAxes, ha='right')
+        axis.text(
+            1,
+            1.04,
+            "num_components = %i" % self.num_comp,
+            transform=axis.transAxes,
+            ha="right",
+        )
 
         return fig, axis
 

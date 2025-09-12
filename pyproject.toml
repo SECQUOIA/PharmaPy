@@ -1,0 +1,108 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PharmaPy"
+version = "0.0.1"
+authors = [
+    {name = "Daniel Casas-Orozco", email = "dcasasor@purdue.edu"}
+]
+description = "PharmaPy: Dynamic simulation of pharmaceutical manufacturing systems"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+keywords = ["pharmaceutical", "simulation", "chemical-engineering", "process-modeling"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research", 
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy>=1.20",
+    "cython>=0.29,<4",
+    "scipy>=1.7,<2",
+    "matplotlib>=3.0",
+    "pandas>=1.3",
+]
+
+[project.optional-dependencies]
+simulation = [
+    "assimulo>=3.0,<4",
+]
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "black",
+    "flake8",
+    "isort",
+]
+test = [
+    "pytest>=6.0", 
+    "pytest-cov",
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+]
+all = [
+    "assimulo>=3.0,<4",
+    "pytest>=6.0",
+    "pytest-cov",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "black",
+    "flake8",
+    "isort",
+]
+
+[project.urls]
+Homepage = "https://github.com/SECQUOIA/PharmaPy"
+Documentation = "https://pharmapy.readthedocs.io/"
+Repository = "https://github.com/SECQUOIA/PharmaPy"
+"Bug Tracker" = "https://github.com/SECQUOIA/PharmaPy/issues"
+
+[tool.setuptools.packages.find]
+include = ["PharmaPy*"]
+exclude = ["tests*", "doc*"]
+
+[tool.setuptools.package-data]
+PharmaPy = ["data/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py", "*_tests.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
