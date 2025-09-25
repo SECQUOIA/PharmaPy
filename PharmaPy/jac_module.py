@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 """
 Spyder Editor
@@ -29,7 +30,8 @@ def dx_jac_p(p, abstol, reltol, eps):
     return dx
 
 
-def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None, pick_x=None):
+def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None,
+                  pick_x=None):
 
     if dx is None:
         dx = np.ones_like(x) * eps
@@ -55,7 +57,7 @@ def numerical_jac(func, x, args=(), dx=None, abs_tol=None, rel_tol=None, pick_x=
 
     for idx, i in enumerate(pick_x):
         delx[i] = dx[i]
-        jac[:, idx] = (func(x + delx, *args) - f_eval) / dx[i]
+        jac[:, idx] = (func(x + delx, *args) - f_eval)/dx[i]
         delx[i] = 0
 
     return jac
@@ -76,7 +78,7 @@ def numerical_jac_central(func, x, rel_tol, abs_tol, dx=None, args=()):
 
     for j in range(num_x):
         delx[j] = dx[j]
-        jac.append((func(x + delx, *args) - func(x - delx, *args)) / 2.0 / dx[j])
+        jac.append((func(x + delx, *args) - func(x - delx, *args)) /2. / dx[j])
         delx[j] = 0
 
     return np.column_stack(jac)
@@ -105,14 +107,14 @@ def numerical_jac_data(func, x, args=(), dx=None, pick_x=None):
 
     for idx, i in enumerate(pick_x):
         delx[i] = dx[i]
-        jac[:, idx] = (func(x + delx, *args) - f_eval) / dx[i]
+        jac[:, idx] = (func(x + delx, *args) - f_eval)/dx[i]
         delx[i] = 0
 
     return jac
 
 
 def numerical_jacv(func, x, v, args=()):
-    """Function to evalute the right product J*v. After Hindmarsh and Serban
+    """ Function to evalute the right product J*v. After Hindmarsh and Serban
     (2020) (CVODEs 5.1.0 manual, sec. 2.1).
 
     It is not very accurate calculation (compared with performing J*v directly)
@@ -136,10 +138,10 @@ def numerical_jacv(func, x, v, args=()):
         DESCRIPTION.
 
     """
-    sig = 1 / norm(v)
+    sig = 1/norm(v)
 
     f_eval = func(x, *args)
-    jac_v = (func(x + sig * v, *args) - f_eval) / sig
+    jac_v = (func(x + sig*v, *args) - f_eval) / sig
 
     return jac_v
 
@@ -149,84 +151,34 @@ def jac_fun(x):
     dim = len(x)
     jac = np.zeros((dim, dim))
 
-    jac[0, 0] = 2 * x1
-    jac[0, 1] = -3 / 2 * x2**2
+    jac[0, 0] = 2*x1
+    jac[0, 1] = -3/2*x2**2
     jac[1, 0] = 1
-    jac[1, 1] = 1 / 2 / np.sqrt(x2)
+    jac[1, 1] = 1/2/np.sqrt(x2)
 
     return jac
 
 
-def fun(x):
-    """
-    Test function for which jac_fun computes the analytical Jacobian.
+if __name__ == '__main__':
+    from autograd import jacobian, make_jvp
+    from jax import jvp
 
-    This function is defined as:
-        f1(x1, x2) = x1^2 - 0.5 * x2^3
-        f2(x1, x2) = x1 + sqrt(x2)
-
-    Parameters
-    ----------
-    x : array_like
-        Input array with two elements [x1, x2].
-
-    Returns
-    -------
-    ndarray
-        Array containing [f1, f2].
-
-    Purpose
-    -------
-    Used for testing the correctness of analytical and numerical Jacobian computations.
-    """
-    x1, x2 = x
-    f1 = x1**2 - 0.5 * x2**3
-    f2 = x1 + np.sqrt(x2)
-    return np.array([f1, f2])
+    # Autograd fns
+    jac_ad = jacobian(fun)
+    jacv_ad = make_jvp(fun)
 
 
-if __name__ == "__main__":
-    try:
-        from autograd import jacobian, make_jvp
+    # Nominal x
+    x_test = np.array([1., 2.])
 
-        # Autograd fns
-        jac_ad = jacobian(fun)
-        jacv_ad = make_jvp(fun)
+    # Evaluate jacs
+    jacfun_eval = jac_fun(x_test)
+    # jacauto_eval = jac_ad(x_test)
+    jacnum_eval = numerical_jac(fun, x_test)
 
-        # Nominal x
-        x_test = np.array([1.0, 2.0])
-
-        # Evaluate jacs
-        jacfun_eval = jac_fun(x_test)
-        # jacauto_eval = jac_ad(x_test)
-        jacnum_eval = numerical_jac(fun, x_test)
-
-        # Evaluate J*v
-        v_test = np.array([0.5, 0.5])
-        jacv_analytic = np.dot(jacfun_eval, v_test)
-        jacv_numeric = numerical_jacv(fun, x_test, v_test)
-        _, jacv_autograd = jacv_ad(x_test)(v_test)
-
-        print("Jacobian tests completed successfully!")
-        print(f"Analytical Jacobian at {x_test}:")
-        print(jacfun_eval)
-        print(f"Numerical Jacobian at {x_test}:")
-        print(jacnum_eval)
-        print(f"Jacobians match: {np.allclose(jacfun_eval, jacnum_eval)}")
-
-    except ImportError as e:
-        print(f"Optional dependencies not available: {e}")
-        print("Testing basic functionality without autograd...")
-
-        # Test basic functionality without optional dependencies
-        x_test = np.array([1.0, 2.0])
-        fun_result = fun(x_test)
-        jac_result = jac_fun(x_test)
-        jac_numerical = numerical_jac(fun, x_test)
-
-        print(f"Test function result: {fun_result}")
-        print("Analytical Jacobian:")
-        print(jac_result)
-        print("Numerical Jacobian:")
-        print(jac_numerical)
-        print(f"Jacobians match: {np.allclose(jac_result, jac_numerical)}")
+    # Evaluate J*v
+    v_test = np.array([0.5, 0.5])
+    jacv_analytic = np.dot(jacfun_eval, v_test)
+    jacv_numeric = numerical_jacv(fun, x_test, v_test)
+    _, jacv_autograd = jacv_ad(x_test)(v_test)
+    # _, jacv_jax = jvp(fun, (x_test,), (v_test,))
