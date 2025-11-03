@@ -1757,7 +1757,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         if 'temp' in self.controls:
             control = self.controls['temp']
             dp['temp'] = control['fun'](time, *control['args'], **control['kwargs'])
-        mass_conc_sat = dp['mass_conc'] if self.basis!='mass_j' else dp['mass_j']/dp['mass_j'][self.Liquid_1.ind_solv]*self.Liquid_1.getDensityPure()[0][self.Liquid_1.ind_solv]
+        mass_conc_sat = dp['mass_conc'] if self.basis!='mass_j' else dp['mass_j']/dp['mass_j'][:,self.Liquid_1.ind_solv][:, np.newaxis]*self.Liquid_1.getDensityPure()[0][self.Liquid_1.ind_solv]
         sat_conc = self.CrystKinetics.get_solubility(dp['temp'], mass_conc_sat)
 
         supersat = mass_conc_sat[:, self.target_ind] - sat_conc 
