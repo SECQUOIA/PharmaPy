@@ -19,11 +19,12 @@ eps = np.finfo(float).eps
 def cryst_mechanism(sup_sat, moms, temp, temp_ref, params, reformulate, kv,
                     order):
     sec = False
-    if len(params) == 3:
-        phi_1, phi_2, exp = params
-    else:
+    if len(params)==4:
         phi_1, phi_2, exp, s_2 = params
         sec = True
+    else:
+        phi_1, phi_2, exp = params[:3] #for size dependent growth, len(params) is 5 but the last 2 are used in the fvm_method code
+        
 
     # absup = np.maximum(eps, sup_sat)
     absup_ = np.abs(sup_sat)
@@ -64,7 +65,7 @@ def disect_rxns(rxns, sep='-->'):
         species += reactants
         species += products
 
-    regex = '^\d+(\.\d+)?(/\d+)?\s?'
+    regex = r'^\d+(\.\d+)?(/\d+)?\s?'
     for ind, sp in enumerate(species):
         species[ind] = re.sub(regex, '', sp)
 
@@ -123,7 +124,7 @@ def get_stoich(di_rxn, partic_species):
 
 
 class RxnKinetics:
-    """
+    r"""
     Create a reaction kinetics object. Reaction rate r\ :sub:`i` is assumed to
     have the following functional form: 
         r\ :sub:`i` = f\ :sub:`1` (T) * f\ :sub:`2` ( C\ :sub:`1`, ..., C\ :sub:`n_comp`) 
@@ -733,14 +734,26 @@ class CrystKinetics:
         self.solub_type = solubility_type
 
         if reformulate_kin:
-            self.name_params = ('\log(k_{bp})', '\log(E_{bp}/R)', 'b',
-                                '\log(k_{bs})', '\log(E_{bs}/R)', 's_1', 's_2',
-                                '\log(k_{g})', '\log(E_{g}/R)', 'g',
-                                '\log(k_{d})', '\log(E_{d}/R)', 'd')
+            if len(param_dict['growth']) == 3:
+                self.name_params = (r'\log(k_{bp})', r'\log(E_{bp}/R)', 'b',
+                                    r'\log(k_{bs})', r'\log(E_{bs}/R)', 's_1', 's_2',
+                                    r'\log(k_{g})', r'\log(E_{g}/R)', 'g',
+                                    r'\log(k_{d})', r'\log(E_{d}/R)', 'd')
+            else:
+                self.name_params = (r'\log(k_{bp})', r'\log(E_{bp}/R)', 'b',
+                                r'\log(k_{bs})', r'\log(E_{bs}/R)', 's_1', 's_2',
+                                r'\log(k_{g})', r'\log(E_{g}/R)', 'g','alpha','beta'
+                                r'\log(k_{d})', r'\log(E_{d}/R)', 'd')
         else:
-            self.name_params = ('k_{bp}', 'E_{bp}', 'b',
+            if len(param_dict['growth']) == 3:
+                self.name_params = ('k_{bp}', 'E_{bp}', 'b',
+                                    'k_{bs}', 'E_{bs}', 's_1', 's_2',
+                                    'k_{g}', 'E_{g}', 'g',
+                                    'k_{d}', 'E_{d}', 'd')
+            else:
+                self.name_params = ('k_{bp}', 'E_{bp}', 'b',
                                 'k_{bs}', 'E_{bs}', 's_1', 's_2',
-                                'k_{g}', 'E_{g}', 'g',
+                                'k_{g}', 'E_{g}', 'g','alpha','beta',
                                 'k_{d}', 'E_{d}', 'd')
 
         self.num_params = len(self.name_params)

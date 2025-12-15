@@ -734,13 +734,16 @@ class _BaseReactiveCryst():
 
         impurity_factor = self.CrystKinetics.alpha_fn(conc)
         growth = growth * impurity_factor  # um/s 
+        gparams = self.CrystKinetics.params['growth']
+        
 
         # dissol = dissol  # um/s
-        boundary_cond = nucl / (growth + eps) # num/um or num/um/m**3 initial
+        boundary_cond = nucl / np.maximum(growth, eps) # num/um or num/um/m**3 initial
         f_aug = np.concatenate(([boundary_cond]*2, csd, [csd[-1]])) # TODO adjust for reaction or handled by concentration? 
 
         # Flux source terms
         f_diff = np.diff(f_aug)
+        
         # f_diff[f_diff == 0] = eps  # avoid division by zero for theta
 
         if growth > 0:
@@ -754,12 +757,20 @@ class _BaseReactiveCryst():
         # Van-Leer limiter
         limiter = np.zeros_like(f_diff)
         limiter[:-1] = (np.abs(theta) + theta) / (1 + np.abs(theta))
-
-        growth_term = growth * (f_aug[1:-1] + 0.5 * f_diff[1:] * limiter[:-1])
-        dissol_term = dissol * (f_aug[2:] - 0.5 * f_diff[1:] * limiter[1:])
-
+        if len(gparams)==3:
+        
+            growth_term = growth * (f_aug[1:-1] + 0.5 * f_diff[1:] * limiter[:-1])
+            dissol_term = dissol * (f_aug[2:] - 0.5 * f_diff[1:] * limiter[1:])
+        else:
+            growth_dependent = growth * (1 + self.x_grid * gparams[4])**gparams[3]
+            dissol_dependent = dissol * (1 + self.x_grid * 0) # TODO add size-dependent dissol params
+            growth_pad = np.append(growth_dependent,growth_dependent[-1])
+            dissol_pad = np.append(dissol_dependent, dissol_dependent[-1])
+            growth_term = growth_pad * (f_aug[1:-1] + 0.5 * f_diff[1:] * limiter[:-1])
+            dissol_term = dissol_pad * (f_aug[2:] - 0.5 * f_diff[1:] * limiter[1:])
         flux = growth_term + dissol_term
 
+         
         if output == 'flux':
             return flux  # TODO: isn't it necessary to divide by dx?
         elif 'dstates':
@@ -768,8 +779,15 @@ class _BaseReactiveCryst():
             # Material bce in kg_API/s --> G in um, mu_2 in m**2 (or m**2/m**3)
             # AKA R_v (rho_c*kv*d_mu3_d_t)
             # Handle stoich in material balance
-            mass_transfer = rho_cry * kv_cry * (
-                3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)
+            if len(gparams)==3:
+                mass_transfer = rho_cry * kv_cry * (
+                    3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)
+            else:
+                r_m = self.x_grid
+                mass_transfer_growth = np.trapz(growth_dependent*csd*r_m**2,r_m)
+                mass_transfer_dissol = np.trapz(dissol_dependent*csd*r_m**2,r_m)
+                mass_transfer_nucl = nucl*self.rad**3
+                mass_transfer = rho_cry*kv_cry*3*(mass_transfer_dissol+mass_transfer_growth+mass_transfer_nucl)*1e-18
             return dcsd_dt, np.array(mass_transfer)
         
     def unit_model(self, time, states, params=None, sw=None,
