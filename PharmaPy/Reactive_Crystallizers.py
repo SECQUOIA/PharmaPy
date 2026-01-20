@@ -1583,7 +1583,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         self.vol_offset = 0.75
         self.num_interp_points = num_interp_points
         self.mydistrib = np.zeros(grid_size)
-        self.checker = progress_checker(flag='Solver')
+        # self.checker = progress_checker(flag='Solver')
         self.kin_array = {}
         self.param_estimation_run=param_estimation_run
         self._zero_flow=False
@@ -1614,7 +1614,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
                           distrib, mass_conc, mole_conc, temp, temp_ht, vol, phi_in):
 
         rho_sol = rhos[0][1]
-        self.checker.check(time)
+        # self.checker.check(time)
 
         input_flow = u_inputs['Inlet']['vol_flow']
 
@@ -1751,7 +1751,7 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         
     def retrieve_results(self, time, states):
         time = np.array(time)
-        self.checker = progress_checker(max_count=30000, flag='retrieve')
+        # self.checker = progress_checker(max_count=30000, flag='retrieve')
         # ---------- Create result object
         inputs = self.get_inputs(time)
         volflow = inputs['Inlet']['vol_flow']
@@ -1999,7 +1999,7 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         # self.vol_offset = 0.75
         # self.num_interp_points = num_interp_points
         self.mydistrib = np.zeros(grid_size)
-        self.checker = progress_checker(flag='Solver', minh=0.01)
+        # self.checker = progress_checker(flag='Solver', minh=0.01)
         self.kin_array = {}
  
    
@@ -2012,7 +2012,7 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
                           distrib, mass_j, temp, temp_ht, phi_in):
 
         rho_susp, rho_in = rhos 
-        self.checker.check(time)
+        # self.checker.check(time)
         rho_liq, rho_sol = rho_susp
         rho_in_liq, _ = rho_in
         
