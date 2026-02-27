@@ -983,6 +983,60 @@ class _BaseReactiveCryst():
         self.jac_states_vals = jac_states_vals
 
         return rhs_sens
+    
+    def compile_integrator(self,eval_sens=False,
+                           jac_v_prod=False,
+                           sundials_opts=None,
+                           verbose=True,any_event=True):
+        '''Builds the unit and compiles the integrator without calling it'''
+        # chatGPT helped with this refactor 20260226
+        self._compiled=True
+        self._compiled_val_sens= eval_sens
+        self._compiled_jac_v_prod = jac_v_prod
+        states_init, merged_params = self._build_initial_state_and_params()
+
+        problem = self.set_ode_problem(
+            eval_sens,
+            states_init,
+            merged_params,
+            jac_v_prod
+        )
+
+        solver = CVode(problem)
+        solver.iter = 'Newton'
+        solver.discr = 'BDF'
+
+        if sundials_opts:
+            for name, val in sundials_opts.items():
+                setattr(solver, name, val)
+                if name == 'time_limit':
+                    solver.report_continuously = True
+
+        if not verbose:
+            solver.verbosity = 50
+
+        
+        if eval_sens:
+            solver.sensmethod = 'SIMULTANEOUS'
+            solver.suppress_sens = False
+            solver.report_continuously = True
+
+        if self.method == '1D-FVM':
+            solver.linear_solver = 'SPGMR'  # large, sparse systems
+
+        if not verbose:
+            solver.verbosity = 50
+        if len(self.state_event_list) > 0:
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_event_list,
+                                     any_event=any_event)
+
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
+
+        self._problem = problem
+        self._solver = solver
+
 
     def set_ode_problem(self, eval_sens, states_init, params_mergd,
                         jacv_prod):
@@ -1019,18 +1073,27 @@ class _BaseReactiveCryst():
 
         else:
             if self.state_event_list is None:
-                def model(time, states, params=params_mergd):
-                    return self.unit_model(time, states, params)
+                def model(time, states, p):
+                    return self.unit_model(time, states, p)
 
-                problem = Explicit_Problem(model, states_init,
-                                           t0=self.elapsed_time)
+                problem = Explicit_Problem(
+                    model,
+                    states_init,
+                    t0=self.elapsed_time,
+                    p0=params_mergd
+)
             else:
                 sw0 = [True] * len(self.state_event_list) #switches, currently unused in unit_model
-                def model(time, states, sw=None):#equivalent to fobj in reactor
-                    return self.unit_model(time, states, params_mergd, sw)
+                def model(time, states, p, sw=None):
+                    return self.unit_model(time, states, p, sw)
 
-                problem = Explicit_Problem(model, states_init,
-                                           t0=self.elapsed_time, sw0=sw0)
+                problem = Explicit_Problem(
+                    model,
+                    states_init,
+                    t0=self.elapsed_time,
+                    p0=params_mergd,
+                    sw0=sw0
+                )
 
             # ----- Jacobian callables
             if self.method == 'moments':
@@ -1050,34 +1113,7 @@ class _BaseReactiveCryst():
 
         return problem
     
-    def solve_unit(self, runtime=None, time_grid=None,
-                   eval_sens=False,
-                   jac_v_prod=False, verbose=True, test=False,
-                   sundials_opts=None, any_event=True):
-        """
-        runtime : float (default = None)
-            Value for the total unit runtime
-        time_grid : list of float (optional, dafault = None)
-            Optional list of time values for the integrator to use
-            during simulation
-        eval_sens : bool (optional, default = False)
-            Boolean value indicating whether the parametric
-            sensitivity system will be included during simulation.
-            Must be True to access sensitivity information.
-        jac_v_prod :
-            TODO
-        verbose : bool (optional, default = True)
-            Boolean value indicating whether the simulator will
-            output run statistics after simulation is complete.
-            Use True if you want to see the number of function
-            evaluations and wall-clock runtime for the unit.
-        test :
-            TODO
-        sundials_opts :
-            TODO
-        any_event :
-            TODO
-        """
+    def _build_initial_state_and_params(self):
         self.set_names()
 
         if self.method == 'moments':
@@ -1133,26 +1169,26 @@ class _BaseReactiveCryst():
             self.reset()
 
         # ---------- Read time
-        if runtime is not None:
-            final_time = runtime + self.elapsed_time
+        # if runtime is not None:
+        #     final_time = runtime + self.elapsed_time
 
-        if time_grid is not None:
-            final_time = time_grid[-1]
+        # if time_grid is not None:
+        #     final_time = time_grid[-1]
 
         if self.scale_flag:
             self.scale_flag = False # TODO WHY???
 
         states_init = np.append(init_solid, init_susp) # solid=fvm bins/moments susp = liquid concentrations/volume balance
 
-        if self.vol_tank is None:
-            if isinstance(self, ReactiveSemibatchCrystallizer):
-                time_vec = np.linspace(self.elapsed_time, final_time)
-                vol_flow = self.get_inputs(time_vec)['Inlet']['vol_flow']
+        # if self.vol_tank is None:
+        #     if isinstance(self, ReactiveSemibatchCrystallizer):
+        #         time_vec = np.linspace(self.elapsed_time, final_time)
+        #         vol_flow = self.get_inputs(time_vec)['Inlet']['vol_flow']
 
-                self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
+        #         self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
 
-            else:
-                self.vol_tank = self.Slurry.vol
+        #     else:
+        #         self.vol_tank = self.Slurry.vol
 
         self.diam_tank = (4/np.pi * self.vol_tank)**(1/3) # TODO ensure redefinition is fine Z
         self.area_base = np.pi/4 * self.diam_tank**2
@@ -1174,63 +1210,111 @@ class _BaseReactiveCryst():
             self.len_states += [1]
 
         merged_params = self.CrystKinetics.concat_params()[self.mask_params_cryst]
+        return states_init, merged_params
+
+    def _fast_solve(self, runtime, time_grid,
+                eval_sens, jac_v_prod,
+                verbose, test,
+                sundials_opts, any_event):
+
+        solver = self._solver
+        problem = self._problem
+
+        states_init, merged_params = self._build_initial_state_and_params()
+
+        # update params
+        problem.p = merged_params
+
+        # update time
+        if runtime is not None:
+            final_time = runtime + self.elapsed_time
+        if time_grid is not None:
+            final_time = time_grid[-1]
+
+        # reinitialize
+        solver.reinit(self.elapsed_time, states_init)
+
+        time, states = solver.simulate(final_time, ncp_list=time_grid)
+
+        # DO NOT call retrieve_results()
+
+        return time, states
+    
+    def solve_unit(self, runtime=None, time_grid=None,
+                   eval_sens=False,
+                   jac_v_prod=False, verbose=True, test=False,
+                   sundials_opts=None, any_event=True):
+        """
+        runtime : float (default = None)
+            Value for the total unit runtime
+        time_grid : list of float (optional, dafault = None)
+            Optional list of time values for the integrator to use
+            during simulation
+        eval_sens : bool (optional, default = False)
+            Boolean value indicating whether the parametric
+            sensitivity system will be included during simulation.
+            Must be True to access sensitivity information.
+        jac_v_prod :
+            TODO
+        verbose : bool (optional, default = True)
+            Boolean value indicating whether the simulator will
+            output run statistics after simulation is complete.
+            Use True if you want to see the number of function
+            evaluations and wall-clock runtime for the unit.
+        test :
+            TODO
+        sundials_opts :
+            TODO
+        any_event :
+            TODO
+        """
+        if hasattr(self, "_compiled") and self._compiled:
+            if eval_sens != self._compiled_val_sens:
+                raise RuntimeError("Must recompile integrator when eval_sens changes")
+            if jac_v_prod != self._compiled_jac_v_prod:
+                raise RuntimeError("Must recompile integrator when jac_v_prod changes")
+            return self._fast_solve(runtime, time_grid,
+                                    eval_sens, jac_v_prod,
+                                    verbose, test,
+                                    sundials_opts, any_event)
+        states_init,merged_params = self._build_initial_state_and_params()
         # merged_params = np.append(merged_params,self.RxnKinetics.concat_params()[self.mask_params_rxn])
         # states_init = np.append(states_init,self.Liquid_1.mole_conc)
         # ---------- Create problem
-        ## Z Cut from here to add in own solving method that needs to return time, states
-        problem = self.set_ode_problem(eval_sens, states_init,
-                                       merged_params, jac_v_prod)
+        self.compile_integrator(eval_sens=eval_sens,
+                                jac_v_prod=jac_v_prod,
+                                sundials_opts=sundials_opts,
+                                verbose=verbose,any_event=any_event)
 
-        self.derivatives = problem.rhs(self.elapsed_time, states_init,
+        self.derivatives = self._problem.rhs(self.elapsed_time, states_init,
                                        merged_params)
 
-        if len(self.state_event_list) > 0:
-            def new_handle(solver, info):
-                return handle_events(solver, info, self.state_event_list,
-                                     any_event=any_event)
-
-            problem.state_events = self._eval_state_events
-            problem.handle_event = new_handle
+        
 
         # ---------- Set solver
         # General
 
 
 
-        solver = CVode(problem)
-        solver.iter = 'Newton'
-        solver.discr = 'BDF'
+        
 
-        if sundials_opts is not None:
-            for name, val in sundials_opts.items():
-                setattr(solver, name, val)
-
-                if name == 'time_limit':
-                    solver.report_continuously = True
-
-        self.sundials_opt = solver.get_options()
-
-        if eval_sens:
-            solver.sensmethod = 'SIMULTANEOUS'
-            solver.suppress_sens = False
-            solver.report_continuously = True
-
-        if self.method == '1D-FVM':
-            solver.linear_solver = 'SPGMR'  # large, sparse systems
-
-        if not verbose:
-            solver.verbosity = 50
+        self.sundials_opt = self._solver.get_options()
+        if runtime is not None:
+            final_time = runtime + self.elapsed_time
+        if time_grid is not None:
+            final_time = time_grid[-1]
+        
 
 
        
-        time, states= solver.simulate(final_time, ncp_list=time_grid)
+        time, states= self._solver.simulate(final_time, ncp_list=time_grid)
         
         self.retrieve_results(time, states)
 
         # ---------- Organize sensitivity
         if eval_sens:
             sensit = []
-            for elem in solver.p_sol:
+            for elem in self._solver.p_sol:
                 sens = np.array(elem)
                 sens[0] = 0  # correct NaN's at t = 0 for sensitivities
                 sensit.append(sens)
