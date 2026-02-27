@@ -987,7 +987,7 @@ class _BaseReactiveCryst():
     def compile_integrator(self,eval_sens=False,
                            jac_v_prod=False,
                            sundials_opts=None,
-                           verbose=True,any_event=True):
+                           verbose=True,any_event=True, return_flag=False):
         '''Builds the unit and compiles the integrator without calling it'''
         # chatGPT helped with this refactor 20260226
         self._compiled=True
@@ -1001,6 +1001,13 @@ class _BaseReactiveCryst():
             merged_params,
             jac_v_prod
         )
+        if len(self.state_event_list) > 0:
+            def new_handle(solver, info):
+                return handle_events(solver, info, self.state_event_list,
+                                     any_event=any_event)
+
+            problem.state_events = self._eval_state_events
+            problem.handle_event = new_handle
 
         solver = CVode(problem)
         solver.iter = 'Newton'
@@ -1026,17 +1033,12 @@ class _BaseReactiveCryst():
 
         if not verbose:
             solver.verbosity = 50
-        if len(self.state_event_list) > 0:
-            def new_handle(solver, info):
-                return handle_events(solver, info, self.state_event_list,
-                                     any_event=any_event)
-
-            problem.state_events = self._eval_state_events
-            problem.handle_event = new_handle
+        
 
         self._problem = problem
         self._solver = solver
-
+        if return_flag:
+            return states_init, merged_params
 
     def set_ode_problem(self, eval_sens, states_init, params_mergd,
                         jacv_prod):
@@ -1277,26 +1279,30 @@ class _BaseReactiveCryst():
                                     eval_sens, jac_v_prod,
                                     verbose, test,
                                     sundials_opts, any_event)
-        states_init,merged_params = self._build_initial_state_and_params()
         # merged_params = np.append(merged_params,self.RxnKinetics.concat_params()[self.mask_params_rxn])
         # states_init = np.append(states_init,self.Liquid_1.mole_conc)
         # ---------- Create problem
-        self.compile_integrator(eval_sens=eval_sens,
+        states_init,merged_params = self.compile_integrator(eval_sens=eval_sens,
                                 jac_v_prod=jac_v_prod,
                                 sundials_opts=sundials_opts,
-                                verbose=verbose,any_event=any_event)
+                                verbose=verbose,any_event=any_event,return_flag=True)
 
         self.derivatives = self._problem.rhs(self.elapsed_time, states_init,
                                        merged_params)
+        print(np.linalg.norm(states_init))
 
-        
+        if self.vol_tank is None:
+            self.vol_tank = self.Slurry.vol      
 
-        # ---------- Set solver
-        # General
+        if self.vol_tank is None:
+            if isinstance(self, ReactiveSemibatchCrystallizer):
+                time_vec = np.linspace(self.elapsed_time, final_time)
+                vol_flow = self.get_inputs(time_vec)['Inlet']['vol_flow']
 
+                self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
 
-
-        
+            else:
+                self.vol_tank = self.Slurry.vol
 
         self.sundials_opt = self._solver.get_options()
         if runtime is not None:
