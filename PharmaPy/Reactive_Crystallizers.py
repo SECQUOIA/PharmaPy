@@ -1075,27 +1075,18 @@ class _BaseReactiveCryst():
 
         else:
             if self.state_event_list is None:
-                def model(time, states, p):
-                    return self.unit_model(time, states, p)
+                def model(time, states, params=params_mergd):
+                    return self.unit_model(time, states, params)
 
-                problem = Explicit_Problem(
-                    model,
-                    states_init,
-                    t0=self.elapsed_time,
-                    p0=params_mergd
-)
+                problem = Explicit_Problem(model, states_init,
+                                           t0=self.elapsed_time)
             else:
                 sw0 = [True] * len(self.state_event_list) #switches, currently unused in unit_model
-                def model(time, states, p, sw=None):
-                    return self.unit_model(time, states, p, sw)
+                def model(time, states, sw=None):#equivalent to fobj in reactor
+                    return self.unit_model(time, states, params_mergd, sw)
 
-                problem = Explicit_Problem(
-                    model,
-                    states_init,
-                    t0=self.elapsed_time,
-                    p0=params_mergd,
-                    sw0=sw0
-                )
+                problem = Explicit_Problem(model, states_init,
+                                           t0=self.elapsed_time, sw0=sw0)
 
             # ----- Jacobian callables
             if self.method == 'moments':
@@ -1219,13 +1210,12 @@ class _BaseReactiveCryst():
                 verbose, test,
                 sundials_opts, any_event):
 
-        solver = self._solver
-        problem = self._problem
+        
 
         states_init, merged_params = self._build_initial_state_and_params()
 
-        # update params
-        problem.p = merged_params
+        if self._compiled_val_sens:
+            self._problem.p = merged_params
 
         # update time
         if runtime is not None:
@@ -1234,9 +1224,9 @@ class _BaseReactiveCryst():
             final_time = time_grid[-1]
 
         # reinitialize
-        solver.reinit(self.elapsed_time, states_init)
+        self._solver.reinit(self.elapsed_time, states_init)
 
-        time, states = solver.simulate(final_time, ncp_list=time_grid)
+        time, states = self._solver.simulate(final_time, ncp_list=time_grid)
 
         # DO NOT call retrieve_results()
 
@@ -1289,7 +1279,6 @@ class _BaseReactiveCryst():
 
         self.derivatives = self._problem.rhs(self.elapsed_time, states_init,
                                        merged_params)
-        print(np.linalg.norm(states_init))
 
         if self.vol_tank is None:
             self.vol_tank = self.Slurry.vol      
