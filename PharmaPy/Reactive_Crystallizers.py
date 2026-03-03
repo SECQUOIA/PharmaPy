@@ -1204,6 +1204,97 @@ class _BaseReactiveCryst():
 
         merged_params = self.CrystKinetics.concat_params()[self.mask_params_cryst]
         return states_init, merged_params
+    
+    def _rebase_initial(self, state_vec):
+        """
+        Rebase all internal phase objects to match a provided state vector.
+        This allows restarting simulations consistently from saved states.
+        """
+
+        idx = 0
+
+        # --------------------------------------------------
+        # 1) Solid distribution / moments
+        # --------------------------------------------------
+        nd = self.num_distr
+        solid_part = state_vec[idx:idx + nd]
+        idx += nd
+
+        if self.method == 'moments':
+            # Directly update moments
+            if 'vol' in self.states_uo or 'mass_j' in self.states_uo:
+                self.Solid_1.moments = solid_part.copy()
+            else:
+                self.Slurry.moments = solid_part.copy()
+
+        elif self.method == '1D-FVM':
+            # Unscale if needed
+            solid_part = solid_part / self.scale
+
+            if 'vol' in self.states_uo or 'mass_j' in self.states_uo:
+                self.Solid_1.distrib = solid_part.copy()
+            else:
+                self.Slurry.distrib = solid_part.copy()
+
+        # --------------------------------------------------
+        # 2) Liquid species
+        # --------------------------------------------------
+        ns = self.num_species
+        liquid_part = state_vec[idx:idx + ns]
+        idx += ns
+
+        if self.basis == 'mass_j':
+            # state contains total mass of each species
+            total_mass = liquid_part.sum()
+            mass_frac = liquid_part / total_mass
+
+            self.Liquid_1.updatePhase(
+                mass_frac=mass_frac,
+                mass=total_mass,
+                solvent_pass=True
+            )
+        else:
+            # state contains concentration
+            self.Liquid_1.mass_conc = liquid_part.copy()
+
+        # --------------------------------------------------
+        # 3) Volume state (if dynamic)
+        # --------------------------------------------------
+        if 'vol' in self.states_uo:
+            vol_state = state_vec[idx]
+            idx += 1
+
+            self.vol_tank = vol_state * self.vol_offset
+            self.Liquid_1.vol = vol_state
+
+            # Update geometry
+            self.diam_tank = (4 / np.pi * self.vol_tank)**(1/3)
+            self.area_base = np.pi / 4 * self.diam_tank**2
+
+        # --------------------------------------------------
+        # 4) Temperature states
+        # --------------------------------------------------
+        if 'temp_ht' in self.states_uo:
+            temp_liq = state_vec[idx]
+            temp_ht = state_vec[idx + 1]
+            idx += 2
+
+            self.Liquid_1.temp = temp_liq
+            # do NOT overwrite Utility internals permanently
+            # only store current value
+            self._temp_ht_current = temp_ht
+
+        elif 'temp' in self.states_uo:
+            temp_liq = state_vec[idx]
+            idx += 1
+            self.Liquid_1.temp = temp_liq
+
+        # --------------------------------------------------
+        # 5) Ensure slurry references are consistent
+        # --------------------------------------------------
+        self.dx = self.Slurry.dx
+        self.x_grid = self.Slurry.x_distrib
+
 
     def _fast_solve(self, runtime, time_grid,
                 eval_sens, jac_v_prod,
@@ -1211,7 +1302,7 @@ class _BaseReactiveCryst():
                 sundials_opts, any_event):
 
         
-
+        
         states_init, merged_params = self._build_initial_state_and_params()
 
         if self._compiled_val_sens:
@@ -1224,7 +1315,9 @@ class _BaseReactiveCryst():
             final_time = time_grid[-1]
 
         # reinitialize
-        self._solver.reinit(self.elapsed_time, states_init)
+        self._solver.t = self.elapsed_time if time_grid is None else time_grid[0]
+        self._solver.y = states_init
+        self._solver.initialize()
 
         time, states = self._solver.simulate(final_time, ncp_list=time_grid)
 
@@ -2112,8 +2205,8 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         mass_frac = mass_j/tot_mass
         mole_frac = mole_j/tot_moles
         ## for debugging
-        raw_vol = np.sum(mass_j / self.Liquid_1.getDensityPure()[0])
-        raw_rho =mass_j.sum() / np.sum(mass_j / self.Liquid_1.getDensityPure()[0])
+        # raw_vol = np.sum(mass_j / self.Liquid_1.getDensityPure()[0])
+        # raw_rho =mass_j.sum() / np.sum(mass_j / self.Liquid_1.getDensityPure()[0])
 
         # print(time)
         # print(vol*rho_liq, vol, rho_liq, sum(mass_conc)*vol)
@@ -2175,6 +2268,14 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
         rho_susp, rho_in = rhos
 
         # Input properties
+        vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
+        mole_j = mass_j/self.Liquid_1.mw*1000 # moles
+        tot_mass = sum(mass_j)
+        tot_moles = sum(mole_j)
+        mass_frac = mass_j/tot_mass
+        mole_frac = mole_j/tot_moles
+        self.Liquid_1.updatePhase(mass_frac=mass_frac,mass=tot_mass,solvent_pass=True)
+        
         input_flow = u_inputs['Inlet']['vol_flow']
         input_flow = self.quickflow(np.max([eps, input_flow]))
         vol = self.Liquid_1.vol
