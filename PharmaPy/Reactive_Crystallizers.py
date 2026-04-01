@@ -1021,6 +1021,7 @@ class _BaseReactiveCryst():
 
         if not verbose:
             solver.verbosity = 50
+        # solver.verbosity = 0 #todo see why the other one did not work
 
         
         if eval_sens:
@@ -1318,6 +1319,7 @@ class _BaseReactiveCryst():
         self._solver.t = self.elapsed_time if time_grid is None else time_grid[0]
         self._solver.y = states_init
         self._solver.initialize()
+        
 
         time, states = self._solver.simulate(final_time, ncp_list=time_grid)
 
