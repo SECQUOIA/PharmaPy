@@ -784,8 +784,8 @@ class _BaseReactiveCryst():
                     3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)
             else:
                 r_m = self.x_grid
-                mass_transfer_growth = np.trapz(growth_dependent*csd*r_m**2,r_m)
-                mass_transfer_dissol = np.trapz(dissol_dependent*csd*r_m**2,r_m)
+                mass_transfer_growth = np.trapezoid(growth_dependent*csd*r_m**2,r_m)
+                mass_transfer_dissol = np.trapezoid(dissol_dependent*csd*r_m**2,r_m)
                 mass_transfer_nucl = nucl*self.rad**3
                 mass_transfer = rho_cry*kv_cry*3*(mass_transfer_dissol+mass_transfer_growth+mass_transfer_nucl)*1e-18
             return dcsd_dt, np.array(mass_transfer)
