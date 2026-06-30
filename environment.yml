@@ -1,0 +1,12 @@
+name: pharmapy-assimulo
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - assimulo=3.4.3
+  - numpy
+  - scipy
+  - matplotlib
+  - pandas
+  - pytest
+  - pip
