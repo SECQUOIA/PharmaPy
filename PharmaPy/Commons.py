@@ -9,10 +9,14 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 # from autograd import numpy as np
 import numpy as np
-from scipy.integrate import simps
+from scipy.integrate import simpson
 from itertools import cycle
 
-from assimulo.exception import TerminateSimulation
+try:
+    from assimulo.exception import TerminateSimulation
+except ImportError:
+    class TerminateSimulation(Exception):
+        """Fallback used when optional Assimulo solvers are not installed."""
 
 linestyles = cycle(['-', '--', '-.', ':'])
 eps = np.finfo(float).eps
@@ -583,7 +587,7 @@ def integration(states, time):
 
     integral = np.zeros(states.shape[1])
     for ind, row in enumerate(states.T):
-        integral[ind] = simps(row, time)
+        integral[ind] = simpson(row, x=time)
 
     return integral
 
