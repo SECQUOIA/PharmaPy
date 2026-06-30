@@ -1,0 +1,16 @@
+include LICENSE.md
+include README.md
+include requirements.txt
+include install_instructions.txt
+include InstallOnMac.sh
+include InstallOnWindows.bat
+include .readthedocs.yaml
+
+recursive-include data *.json *.csv
+recursive-include tests *.py *.json *.csv
+recursive-include workshop_data *.json *.csv *.png
+recursive-include doc *.py *.rst *.ipynb *.png Makefile make.bat
+
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * .DS_Store

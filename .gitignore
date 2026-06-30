@@ -4,6 +4,13 @@ docs/_build/
 # PyBuilder
 target/
 
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
