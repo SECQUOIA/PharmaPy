@@ -41,3 +41,36 @@ jobs:
 
       - name: Run assimulo-free tests
         run: python -m pytest tests/ -m "not assimulo"
+
+  integration-assimulo:
+    name: Assimulo integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install system solver libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran liblapack-dev libblas-dev
+
+      - name: Set up conda environment
+        uses: conda-incubator/setup-miniconda@v4
+        with:
+          miniforge-version: latest
+          use-mamba: true
+          environment-file: environment.yml
+          activate-environment: pharmapy-assimulo
+          auto-activate: false
+          conda-remove-defaults: true
+
+      - name: Install PharmaPy without pip solver resolution
+        shell: bash -el {0}
+        run: python -m pip install -e . --no-deps
+
+      - name: Run Assimulo-marked tests
+        shell: bash -el {0}
+        run: python -m pytest tests/ -v -m assimulo

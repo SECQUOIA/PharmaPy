@@ -1,8 +1,10 @@
 include LICENSE.md
 include README.md
 include DEPENDENCIES.md
+include TESTING.md
 include requirements.txt
 include requirements-assimulo.txt
+include environment.yml
 include install_instructions.txt
 include InstallOnMac.sh
 include InstallOnWindows.bat
