@@ -14,6 +14,11 @@ updates:
       python-test:
         patterns:
           - "pytest"
+    ignore:
+      - dependency-name: "assimulo"
+      - dependency-name: "cython"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "github-actions"
     directory: "/"
