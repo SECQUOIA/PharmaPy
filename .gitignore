@@ -11,6 +11,10 @@ dist/
 .pytest_cache/
 .ruff_cache/
 
+# Local agent configuration
+.claude/
+.codex/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
