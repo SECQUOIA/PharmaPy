@@ -30,14 +30,17 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Chemistry",
 ]
 dependencies = [
-    "numpy<2",
-    "scipy<1.14",
-    "assimulo==3.4.3",
-    "matplotlib",
-    "pandas",
+    "numpy>=1.22",
+    "scipy>=1.9",
+    "matplotlib>=3.5",
+    "pandas>=1.5",
 ]
 
 [project.optional-dependencies]
+assimulo = [
+    "cython>=0.29,<3",
+    "assimulo==3.4.3",
+]
 test = [
     "pytest",
 ]
