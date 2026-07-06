@@ -36,7 +36,7 @@ class _StubUO:
         pass
 
 
-def _solve_and_record_connections(monkeypatch, graph):
+def _solve_and_record_connections(monkeypatch, graph, pick_units=None):
     created = []
 
     class ConnRecorder:
@@ -54,7 +54,7 @@ def _solve_and_record_connections(monkeypatch, graph):
     for name in graph:
         setattr(flst, name, _StubUO(name))
 
-    flst.SolveFlowsheet(verbose=False)
+    flst.SolveFlowsheet(pick_units=pick_units, verbose=False)
 
     return created
 
@@ -82,3 +82,13 @@ def test_stream_handoff_supports_fanout_to_multiple_successors(monkeypatch):
 
     _assert_connections_follow_graph(graph, created)
     assert set(created) == {("A", "B"), ("A", "C"), ("B", "D"), ("C", "D")}
+
+
+def test_already_solved_branch_honors_pick_units(monkeypatch):
+    graph = {"A": ["B", "C"], "B": ["D"], "C": ["D"], "D": []}
+
+    created = _solve_and_record_connections(
+        monkeypatch, graph, pick_units=["A", "C"])
+
+    _assert_connections_follow_graph(graph, created)
+    assert created == [("A", "C")]

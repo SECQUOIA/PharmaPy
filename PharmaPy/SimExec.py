@@ -155,7 +155,7 @@ class SimulationExec:
             # instance is already solved, pass data to connection
             elif isinstance(instance.outputs, dict):
                 count = self._transfer_to_neighbors(
-                    name, connections, count)
+                    name, connections, count, pick_units)
 
         self.time_processing = time_processing
 
