@@ -56,3 +56,39 @@ def test_local_newton_interpolation_matches_quadratic():
     interpolated = local_newton_interpolation(1.5, time, values)
 
     assert interpolated == pytest.approx(2.25)
+
+
+def test_local_newton_interpolation_at_final_node_returns_exact_value():
+    """Regression test for #77: querying exactly at the last data node
+    used to collapse the interpolation window to a single point (the
+    second-to-last node), returning the wrong value at the boundary."""
+    time = np.linspace(0.0, 10.0, 11)
+    values = time**2
+
+    interpolated = local_newton_interpolation(10.0, time, values)
+
+    assert interpolated == pytest.approx(100.0)
+
+
+def test_local_newton_interpolation_just_inside_final_node():
+    """Query just inside the final node -- still within the affected
+    boundary window, but not exactly on the last data point."""
+    time = np.linspace(0.0, 10.0, 11)
+    values = time**2
+
+    interpolated = local_newton_interpolation(9.5, time, values)
+
+    assert interpolated == pytest.approx(90.25)
+
+
+def test_local_newton_interpolation_away_from_boundary_unaffected():
+    """Control case: a query comfortably away from the final node was
+    never affected by the boundary bug, so this should pass both before
+    and after the fix -- confirms the fix doesn't disturb interior
+    interpolation."""
+    time = np.linspace(0.0, 10.0, 11)
+    values = time**2
+
+    interpolated = local_newton_interpolation(5.0, time, values)
+
+    assert interpolated == pytest.approx(25.0)
