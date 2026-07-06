@@ -46,6 +46,24 @@ class SimulationExec:
             raise PharmaPyNonImplementedError(
                 "Provided flowsheet contains recycle stream(s)")
 
+    def _transfer_to_neighbors(self, name, connections, count, pick_units=None):
+        for uo_next in self.graph[name]:
+            if pick_units is not None and uo_next not in pick_units:
+                continue
+
+            connection = Connection(
+                source_uo=getattr(self, name),
+                destination_uo=getattr(self, uo_next))
+
+            conn_name = 'CONN%i' % count
+            connections[conn_name] = connection
+
+            connection.transfer_data()
+
+            count += 1
+
+        return count
+
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
                        steady_state_di=None, tolerances_ss=None, ss_time=0):
 
@@ -126,19 +144,8 @@ class SimulationExec:
                     print()
 
                 # Create connection object if needed
-                neighbors = self.graph[name]
-                if len(neighbors) > 0 and self.execution_names[ind + 1] in pick_units:
-                    uo_next = self.execution_names[ind + 1]
-                    connection = Connection(
-                        source_uo=getattr(self, name),
-                        destination_uo=getattr(self, uo_next))
-
-                    conn_name = 'CONN%i' % count
-                    connections[conn_name] = connection
-
-                    connection.transfer_data()
-
-                    count += 1
+                count = self._transfer_to_neighbors(
+                    name, connections, count, pick_units)
 
                 # Processing times
                 if hasattr(instance.result, 'time'):
@@ -147,17 +154,8 @@ class SimulationExec:
 
             # instance is already solved, pass data to connection
             elif isinstance(instance.outputs, dict):
-                connection = Connection(
-                    source_uo=getattr(self, name),
-                    destination_uo=getattr(self,
-                                           self.execution_names[ind + 1]))
-
-                conn_name = 'CONN%i' % count
-                connections[conn_name] = connection
-
-                connection.transfer_data()
-
-                count += 1
+                count = self._transfer_to_neighbors(
+                    name, connections, count)
 
         self.time_processing = time_processing
 
