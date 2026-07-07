@@ -730,7 +730,7 @@ class _BaseReactiveCryst():
         nucl, growth, dissol = self.CrystKinetics.get_kinetics(comp_kin, temp,
                                                           kv_cry, moms)
 
-        nucl = nucl * self.scale * vol
+        nucl = nucl * self.scale * vol 
 
         impurity_factor = self.CrystKinetics.alpha_fn(conc)
         growth = growth * impurity_factor  # um/s 
@@ -773,7 +773,7 @@ class _BaseReactiveCryst():
          
         if output == 'flux':
             return flux  # TODO: isn't it necessary to divide by dx?
-        elif 'dstates':
+        elif output=='dstates':
             dcsd_dt = -np.diff(flux) / self.dx
 
             # Material bce in kg_API/s --> G in um, mu_2 in m**2 (or m**2/m**3)
