@@ -299,13 +299,15 @@ class Drying:
         # ----- Liquid phase
         dens_liq = self.rho_liq
         
-        sum_dry = dry_rate.sum(axis=1)
+        mw_volatiles = self.Liquid_1.mw[self.idx_volatiles] / 1000
+        dry_rate_mass = dry_rate[:, self.idx_volatiles] * mw_volatiles
+        sum_dry = dry_rate_mass.sum(axis=1)
         # sum_dry[sum_dry < eps] = 0
-        
+
         dsat_dt = -sum_dry / dens_liq / self.porosity
-        
+
         dxliq_dt = -1 / satur* \
-            (dry_rate.T[self.idx_volatiles] / dens_liq / self.porosity +
+            (dry_rate_mass.T / dens_liq / self.porosity +
               x_liq.T * dsat_dt)
             
         # dxliq_dt = np.zeros([len(self.idx_volatiles), len(satur)])
