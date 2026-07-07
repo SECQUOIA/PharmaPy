@@ -1044,7 +1044,12 @@ class CSTR(_BaseReactor):
                                    total_h=False, basis='mole')
 
         h_in = (inlet_conc * h_inj).sum(axis=1) * 1000  # J/m**3
-        h_temp = (mole_conc * h_tempj).sum(axis=1) * 1000  # J/m**3
+
+        if 'vol' in self.states_uo:  # Semibatch: no outlet enthalpy stream
+            h_temp = (inlet_conc * h_tempj).sum(axis=1) * 1000  # J/m**3
+        else:
+            h_temp = (mole_conc * h_tempj).sum(axis=1) * 1000  # J/m**3
+
         flow_term = inlet_flow * (h_in - h_temp)  # W
 
         # Balance terms (W) - convert vol to L
