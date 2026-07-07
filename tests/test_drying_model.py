@@ -1,8 +1,12 @@
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
+pytest.importorskip("assimulo")
 from PharmaPy.Drying_Model import Drying
+
+pytestmark = pytest.mark.assimulo
 
 
 def test_material_balance_converts_molar_drying_rate_to_mass_for_saturation():
