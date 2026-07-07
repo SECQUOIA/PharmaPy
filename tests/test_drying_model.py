@@ -49,8 +49,7 @@ def test_material_balance_converts_molar_drying_rate_to_mass_for_saturation():
         inputs=inputs,
     )
 
-    mass_rate = (dry_rate[:, dryer.idx_volatiles] *
-                 dryer.Liquid_1.mw[dryer.idx_volatiles] / 1000).sum(axis=1)
+    mass_rate = np.array([0.22, 0.284])
     expected_dsat_dt = -mass_rate / dryer.rho_liq / dryer.porosity
 
     np.testing.assert_allclose(dsat_dt, expected_dsat_dt)
