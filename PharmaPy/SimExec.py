@@ -19,6 +19,7 @@ from PharmaPy.Commons import trapezoidal_rule, check_steady_state
 from PharmaPy.CheckModule import check_modeling_objects
 
 import time
+from typing import Optional, Sequence
 
 
 class SimulationExec:
@@ -46,8 +47,81 @@ class SimulationExec:
             raise PharmaPyNonImplementedError(
                 "Provided flowsheet contains recycle stream(s)")
 
+    def _transfer_to_neighbors(self, name: str, connections: dict, count: int,
+                               pick_units: Optional[Sequence[str]] = None) -> int:
+        """
+        Transfer output data from a unit operation to graph successors.
+
+        Parameters
+        ----------
+        name : str
+            Name of the source unit operation in the flowsheet graph.
+        connections : dict
+            Mapping used to store generated Connection objects. The mapping is
+            updated in place.
+        count : int
+            Counter used to build connection names.
+        pick_units : sequence of str, optional
+            Unit operation names selected for execution. Successors outside
+            this sequence are skipped when provided.
+
+        Returns
+        -------
+        count : int
+            Next available connection counter after transfers are created.
+
+        """
+        for uo_next in self.graph[name]:
+            if pick_units is not None and uo_next not in pick_units:
+                continue
+
+            connection = Connection(
+                source_uo=getattr(self, name),
+                destination_uo=getattr(self, uo_next))
+
+            conn_name = 'CONN%i' % count
+            connections[conn_name] = connection
+
+            connection.transfer_data()
+
+            count += 1
+
+        return count
+
     def SolveFlowsheet(self, kwargs_run=None, pick_units=None, verbose=True,
                        steady_state_di=None, tolerances_ss=None, ss_time=0):
+        """
+        Solve unit operations and transfer stream data through the flowsheet.
+
+        The flowsheet is executed in topological order. Unit operations listed
+        in ``pick_units`` are solved before their output data are transferred
+        to selected graph successors. Units not selected in ``pick_units`` can
+        still transfer existing output data when already solved.
+
+        Parameters
+        ----------
+        kwargs_run : dict, optional
+            Keyword arguments passed to each unit operation ``solve_unit`` call,
+            keyed by unit operation name.
+        pick_units : sequence of str, optional
+            Unit operation names to solve. If omitted, all unit operations in
+            the execution order are solved.
+        verbose : bool, optional
+            If true, print progress messages for each solved unit operation.
+        steady_state_di : dict, optional
+            Steady-state event configuration keyed by unit operation name.
+        tolerances_ss : dict, optional
+            Reserved steady-state tolerance mapping.
+        ss_time : float, optional
+            Initial steady-state time horizon accumulator.
+
+        Returns
+        -------
+        None
+            Results are stored on ``time_processing``, ``result``, and
+            ``connections`` attributes.
+
+        """
 
         if kwargs_run is None:
             kwargs_run = {}
@@ -126,19 +200,8 @@ class SimulationExec:
                     print()
 
                 # Create connection object if needed
-                neighbors = self.graph[name]
-                if len(neighbors) > 0 and self.execution_names[ind + 1] in pick_units:
-                    uo_next = self.execution_names[ind + 1]
-                    connection = Connection(
-                        source_uo=getattr(self, name),
-                        destination_uo=getattr(self, uo_next))
-
-                    conn_name = 'CONN%i' % count
-                    connections[conn_name] = connection
-
-                    connection.transfer_data()
-
-                    count += 1
+                count = self._transfer_to_neighbors(
+                    name, connections, count, pick_units)
 
                 # Processing times
                 if hasattr(instance.result, 'time'):
@@ -147,17 +210,8 @@ class SimulationExec:
 
             # instance is already solved, pass data to connection
             elif isinstance(instance.outputs, dict):
-                connection = Connection(
-                    source_uo=getattr(self, name),
-                    destination_uo=getattr(self,
-                                           self.execution_names[ind + 1]))
-
-                conn_name = 'CONN%i' % count
-                connections[conn_name] = connection
-
-                connection.transfer_data()
-
-                count += 1
+                count = self._transfer_to_neighbors(
+                    name, connections, count, pick_units)
 
         self.time_processing = time_processing
 
