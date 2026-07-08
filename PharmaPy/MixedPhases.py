@@ -328,11 +328,11 @@ class Slurry:
         # Mixture
         if volfracs is None:
             volfracs = self.getFractions()
-        volfracs = np.array(volfracs, copy=True)  # [-]
+        volfracs = np.array(volfracs, copy=True)
 
         if density is None:
             density = self.getDensity()
-        density = np.asarray(density)  # [kg/m**3]
+        density = np.asarray(density)
 
         self.epsilon = volfracs.copy()
         self.densities = density
@@ -340,7 +340,7 @@ class Slurry:
         if times_vliq:
             volfracs[1] *= 1/volfracs[0]
 
-        cpSlurry = sum(volfracs * density * cpPhases)  # [J/m**3/K]
+        cpSlurry = sum(volfracs * density * cpPhases)  # J/m**3/K
 
         return cpSlurry
 
