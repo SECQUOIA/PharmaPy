@@ -586,11 +586,12 @@ class _BaseCryst:
 
                 h_in = self.Inlet.getEnthalpy(inlet_temp, phis_in, rhos_in)
             else:
-                rho_liq_in = self.Inlet.getDensity(temp=inlet_temp)
+                rho_liq_in = self.Inlet.getDensity(temp=inlet_temp)  # [kg/m**3]
                 rho_sol_in = None
 
-                rhos_in = np.array([rho_liq_in, rho_sol_in])
-                h_in = self.Inlet.getEnthalpy(temp=inlet_temp)
+                rhos_in = np.array([rho_liq_in, rho_sol_in])  # [kg/m**3]
+                h_in_mass = self.Inlet.getEnthalpy(temp=inlet_temp)  # [J/kg]
+                h_in = h_in_mass * rho_liq_in  # [J/kg]*[kg/m**3] -> [J/m**3]
 
                 phis_in = [1, 0]
 
@@ -1808,7 +1809,7 @@ class MSMPR(_BaseCryst):
 
         rho_sol = rhos[0][1]
 
-        input_flow = u_inputs['Inlet']['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
 
         input_conc = u_inputs['Liquid_1']['mass_conc']
 
@@ -1852,50 +1853,55 @@ class MSMPR(_BaseCryst):
 
         rho_susp, rho_in = rhos
 
-        input_flow = u_inputs['Inlet']['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
 
         # Thermodynamic properties (basis: slurry volume)
-        phi_liq = 1 - self.Solid_1.kv * mu_n[3]
+        phi_liq = 1 - self.Solid_1.kv * mu_n[3]  # [-]
 
         phis = [phi_liq, 1 - phi_liq]
-        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)
-        capacitance = self.Slurry.getCp(temp, phis, rho_susp)  # J/m**3/K
+        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)  # [J/m**3]
+        capacitance = self.Slurry.getCp(temp, phis, rho_susp)  # [J/m**3/K]
 
         # Renaming
-        dh_cryst = -1.46e4  # J/kg  # TODO: read this from json file
+        dh_cryst = -1.46e4  # [J/kg]  # TODO: read this from json file
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
-        height_liq = vol / (np.pi/4 * self.diam_tank**2)
-        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
+        height_liq = vol / (np.pi/4 * self.diam_tank**2)  # [m]
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # [m**2]
 
-        # Energy terms (W)
-        flow_term = input_flow * (h_in - h_sp)
-        source_term = dh_cryst*cryst_rate * vol
+        # Energy terms
+        flow_term = input_flow * (h_in - h_sp)  # [J/s]
+        source_term = dh_cryst*cryst_rate * vol  # [J/s]
 
-        if 'temp' in self.controls.keys():
-            ht_term = capacitance * vol  # return capacitance
+        if self.adiabatic:
+            ht_term = 0  # [J/s]
+        elif 'temp' in self.controls.keys():
+            ht_term = capacitance * vol  # [J/K]
         elif 'temp' in self.states_uo:
-            ht_term = self.u_ht*area_ht*(temp - temp_ht)
+            ht_term = self.u_ht*area_ht*(temp - temp_ht)  # [J/s]
         if heat_prof:
             heat_components = np.hstack([source_term, ht_term, flow_term])
             return heat_components
         else:
             # Balance inside the tank
-            dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
+            dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance  # [K/s]
+
+            if self.adiabatic or temp_ht is None:
+                return dtemp_dt
 
             # Balance in the jacket
             ht_media = self.Utility.get_inputs(time)
-            flow_ht = ht_media['vol_flow']
-            tht_in = ht_media['temp_in']
+            flow_ht = ht_media['vol_flow']  # [m**3/s]
+            tht_in = ht_media['temp_in']  # [K]
 
-            cp_ht = self.Utility.cp
-            rho_ht = self.Utility.rho
+            cp_ht = self.Utility.cp  # [J/kg/K]
+            rho_ht = self.Utility.rho  # [kg/m**3]
 
-            vol_ht = self.vol_tank*0.14  # m**3
+            vol_ht = self.vol_tank*0.14  # [m**3]
 
             dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
-                self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
+                self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht  # [K/s]
 
             return dtemp_dt, dtht_dt
 
@@ -2112,7 +2118,7 @@ class SemibatchCryst(MSMPR):
         rho_in_liq, _ = rho_in
 
         input_flow = u_inputs['Inlet']['vol_flow']
-        input_flow = np.max([eps, input_flow])
+        input_flow = np.max([eps, input_flow])  # [m**3/s]
 
         # TODO: generalize dictionary iteration ('Inlet', 'Liquid_1', ...)?
         input_distrib = u_inputs['Inlet']['distrib'] * self.scale
@@ -2166,58 +2172,59 @@ class SemibatchCryst(MSMPR):
         rho_susp, rho_in = rhos
 
         # Input properties
-        input_flow = u_inputs['Inlet']['vol_flow']
-        input_flow = np.max([eps, input_flow])
+        input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
+        input_flow = np.max([eps, input_flow])  # [m**3/s]
 
-        vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
-        vol_total = vol + vol_solid
+        vol_solid = mu_n[3] * self.Solid_1.kv  # [m**3]
+        vol_total = vol + vol_solid  # [m**3]
 
-        phi = vol / vol_total
+        phi = vol / vol_total  # [-]
         phis = [phi, 1 - phi]
-        dens_slurry = np.dot(rho_susp, phis)
+        dens_slurry = np.dot(rho_susp, phis)  # [kg/m**3]
 
         # Suspension properties
         capacitance = self.Slurry.getCp(temp, phis, rho_susp,
-                                        times_vliq=True)
-        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)
+                                        times_vliq=True)  # [J/m**3/K]
+        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)  # [J/m**3]
 
         # Renaming
-        dh_cryst = -1.46e4  # J/kg
+        dh_cryst = -1.46e4  # [J/kg]
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
         #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
 
         # Terms
-        dens_in_liq = rho_in[0]
-        dmass_dt = input_flow * dens_in_liq
+        dens_in_liq = rho_in[0]  # [kg/m**3]
+        dmass_dt = input_flow * dens_in_liq  # [kg/s]
 
-        accum_term = dmass_dt * h_sp/dens_slurry
-        flow_term = input_flow * h_in
+        accum_term = dmass_dt * h_sp/dens_slurry  # [J/s]
+        flow_term = input_flow * h_in  # [J/s]
 
-        source_term = dh_cryst * cryst_rate
+        source_term = dh_cryst * cryst_rate  # [J/s]
 
-        height_liq = vol / (np.pi/4 * self.diam_tank**2)
-        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
+        height_liq = vol / (np.pi/4 * self.diam_tank**2)  # [m]
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # [m**2]
 
         if self.adiabatic:
-            ht_term = 0
+            ht_term = 0  # [J/s]
         else:
-            ht_term = self.u_ht*area_ht*(temp - temp_ht)
+            ht_term = self.u_ht*area_ht*(temp - temp_ht)  # [J/s]
 
         # Balance inside the tank
         dtemp_dt = (flow_term - source_term - ht_term - accum_term) / \
-            capacitance / vol
+            capacitance / vol  # [K/s]
 
         # print(dtemp_dt)
 
         if temp_ht is not None:
-            tht_in = self.temp_ht_in  # degC
-            flow_ht = self.flow_ht
-            cp_ht = 4180  # J/kg/K
-            rho_ht = 1000
-            vol_ht = self.vol_tank*0.14  # m**3
+            ht_media = self.Utility.get_inputs(time)
+            tht_in = ht_media['temp_in']  # [K]
+            flow_ht = ht_media['vol_flow']  # [m**3/s]
+            cp_ht = self.Utility.cp  # [J/kg/K]
+            rho_ht = self.Utility.rho  # [kg/m**3]
+            vol_ht = self.vol_tank*0.14  # [m**3]
 
             dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
-                self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
+                self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht  # [K/s]
 
             return dtemp_dt, dtht_dt
 
