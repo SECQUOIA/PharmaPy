@@ -674,7 +674,9 @@ class VaporPhase(ThermoPhysicalManager):
         total_h : bool, optional
             If True, the total enthalpy is returned. If False, an array
             of individual enthalpy for each species is returned.
-            he default is True.
+            The default is True.
+        basis : {'mass', 'mole'}, optional
+            Basis for the returned enthalpy. The default is 'mass'.
 
         Returns
         -------
@@ -727,7 +729,8 @@ class VaporPhase(ThermoPhysicalManager):
 
         # Collect terms
         if total_h:
-            hVap = hSens + np.dot(deltaVap, mole_frac)
+            frac = mass_frac if basis == 'mass' else mole_frac
+            hVap = hSens + np.dot(deltaVap, frac)
 
         else:
             hVap = hSens + deltaVap
