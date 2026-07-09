@@ -81,6 +81,31 @@ def test_get_kinetics_preserves_vector_target_selection():
     np.testing.assert_allclose(dissol, [0.0, 0.0])
 
 
+def test_get_kinetics_uses_secondary_parameters_from_vector_update():
+    kin = _primary_growth_kinetics()
+    kin.set_params(
+        np.array([
+            1.0, 0.0, 1.0,
+            1.0, 0.0, 1.0, 1.0,
+            1.0, 0.0, 1.0,
+            0.0, 0.0, 0.0,
+        ])
+    )
+
+    conc = np.array([[0.5], [0.6]])
+    temp = np.array([298.15, 298.15])
+    moments = np.full((2, 4), 2.0)
+
+    prim, sec, growth, dissol = kin.get_kinetics(
+        conc, temp, 0.5, moments, nucl_sec_out=True
+    )
+
+    np.testing.assert_allclose(prim, [0.4, 0.5])
+    np.testing.assert_allclose(sec, [0.4, 0.5])
+    np.testing.assert_allclose(growth, [0.4, 0.5])
+    np.testing.assert_allclose(dissol, [0.0, 0.0])
+
+
 def test_msmpr_steady_state_accepts_scalar_seed(monkeypatch):
     MSMPR = _import_msmpr(monkeypatch)
 

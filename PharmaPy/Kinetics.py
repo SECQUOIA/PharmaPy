@@ -848,9 +848,15 @@ class CrystKinetics:
             sup_sat = sup_sat / conc_sat + 1
 
         def is_default_secondary(name):
-            return (name == 'nucl_sec' and
-                    name not in self.custom_mechanisms and
-                    self.params_sec is None)
+            """Return whether secondary nucleation is the inactive default."""
+            if name != 'nucl_sec' or name in self.custom_mechanisms:
+                return False
+
+            default = np.zeros_like(self.params['nucl_sec'], dtype=float)
+            if self.reformulate_kin:
+                default[0] = np.log(eps)
+
+            return np.allclose(self.params['nucl_sec'], default)
 
         par_p, par_s, par_g, par_d = self.params.values()
 
