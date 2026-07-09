@@ -510,7 +510,6 @@ class DistillationColumn(_BaseDistillation):
             self.calc_plates(**result['material_balances'],
                              reflux=result['reflux'],
                              num_plates=result['num_plates'])
-            self.retrieve_results()
 
         return result
 
