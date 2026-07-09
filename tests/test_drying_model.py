@@ -72,6 +72,70 @@ def test_material_balance_uses_mass_drying_rate_for_saturation():
     np.testing.assert_allclose(dsat_dt, expected_dsat_dt)
 
 
+def test_unit_model_converts_drying_rate_before_balance_equations(monkeypatch):
+    dryer = Drying(number_nodes=2, supercrit_names=["nitrogen"])
+    dryer.num_volatiles = 2
+    dryer.idx_volatiles = np.array([0, 2])
+    dryer.idx_supercrit = np.array([1])
+    dryer.porosity = 0.5
+    dryer.rho_sol = 1500.0
+    dryer.s_inf = 0.1
+    dryer.dPg_dz = 2.0
+    dryer.pres_gas = np.array([101325.0, 101000.0])
+    dryer.CakePhase = SimpleNamespace(alpha=1.2)
+    dryer.Liquid_1 = SimpleNamespace(
+        num_species=3,
+        mw=np.array([18.0, 28.0, 46.0]),
+        rho_liq=np.array([800.0, 850.0, 900.0]),
+    )
+    dryer.Vapor_1 = SimpleNamespace(
+        mw=np.array([18.0, 28.0, 46.0]),
+        getViscosity=lambda temp, mass_frac: np.ones(2),
+    )
+    dryer.get_inputs = lambda time: {
+        "Inlet": {"mass_frac": np.array([0.05, 0.90, 0.05])}
+    }
+
+    molar_dry_rate = np.array([
+        [2.0, 0.0, 4.0],
+        [3.0, 0.0, 5.0],
+    ])
+    expected_mass_rate = np.array([
+        [0.036, 0.0, 0.184],
+        [0.054, 0.0, 0.230],
+    ])
+    monkeypatch.setattr(
+        dryer,
+        "get_drying_rate",
+        lambda x_liq, temp_sol, y_gas, pres_gas: molar_dry_rate,
+    )
+
+    captured = {}
+
+    def material_balance(*args, **kwargs):
+        captured["material_dry_rate"] = args[8].copy()
+        return [np.zeros(2), np.zeros((2, 3)), np.zeros((2, 2))]
+
+    def energy_balance(*args, **kwargs):
+        captured["energy_dry_rate"] = args[8].copy()
+        return [np.zeros(2), np.zeros(2)]
+
+    monkeypatch.setattr(dryer, "material_balance", material_balance)
+    monkeypatch.setattr(dryer, "energy_balance", energy_balance)
+
+    states = np.array([
+        [0.6, 0.10, 0.80, 0.10, 0.55, 0.45, 300.0, 299.0],
+        [0.7, 0.20, 0.70, 0.10, 0.60, 0.40, 301.0, 300.0],
+    ])
+
+    model_eqns = dryer.unit_model(time=0.0, states=states.ravel())
+
+    np.testing.assert_allclose(captured["material_dry_rate"], expected_mass_rate)
+    np.testing.assert_allclose(captured["energy_dry_rate"], expected_mass_rate)
+    np.testing.assert_allclose(dryer.dry_rate, expected_mass_rate)
+    np.testing.assert_allclose(model_eqns, np.zeros(states.size))
+
+
 def test_material_balance_uses_mass_drying_rate_for_gas_species():
     dryer = Drying(number_nodes=2, supercrit_names=["nitrogen"])
     dryer.idx_volatiles = np.array([0, 2])
@@ -111,12 +175,9 @@ def test_material_balance_uses_mass_drying_rate_for_gas_species():
         inputs=inputs,
     )
 
-    epsilon_gas = dryer.porosity * (1 - satur)
-    transfer_gas = (
-        dry_rate / epsilon_gas[:, np.newaxis] / dens_gas[:, np.newaxis] /
-        (1 - satur)[:, np.newaxis]
-    )
-    correction = y_gas / (1 - satur)[:, np.newaxis] * dsat_dt[:, np.newaxis]
-    expected_dygas_dt = transfer_gas + correction
+    expected_dygas_dt = np.array([
+        [0.239912, -0.000704, 1.2265786666666665],
+        [0.2877728, -0.0007952, 1.2265530666666665],
+    ])
 
     np.testing.assert_allclose(dygas_dt, expected_dygas_dt)

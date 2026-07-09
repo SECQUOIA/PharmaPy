@@ -217,6 +217,7 @@ class Drying:
         return dry_rates
 
     def _drying_rate_mass_basis(self, dry_rate):
+        """Convert molar drying rates [mol/m**3/s] to mass rates [kg/m**3/s]."""
         mw = np.asarray(self.Liquid_1.mw) / 1000  # [kg/mol]
 
         return dry_rate * mw
@@ -267,10 +268,11 @@ class Drying:
 
         limiter_factor = self.eta_fun(sat_eta, w_eta)
 
-        # Dry rate
+        # Drying rate from get_drying_rate is molar [mol/m**3/s].
         self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas,
                                              self.pres_gas)
 
+        # Balances below consume mass-basis drying rates [kg/m**3/s].
         self.dry_rate = self._drying_rate_mass_basis(self.dry_rate)
         self.dry_rate *= limiter_factor[..., np.newaxis]
 
