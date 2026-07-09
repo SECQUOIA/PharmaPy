@@ -949,7 +949,8 @@ class CSTR(_BaseReactor):
         whether or not the paramest_wrapper method should return
         the sensitivity system along with the concentratio profiles.
         Use False if you want the parameter estimation platform to
-        estimate the sensitivity system using finite differences
+        estimate the sensitivity system using finite differences.
+        Direct sensitivity evaluation is not implemented for CSTR.
     """
 
     def __init__(self, mask_params=None,
@@ -1099,10 +1100,16 @@ class CSTR(_BaseReactor):
 
         if eval_sens:
             raise NotImplementedError(
-                "CSTR sensitivity evaluation is not supported")
+                "CSTR sensitivity evaluation is not supported; construct "
+                "with return_sens=False to use finite-difference "
+                "sensitivities")
 
         self.params_control = params_control
         self.set_names()
+
+        if self.ht_mode == 'coil' and not self.isothermal:
+            raise NotImplementedError(
+                "CSTR heat transfer with ht_mode='coil' is not supported")
 
         self.num_concentr = len(self.Liquid_1.mole_conc)
         self.args_inputs = (self, self.num_concentr, 0)
@@ -1253,7 +1260,8 @@ class SemibatchReactor(CSTR):
         whether or not the paramest_wrapper method should return
         the sensitivity system along with the concentratio profiles.
         Use False if you want the parameter estimation platform to
-        estimate the sensitivity system using finite differences
+        estimate the sensitivity system using finite differences.
+        Direct sensitivity evaluation is not implemented for SemibatchReactor.
     """
     
     def __init__(self, vol_tank,
@@ -1304,10 +1312,17 @@ class SemibatchReactor(CSTR):
 
         if eval_sens:
             raise NotImplementedError(
-                "SemibatchReactor sensitivity evaluation is not supported")
+                "SemibatchReactor sensitivity evaluation is not supported; "
+                "construct with return_sens=False to use finite-difference "
+                "sensitivities")
 
         self.params_control = params_control
         self.set_names()
+
+        if self.ht_mode == 'coil' and not self.isothermal:
+            raise NotImplementedError(
+                "SemibatchReactor heat transfer with ht_mode='coil' is "
+                "not supported")
 
         if runtime is not None:
             final_time = runtime + self.elapsed_time
@@ -1560,17 +1575,15 @@ class PlugFlowReactor(_BaseReactor):
                                             delta_hrxn=deltah_rxn)
 
         # ---------- Balance terms (W)
-        # source_term = -inner1d(deltah_rxn, rates) * 1000  # W/m**3
-        # TODO: Check if this is correct
-        # source_term = -np.dot(deltah_rxn, rates) * 1000  # W / m**3
-        source_term = -np.sum(deltah_rxn * rates) * 1000  # W / m**3
+        source_term = -np.dot(deltah_rxn, rates) * 1000  # W / m**3
 
         if self.adiabatic:
             heat_transfer = 0
         else:  # W/m**3
+            # The steady-PFR area formula is a pre-existing issue tracked in #33.
             a_prime = self.diam / 4  # m**2 / m**3
-            temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
-            heat_transfer = self.u_ht * a_prime * (temp - temp_ht)
+            heat_transfer = self.u_ht * a_prime * (
+                temp - self.temp_ht_steady)
 
         flow_term = self.Inlet.vol_flow * cp_vol
 
@@ -1617,6 +1630,11 @@ class PlugFlowReactor(_BaseReactor):
 
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Inlet.temp)
+
+        if 'temp' in self.states_uo and not self.adiabatic:
+            # The steady solve integrates over volume, not time, so use the
+            # inlet utility condition at the start of the volume profile.
+            self.temp_ht_steady = self.Utility.evaluate_inputs(0)['temp_in']
 
         problem = Explicit_Problem(self.unit_steady, states_init, t0=0)
         solver = CVode(problem)

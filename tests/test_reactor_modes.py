@@ -41,7 +41,12 @@ def _load_pfr_config(data_path):
     config["inlet"]["vol_flow"] = config["phase"]["vol"] / tau
 
     datapath = str(data_path["integration"] / "pfr_test_pure_comp.json")
-    config["kinetics"]["k_params"] *= 1 / 60
+    config["kinetics"].update({
+        "stoich_matrix": [[-1, -1, 1], [0, -1, 1]],
+        "k_params": [40 / 60, 10 / 60],
+        "ea_params": [2e3, 1e3],
+        "delta_hrxn": [-5e3, -2.5e3],
+    })
     config["kinetics"]["path"] = datapath
 
     return config, datapath
@@ -76,6 +81,9 @@ def test_pfr_solve_steady_reads_inlet_mole_conc(data_path):
     assert vol_position.size > 1
     assert states.shape[0] == vol_position.size
     assert reactor.concProfSteady.shape[0] == vol_position.size
+    assert reactor.Kinetics.num_rxns == 2
+    assert reactor.tempProfSteady[-1] > reactor.Inlet.temp
+    assert reactor.tempProfSteady[-1] < reactor.temp_ht_steady
 
 
 @pytest.mark.parametrize("reactor_cls", SENSITIVITY_REACTORS)
@@ -96,3 +104,17 @@ def test_coil_ht_mode_refuses_unsupported_heat_transfer():
 
     with pytest.raises(NotImplementedError, match="coil.*not supported"):
         reactor.heat_transfer(np.array([300.0]), np.array([290.0]), 0.002)
+
+
+@pytest.mark.parametrize("reactor_cls", SENSITIVITY_REACTORS)
+def test_coil_ht_mode_refuses_through_solve_unit(data_path, reactor_cls):
+    if reactor_cls is CSTR:
+        reactor = reactor_cls(isothermal=False, ht_mode="coil")
+    else:
+        reactor = reactor_cls(
+            vol_tank=0.002, isothermal=False, ht_mode="coil")
+
+    reactor = _reactor_objects(data_path, reactor)
+
+    with pytest.raises(NotImplementedError, match="coil.*not supported"):
+        reactor.solve_unit(runtime=1, verbose=False)
