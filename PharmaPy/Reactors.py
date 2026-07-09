@@ -292,9 +292,11 @@ class _BaseReactor:
         return events
 
     def heat_transfer(self, temp, temp_ht, vol):
+        """Return reactor heat transfer duty for supported heat-transfer modes."""
         # Heat transfer area
         if self.ht_mode == 'coil':  # Half pipe heat transfer
-            pass
+            raise NotImplementedError(
+                "heat_transfer with ht_mode='coil' is not supported")
         else:
             area_ht = 4 / self.diam * vol + self.area_base  # m**2
             heat_transf = self.u_ht * area_ht * (temp - temp_ht)
@@ -1095,6 +1097,10 @@ class CSTR(_BaseReactor):
 
         check_modeling_objects(self)
 
+        if eval_sens:
+            raise NotImplementedError(
+                "CSTR sensitivity evaluation is not supported")
+
         self.params_control = params_control
         self.set_names()
 
@@ -1131,14 +1137,11 @@ class CSTR(_BaseReactor):
 
         # Create problem
         merged_params = self.Kinetics.concat_params()
-        if eval_sens:
-            pass
-        else:
-            def fobj(time, states): return self.unit_model(
-                time, states, merged_params)
+        def fobj(time, states): return self.unit_model(
+            time, states, merged_params)
 
-            problem = Explicit_Problem(fobj, states_init,
-                                       t0=self.elapsed_time)
+        problem = Explicit_Problem(fobj, states_init,
+                                   t0=self.elapsed_time)
 
         # Set solver
         solver = CVode(problem)
@@ -1299,6 +1302,10 @@ class SemibatchReactor(CSTR):
 
         check_modeling_objects(self)
 
+        if eval_sens:
+            raise NotImplementedError(
+                "SemibatchReactor sensitivity evaluation is not supported")
+
         self.params_control = params_control
         self.set_names()
 
@@ -1323,14 +1330,11 @@ class SemibatchReactor(CSTR):
                 states_init = np.append(states_init, tht_init)
 
         merged_params = self.Kinetics.concat_params()
-        if eval_sens:
-            pass
-        else:
-            def fobj(time, states): return self.unit_model(
-                time, states, merged_params)
+        def fobj(time, states): return self.unit_model(
+            time, states, merged_params)
 
-            problem = Explicit_Problem(fobj, states_init,
-                                       t0=self.elapsed_time)
+        problem = Explicit_Problem(fobj, states_init,
+                                   t0=self.elapsed_time)
 
         # Set solver
         solver = CVode(problem)
@@ -1559,13 +1563,14 @@ class PlugFlowReactor(_BaseReactor):
         # source_term = -inner1d(deltah_rxn, rates) * 1000  # W/m**3
         # TODO: Check if this is correct
         # source_term = -np.dot(deltah_rxn, rates) * 1000  # W / m**3
-        source_term = -(deltah_rxn * rates).sum(axis=1) * 1000  # W / m**3
+        source_term = -np.sum(deltah_rxn * rates) * 1000  # W / m**3
 
         if self.adiabatic:
             heat_transfer = 0
         else:  # W/m**3
             a_prime = self.diam / 4  # m**2 / m**3
-            heat_transfer = self.u_ht * a_prime * (temp - self.Utility.temp)
+            temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
+            heat_transfer = self.u_ht * a_prime * (temp - temp_ht)
 
         flow_term = self.Inlet.vol_flow * cp_vol
 
@@ -1601,7 +1606,7 @@ class PlugFlowReactor(_BaseReactor):
             self.isothermal = False
             self.states_uo.append('temp')
 
-        c_inlet = self.Inlet.concentr
+        c_inlet = self.Inlet.mole_conc
 
         self.c_inert = c_inlet[~self.mask_species]
         c_partic = c_inlet[self.mask_species]
