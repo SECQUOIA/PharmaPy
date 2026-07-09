@@ -216,6 +216,11 @@ class Drying:
 
         return dry_rates
 
+    def _drying_rate_mass_basis(self, dry_rate):
+        mw = np.asarray(self.Liquid_1.mw) / 1000  # [kg/mol]
+
+        return dry_rate * mw
+
     def unit_model(self, time, states, sw=None):
         '''
         state vector in the order: S|w_gas|w_liq|Tg|Ts
@@ -266,6 +271,7 @@ class Drying:
         self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas,
                                              self.pres_gas)
 
+        self.dry_rate = self._drying_rate_mass_basis(self.dry_rate)
         self.dry_rate *= limiter_factor[..., np.newaxis]
 
         # ---------- Model equations
@@ -299,16 +305,13 @@ class Drying:
         # ----- Liquid phase
         dens_liq = self.rho_liq
 
-        # Convert molar drying rates to mass rates for the liquid balance (#20).
-        # Gas and energy balances still use molar rates pending #21 and #48.
-        mw_volatiles = self.Liquid_1.mw[self.idx_volatiles] / 1000  # [kg/mol]
-        dry_rate_mass = dry_rate[:, self.idx_volatiles] * mw_volatiles  # [kg/m**3/s]
-        sum_dry = dry_rate_mass.sum(axis=1)  # [kg/m**3/s]
+        dry_rate_volatiles = dry_rate[:, self.idx_volatiles]
+        sum_dry = dry_rate_volatiles.sum(axis=1)  # [kg/m**3/s]
 
         dsat_dt = -sum_dry / dens_liq / self.porosity
 
         dxliq_dt = -1 / satur* \
-            (dry_rate_mass.T / dens_liq / self.porosity +
+            (dry_rate_volatiles.T / dens_liq / self.porosity +
               x_liq.T * dsat_dt)
 
         # ----- Gas phase
