@@ -825,8 +825,17 @@ class CrystKinetics:
 
     def get_kinetics(self, conc, temp, kv_cry,
                      moments=None, nucl_sec_out=False):
+        """Evaluate crystallization kinetics for target concentration states.
 
-        conc_target = conc.T[self.target_idx]
+        Scalar concentrations are treated as the already-selected target
+        concentration, matching single-component steady-state solves.
+        """
+
+        conc_array = np.asarray(conc)
+        if conc_array.ndim == 0:
+            conc_target = conc_array.item()
+        else:
+            conc_target = conc_array.T[self.target_idx]
 
         # Supersaturation
         conc_sat = self.get_solubility(temp, conc)
@@ -838,6 +847,17 @@ class CrystKinetics:
         if self.sup_sat_type == 'ratio':
             sup_sat = sup_sat / conc_sat + 1
 
+        def is_default_secondary(name):
+            """Return whether secondary nucleation is the inactive default."""
+            if name != 'nucl_sec' or name in self.custom_mechanisms:
+                return False
+
+            default = np.zeros_like(self.params['nucl_sec'], dtype=float)
+            if self.reformulate_kin:
+                default[0] = np.log(eps)
+
+            return np.allclose(self.params['nucl_sec'], default)
+
         par_p, par_s, par_g, par_d = self.params.values()
 
         if 'nucl_sec' in self.custom_mechanisms:
@@ -847,7 +867,12 @@ class CrystKinetics:
             args_sec = (kv_cry, self.reformulate_kin)
             par_sec = par_s
 
-        if isinstance(sup_sat, float):
+        if np.ndim(sup_sat) == 0:
+            sup_sat = np.asarray(sup_sat).item()
+            conc_sat = np.asarray(conc_sat).item()
+            if np.ndim(temp) == 0:
+                temp = np.asarray(temp).item()
+
             # print(sup_sat)
             args = [sup_sat, conc_sat, moments, temp, self.temp_ref]
             if sup_sat >= 0:
@@ -860,7 +885,9 @@ class CrystKinetics:
             mechs = {}
 
             for name in subset_mech:
-                if name in self.custom_mechanisms:
+                if is_default_secondary(name):
+                    mechs[name] = 0
+                elif name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
                     mechs[name] = self.custom_mechanisms[name](*args_concat)
                 else:
@@ -907,7 +934,9 @@ class CrystKinetics:
                     temp_positive, self.temp_ref]
 
             for name in subset_mech:
-                if name in self.custom_mechanisms:
+                if is_default_secondary(name):
+                    continue
+                elif name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
                     mechs[name][positive_map] = self.custom_mechanisms[name](*args_concat)
                 else:
