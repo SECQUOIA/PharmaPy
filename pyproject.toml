@@ -39,7 +39,6 @@ dependencies = [
 [project.optional-dependencies]
 assimulo = [
     "cython>=0.29,<3",
-    "assimulo==3.4.3",
 ]
 test = [
     "pytest",
