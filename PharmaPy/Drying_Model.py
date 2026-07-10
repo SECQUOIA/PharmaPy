@@ -217,15 +217,26 @@ class Drying:
         return dry_rates
 
     def _drying_rate_mass_basis(self, dry_rate):
-        """Convert molar drying rates [mol/m**3/s] to mass rates [kg/m**3/s]."""
+        """Convert molar drying rates to mass rates.
+
+        Parameters
+        ----------
+        dry_rate : ndarray
+            Component drying rates on a molar basis [mol/m**3/s].
+
+        Returns
+        -------
+        ndarray
+            Component drying rates on a mass basis [kg/m**3/s].
+        """
         mw = np.asarray(self.Liquid_1.mw) / 1000  # [kg/mol]
 
         return dry_rate * mw
 
     def unit_model(self, time, states, sw=None):
-        '''
+        """
         state vector in the order: S|w_gas|w_liq|Tg|Ts
-        '''
+        """
 
         num_comp = self.Liquid_1.num_species
         states_reord = states.reshape(-1, 3 + num_comp + self.num_volatiles)
@@ -307,7 +318,7 @@ class Drying:
         # ----- Liquid phase
         dens_liq = self.rho_liq
 
-        dry_rate_volatiles = dry_rate[:, self.idx_volatiles]
+        dry_rate_volatiles = dry_rate[:, self.idx_volatiles]  # [kg/m**3/s]
         sum_dry = dry_rate_volatiles.sum(axis=1)  # [kg/m**3/s]
 
         dsat_dt = -sum_dry / dens_liq / self.porosity
