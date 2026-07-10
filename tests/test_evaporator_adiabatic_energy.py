@@ -17,15 +17,26 @@ class _EnthalpySource:
     def getEnthalpy(self, *args, **kwargs):
         return self.enthalpy
 
+    def getBubblePoint(self, *args, **kwargs):
+        return 325.0
 
-def test_adiabatic_energy_residual_includes_vapor_enthalpy():
+
+@pytest.mark.parametrize(
+    "reflux_ratio, expected_energy_rate",
+    [
+        (0, -40.0),
+        (0.25, -10.0),
+    ],
+)
+def test_adiabatic_energy_residual_includes_vapor_enthalpy(
+        reflux_ratio, expected_energy_rate):
     # Enthalpies are J/mol; flows are mol/s, amounts are mol, pressure is Pa,
     # and volume is m^3. Thus the two residuals are J/s and J, respectively.
     evaporator = ContinuousEvaporator.__new__(ContinuousEvaporator)
     evaporator._Inlet = _EnthalpySource(10.0)
     evaporator.Liquid_1 = _EnthalpySource(20.0)
     evaporator.Vapor_1 = _EnthalpySource(30.0)
-    evaporator.reflux_ratio = 0
+    evaporator.reflux_ratio = reflux_ratio
     evaporator.adiabatic = True
     evaporator.vol_tot = 2.0
 
@@ -49,7 +60,6 @@ def test_adiabatic_energy_residual_includes_vapor_enthalpy():
         },
     )
 
-    expected_energy_rate = 4.0 * 10.0 - 1.0 * 20.0 - 2.0 * 30.0
     expected_internal_energy = 3.0 * 20.0 + 4.0 * 30.0 - 5.0 * 2.0 - 40.0
     np.testing.assert_allclose(
         result,
