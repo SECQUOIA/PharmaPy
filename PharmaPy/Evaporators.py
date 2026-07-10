@@ -1494,10 +1494,13 @@ class ContinuousEvaporator:
         if self.reflux_ratio == 0:
             h_top = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap,
                                              basis='mole')
+            h_vap = h_top
         else:
             temp_bubble = self.Liquid_1.getBubblePoint(pres, mole_frac=y_vap)
             h_top = self.Liquid_1.getEnthalpy(temp=temp_bubble,
                                               mole_frac=y_vap, basis='mole')
+            h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap,
+                                             basis='mole')
 
         # Heat transfer
         if self.adiabatic:
@@ -1513,11 +1516,7 @@ class ContinuousEvaporator:
 
             if self.reflux_ratio == 0:
                 q_cond = 0
-                h_vap = h_top
             else:
-                h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap,
-                                                 basis='mole')
-
                 q_cond = flow_vap * (h_vap - h_top)
 
             heat_transfer += q_cond
