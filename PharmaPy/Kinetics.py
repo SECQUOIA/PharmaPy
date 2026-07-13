@@ -532,11 +532,51 @@ class RxnKinetics:
 
     def elem_df_dstates(self, conc):
 
+        conc = np.asarray(conc)
         f_term = self.elem_f_model(conc, self.params_f)
 
-        df_dconc = f_term[..., np.newaxis] * self.params_f / (conc + eps)
+        if conc.ndim == 1:
+            conc_term = conc + eps
+        else:
+            conc_term = conc[:, np.newaxis, :] + eps
+
+        df_dconc = f_term[..., np.newaxis] * self.params_f / conc_term
 
         return df_dconc
+
+    def _reverse_df_dstates(self, conc, temp):
+        is_product = self.stoich_matrix > 0
+        orders = abs(is_product * self.stoich_matrix)
+        conc = np.asarray(conc)
+        conc_correc = np.maximum(eps, conc)
+
+        keq_temp = self.equil_term(temp, self.delta_hrxn)
+        keq_temp[keq_temp == 0] = 1e20
+
+        if conc.ndim == 1:
+            r_term = np.zeros(self.num_rxns)
+            for ind in range(self.num_rxns):
+                r_term[ind] = np.prod(
+                    conc_correc**orders[ind]) / keq_temp[ind]
+
+            dr_dconc = r_term[:, np.newaxis] * orders / (conc + eps)
+        else:
+            n_conc = len(conc)
+            r_term = np.zeros((n_conc, self.num_rxns))
+            for ind in range(self.num_rxns):
+                if keq_temp.ndim == 1:
+                    keq_rxn = keq_temp[ind]
+                else:
+                    keq_rxn = keq_temp[:, ind]
+
+                r_term[:, ind] = np.prod(
+                    conc_correc**orders[ind], axis=1) / keq_rxn
+
+            dr_dconc = (
+                r_term[..., np.newaxis] * orders /
+                (conc[:, np.newaxis, :] + eps))
+
+        return dr_dconc
 
     def elem_df_dtheta(self, conc):
 
@@ -567,8 +607,17 @@ class RxnKinetics:
 
         if dstates:  # --------------- wrt states
             df_dstates = self.df_dstates(conc, *self.args_kin)
-            dr_dstates = (temp_terms * df_dstates.T).T
-            jac_states = np.dot(self.normalized_stoich, dr_dstates)
+            if self.keq_params is not None:
+                df_dstates = df_dstates - self._reverse_df_dstates(conc, temp)
+
+            dr_dstates = df_dstates * temp_terms[..., np.newaxis]
+
+            if dr_dstates.ndim == 2:
+                jac_states = np.dot(self.normalized_stoich, dr_dstates)
+            else:
+                jac_states = np.einsum(
+                    'sr,trc->tsc', self.normalized_stoich, dr_dstates)
+
             return jac_states
         else:  # --------------- wrt parameters
             dk_dphi = self.dk_dkparams(temp).T
