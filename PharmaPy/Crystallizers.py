@@ -1402,7 +1402,7 @@ class BatchCryst(_BaseCryst):
             dtr_dconc_tg = g_exp * tr / conc_diff
 
             first_conc = np.outer(self.kron_jtg - w_conc/rho_l, self.kron_jtg)
-            second_conc = tr/rho_l * np.eye(len(w_conc))
+            second_conc = -tr/rho_l * np.eye(len(w_conc))
 
             dfconc_dconc = -1/vol_liq * \
                 (dtr_dconc_tg * first_conc + second_conc)
