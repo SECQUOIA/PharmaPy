@@ -544,13 +544,16 @@ class RxnKinetics:
 
         return df_dconc
 
-    def _reverse_df_dstates(self, conc, temp):
+    def _reverse_df_dstates(self, conc, temp, deltah_rxn=None):
         is_product = self.stoich_matrix > 0
         orders = abs(is_product * self.stoich_matrix)
         conc = np.asarray(conc)
         conc_correc = np.maximum(eps, conc)
 
-        keq_temp = self.equil_term(temp, self.delta_hrxn)
+        if deltah_rxn is None:
+            deltah_rxn = self.delta_hrxn
+
+        keq_temp = self.equil_term(temp, deltah_rxn)
         keq_temp[keq_temp == 0] = 1e20
 
         if conc.ndim == 1:
@@ -601,14 +604,15 @@ class RxnKinetics:
 
         return drate_dorder
 
-    def derivatives(self, conc, temp, dstates=True):
+    def derivatives(self, conc, temp, dstates=True, delta_hrxn=None):
         temp_terms = self.temp_term(temp)
         f_terms = self.kinetic_model(conc, self.params_f, *self.args_kin)
 
         if dstates:  # --------------- wrt states
             df_dstates = self.df_dstates(conc, *self.args_kin)
             if self.keq_params is not None:
-                df_dstates = df_dstates - self._reverse_df_dstates(conc, temp)
+                df_dstates = df_dstates - self._reverse_df_dstates(
+                    conc, temp, delta_hrxn)
 
             dr_dstates = df_dstates * temp_terms[..., np.newaxis]
 
@@ -643,7 +647,7 @@ class RxnKinetics:
                       delta_hrxn=None):
 
         if jac:
-            jac_states = self.derivatives(conc, temp)
+            jac_states = self.derivatives(conc, temp, delta_hrxn=delta_hrxn)
             return jac_states
 
         else:

@@ -11,6 +11,9 @@ reverse-term contribution ``-d/dC[prod(C_prod**beta)/Keq]`` is missing from the
 Jacobian. This is pure NumPy (no solver backend), so no assimulo marker.
 """
 
+import sys
+from types import ModuleType, SimpleNamespace
+
 import numpy as np
 
 from PharmaPy.Kinetics import RxnKinetics
@@ -38,6 +41,19 @@ def _reversible_kinetics(data_path):
     )
 
 
+def _temperature_sensitive_reversible_kinetics(data_path):
+    return RxnKinetics(
+        path=_db(data_path),
+        k_params=[1.0],
+        ea_params=[0.0],
+        stoich_matrix=STOICH,
+        partic_species=PARTIC,
+        keq_params=[2.0],
+        delta_hrxn=[-5.0e4],
+        tref_hrxn=298.15,
+    )
+
+
 def _irreversible_kinetics(data_path):
     return RxnKinetics(
         path=_db(data_path),
@@ -46,6 +62,33 @@ def _irreversible_kinetics(data_path):
         stoich_matrix=STOICH,
         partic_species=PARTIC,
     )
+
+
+def _stub_assimulo_modules(monkeypatch):
+    assimulo = ModuleType("assimulo")
+
+    solvers = ModuleType("assimulo.solvers")
+    solvers.CVode = object
+    solvers.LSODAR = object
+
+    problem = ModuleType("assimulo.problem")
+    problem.Explicit_Problem = object
+
+    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
+    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
+    monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
+
+
+def _import_base_reactor(monkeypatch):
+    try:
+        from PharmaPy.Reactors import _BaseReactor
+    except ModuleNotFoundError as exc:
+        if exc.name != "assimulo":
+            raise
+        _stub_assimulo_modules(monkeypatch)
+        from PharmaPy.Reactors import _BaseReactor
+
+    return _BaseReactor
 
 
 def test_reversible_jacobian_includes_reverse_term(data_path):
@@ -135,3 +178,91 @@ def test_reversible_jacobian_supports_batched_concentrations(data_path):
 
     assert analytical.shape == fd.shape
     np.testing.assert_allclose(analytical, fd, atol=1e-5)
+
+
+def test_reversible_jacobian_uses_runtime_delta_hrxn(data_path):
+    kin = _temperature_sensitive_reversible_kinetics(data_path)
+
+    temp = 350.0
+    conc = np.array([1.0, 1.0, 1.0, 1.0])
+    runtime_deltah = np.array([-4.0e4])
+
+    analytical = np.asarray(
+        kin.get_rxn_rates(
+            conc,
+            temp,
+            overall_rates=True,
+            jac=True,
+            delta_hrxn=runtime_deltah,
+        )
+    )
+
+    def net_rates(c):
+        return np.asarray(
+            kin.get_rxn_rates(
+                c,
+                temp,
+                overall_rates=True,
+                delta_hrxn=runtime_deltah,
+            )
+        )
+
+    n = conc.size
+    fd = np.zeros((n, n))
+    h = 1e-6
+    for j in range(n):
+        cp = conc.copy(); cp[j] += h
+        cm = conc.copy(); cm[j] -= h
+        fd[:, j] = (net_rates(cp) - net_rates(cm)) / (2 * h)
+
+    np.testing.assert_allclose(analytical, fd, rtol=1e-5, atol=1e-5)
+
+
+def test_reactor_jacobian_passes_runtime_delta_hrxn(monkeypatch):
+    base_reactor = _import_base_reactor(monkeypatch)
+    runtime_deltah = np.array([-4.0e4])
+
+    class CaptureKinetics:
+        num_species = 2
+        keq_params = np.array([2.0])
+        stoich_matrix = np.array([[-1.0, 1.0]])
+        delta_hrxn = np.array([-5.0e4])
+        tref_hrxn = 298.15
+
+        def __init__(self):
+            self.calls = []
+
+        def derivatives(self, conc, temp, dstates=True, delta_hrxn=None):
+            self.calls.append((conc.copy(), temp, dstates, delta_hrxn.copy()))
+            return np.eye(2)
+
+    class CaptureLiquid:
+        temp = 350.0
+
+        def __init__(self):
+            self.calls = []
+
+        def getHeatOfRxn(self, stoich_matrix, temp, mask, heat_rxn_ref,
+                         tref_hrxn):
+            self.calls.append(
+                (stoich_matrix.copy(), temp, mask.copy(),
+                 heat_rxn_ref.copy(), tref_hrxn))
+            return runtime_deltah
+
+    kinetics = CaptureKinetics()
+    liquid = CaptureLiquid()
+    reactor = SimpleNamespace(
+        Kinetics=kinetics,
+        Liquid_1=liquid,
+        isothermal=True,
+        mask_species=np.array([True, True]),
+    )
+
+    jac = base_reactor.get_jacobians(
+        reactor, time=0.0, states=np.array([1.0, 1.0]), sw=None,
+        sens=None, params=None)
+
+    np.testing.assert_allclose(jac, np.eye(2))
+    assert len(liquid.calls) == 1
+    assert len(kinetics.calls) == 1
+    np.testing.assert_allclose(kinetics.calls[0][3], runtime_deltah)
