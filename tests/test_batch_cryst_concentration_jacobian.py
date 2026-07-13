@@ -92,26 +92,12 @@ def test_batch_cryst_concentration_jacobian_diagonal_matches_material_balance(mo
         return_only=False,
     )
 
-    rho_l = crystallizer.Liquid_1.getDensity(temp=298.15)
-    rho_c = crystallizer.Solid_1.getDensity(temp=298.15)
-    tr = (
-        3
-        * crystallizer.Solid_1.kv
-        * crystallizer.Kinetics.growth
-        * moments[2]
-        * rho_c
-        * (1e-6) ** 3
-    )
-    dtr_dconc_tg = crystallizer.Kinetics.params["growth"][-1] * tr / (
-        mass_conc[crystallizer.target_ind] - crystallizer.Kinetics.get_solubility(298.15, mass_conc)
-    )
-    first_conc = np.outer(
-        crystallizer.kron_jtg - mass_conc / rho_l,
-        crystallizer.kron_jtg,
-    )
-    expected_conc_block = -1 / vol_liq * (
-        dtr_dconc_tg * first_conc - tr / rho_l * np.eye(len(mass_conc))
-    )
+    # Hand-computed from the fixture values: tr = 0.072,
+    # dtr_dconc_tg = 0.24, and tr / rho_l = 7.2e-5.
+    expected_conc_block = np.array([
+        [-0.119898, 0.0],
+        [2.4e-5, 3.6e-5],
+    ])
 
     np.testing.assert_allclose(
         jacobian[crystallizer.num_distr:-1, crystallizer.num_distr:-1],
