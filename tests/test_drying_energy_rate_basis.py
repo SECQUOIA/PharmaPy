@@ -12,7 +12,7 @@ pytestmark = pytest.mark.assimulo
 
 def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
     """Energy terms combine mass drying rates with mass-basis heat data."""
-    dryer = Drying(number_nodes=2, supercrit_names=["nitrogen"])
+    dryer = Drying(number_nodes=3, supercrit_names=["nitrogen"])
     dryer.num_volatiles = 2
     dryer.idx_volatiles = np.array([0, 2])
     dryer.idx_supercrit = np.array([1])
@@ -21,8 +21,8 @@ def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
     dryer.cp_sol = 1000.0  # [J/kg/K]
     dryer.s_inf = 0.1
     dryer.dPg_dz = 2.0
-    dryer.dz = np.ones(2)
-    dryer.pres_gas = np.array([60000.0, 122000.0])  # gives rho_gas [2, 4]
+    dryer.dz = np.ones(3)
+    dryer.pres_gas = np.array([60000.0, 122000.0, 62000.0])
     dryer.CakePhase = SimpleNamespace(alpha=1.2)
     dryer.h_T_j = 0.0
     dryer.a_V = 1.0
@@ -34,12 +34,14 @@ def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
         num_species=3,
         mw=np.array([18.0, 28.0, 46.0]),  # [g/mol]
         rho_liq=np.array([800.0, 850.0, 800.0]),  # [kg/m**3]
-        getCp=lambda temp, mass_frac, basis: np.array([2000.0, 2000.0]),
+        getCp=lambda temp, mass_frac, basis: np.array([2000.0, 2000.0, 2000.0]),
     )
     dryer.Vapor_1 = SimpleNamespace(
         mw=np.array([83.14, 83.14, 83.14]),  # [g/mol]
-        getViscosity=lambda temp, mass_frac: np.ones(2),
-        getCp=lambda temp, mass_frac, basis: np.array([1000.0, 1200.0]),
+        getViscosity=lambda temp, mass_frac: np.ones(3),
+        getCp=lambda temp, mass_frac, basis: np.array([1000.0, 1200.0, 1500.0]),
+        # One latent heat value per volatile component; the node count is
+        # intentionally different so this cannot be read as per-node data.
         getHeatVaporization=lambda temp, basis: np.array([2.0e6, 1.0e6]),
     )
     dryer.get_inputs = lambda time: {
@@ -52,6 +54,7 @@ def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
     molar_dry_rate = np.array([
         [2.0, 0.0, 4.0],
         [3.0, 0.0, 5.0],
+        [1.0, 0.0, 2.0],
     ])  # [mol/m**3/s]
     monkeypatch.setattr(
         dryer,
@@ -67,28 +70,34 @@ def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
         dryer,
         "material_balance",
         lambda *args, **kwargs: [
-            np.zeros(2),
-            np.zeros((2, 3)),
-            np.zeros((2, 2)),
+            np.zeros(3),
+            np.zeros((3, 3)),
+            np.zeros((3, 2)),
         ],
     )
 
     states = np.array([
         [0.5, 0.10, 0.80, 0.10, 0.0, 1.0, 300.0, 299.0],
         [0.5, 0.20, 0.70, 0.10, 0.0, 1.0, 305.0, 304.0],
+        [0.5, 0.30, 0.60, 0.10, 0.0, 1.0, 310.0, 309.0],
     ])
 
     derivatives = dryer.unit_model(time=0.0, states=states.ravel())
-    derivatives = derivatives.reshape(2, -1)
+    derivatives = derivatives.reshape(3, -1)
 
     # Sensible power is cp_gas * (T_gas - 295 K) * sum(m_dot_i).
-    expected_gas_temperature_rate = np.array([1100.0 / 450.0, 3408.0 / 1100.0])
+    expected_gas_temperature_rate = np.array([
+        1100.0 / 450.0,
+        3408.0 / 1100.0,
+        2475.0 / 700.0,
+    ])
 
-    # The mass-rate latent powers are [256000, 338000] J/m**3/s. Issue #24
+    # The mass-rate latent powers are [256000, 338000, 128000] J/m**3/s. Issue #24
     # separately tracks the existing factor of two applied to those powers.
     expected_condensed_temperature_rate = np.array([
         -512000.0 / 900000.0,
         -676000.0 / 900000.0,
+        -256000.0 / 900000.0,
     ])
 
     np.testing.assert_allclose(
