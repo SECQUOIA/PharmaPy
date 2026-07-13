@@ -23,6 +23,7 @@ from PharmaPy.jac_module import numerical_jac, numerical_jac_central, dx_jac_x
 from PharmaPy.Connections import get_inputs, get_inputs_new
 
 from PharmaPy.Results import DynamicResult
+import PharmaPy.Kinetics as pk
 
 
 
@@ -31,12 +32,21 @@ import string
 import numpy as np
 import os
 from dataclasses import dataclass, field
+from typing import Optional, Sequence
 from collections import OrderedDict
 
 
 eps = np.finfo(float).eps
 # gas_ct = 8.314  # J/mol/K
-
+class TransferMechanism:
+    def add_state_variables(self,collection):
+        pass
+    def add_output_state_variables(self, outputs):
+        pass
+    def transfer(self,mass_j):
+        return mass_j
+class DirectTransfer(TransferMechanism):
+    pass
 def build_transfer_vectors(paths):
 
     vectors = []
@@ -49,20 +59,98 @@ def build_transfer_vectors(paths):
         vectors.append(vec)
 
     return vectors
+@dataclass(frozen=True)
+class PhaseRef:
+    phase_type: str
+    index: int
 
 @dataclass
 class PhaseConnection:
-    source_phase: tuple[str, int]
-    sink_phase: tuple[str, int]
-
+    #TODO move this to connections when done
+    #active_condition checks the mass_j and temp of the source_phase and must return a boolean
+    source_phase: PhaseRef
+    sink_phase: PhaseRef
+    kinetics:pk.CrystKinetics|pk.RxnKinetics
     species_weights: np.ndarray | None = None
+    active_condition: callable=lambda mass_j,temp:True
+    mechanism:TransferMechanism|callable=DirectTransfer()
 
-class _BaseReactiveCryst():
-    def __init__(self,target_comp, mask_params_rxn,mask_params_cryst, temp_ref,
+@dataclass
+class ReactionRegion:
+    phase:PhaseRef
+    kinetics:pk.RxnKinetics
+
+@dataclass
+class StateVariable:
+    name: str
+    dim: int
+    units: str
+    state_type: str = "diff"
+    index: Optional[Sequence] = None
+    depends_on: tuple = ("time",)
+    stream:str|None=None
+    phase: PhaseRef | None = None
+
+    def as_dict(self):
+        """Backward compatibility."""
+        out = {
+            "dim": self.dim,
+            "units": self.units,
+            "type": self.state_type,
+            "depends_on": list(self.depends_on)
+        }
+
+        if self.index is not None:
+            out["index"] = self.index
+
+        return out
+
+@dataclass
+class StateCollection:
+    states: dict[str, StateVariable] = field(default_factory=dict)
+
+    def add(self, state: StateVariable):
+        if state.name in self.states:
+            raise ValueError(f"State {state.name} already exists")
+        self.states[state.name] = state
+
+    def names(self):
+        return list(self.states.keys())
+
+    def dims(self):
+        return [state.dim for state in self.states.values()]
+
+    def __contains__(self, name):
+        return name in self.states
+
+@dataclass
+class PhaseStateVariable:
+    phase: PhaseRef
+    state: StateVariable
+
+@dataclass
+class PhaseStateCollection:
+    states: dict[PhaseRef, StateCollection] = field(default_factory=dict)
+
+    def add(self, phase: PhaseRef, state: StateVariable):
+        if phase not in self.states:
+            self.states[phase] = StateCollection()
+
+        self.states[phase].add(state)
+
+    def __getitem__(self, phase):
+        return self.states[phase]
+    def __iter__(self):
+        for phase, collection in self.states.items():
+            for state in collection.states.values():
+                yield PhaseStateVariable(phase, state)
+
+class MultiPhaseVessel():
+    def __init__(self,target_comp, temp_ref,
      isothermal, reset_states, controls, h_conv, ht_mode,
-      return_sens, state_events,population_balance_method,scale,
+      state_events,population_balance_method,scale,
       adiabatic,jac_type,
-      param_wrapper,basis='mass_j',crystallization_paths=None,dissolution_paths=None):
+      basis='mass_j'):
         """ Construct a Reactive Crystallizer Object
 
     Parameters
@@ -141,21 +229,17 @@ class _BaseReactiveCryst():
         self.oper_mode = None
         self._initialize_states(reset_states)
         
-        # Slurry phase
+        # Phase init
         self._Phases = None
         self.Slurry = None
+        self.phase_connections = []
 
         # Parameters for optimization
         self.params_iter = None
-        self.param_wrapper = param_wrapper
-        self.return_sens = return_sens
 
         # Crystallization
         self._CrystKinetics = None
         self.material_from_upstream = False
-        self.mask_params_cryst = mask_params_cryst
-        self.crystallization_paths = crystallization_paths
-        self.dissolution_paths = dissolution_paths
         
         #heat transfer
         self.area_ht = None
@@ -166,7 +250,7 @@ class _BaseReactiveCryst():
         #Reaction
         self.temp_ref = temp_ref
         self._RxnKinetics = None
-        self.mask_params_rxn = mask_params_rxn
+        self._reaction_regions = []
         
         #State events
         if state_events is None:
@@ -199,6 +283,7 @@ class _BaseReactiveCryst():
                                'objects')
 
     def _initialize_slurry(self):
+        #deprecated
         if isinstance(self._Phases, Slurry):
             self.Slurry = self._Phases
         elif isinstance(self._Phases, (list, tuple)):
@@ -214,69 +299,109 @@ class _BaseReactiveCryst():
             self.vol_phase = self.vol_slurry
     # def _post_set_phases(self):
         # pass
+    def _basis_units(self):
+
+        units = {
+            "mass_j": "kg",
+            "mass_conc": "kg/m3",
+            "mole_j": "kmol",
+            "mole_conc": "kmol/m3"
+        }
+
+        return units[self.basis]
+    def _material_state_definition(self):
+
+        return StateVariable(
+            name=self.basis,
+            dim=self.num_species,
+            units=self._basis_units(),
+            index=self.name_species
+        )
 
     def _post_set_phases(self):
-        self._initialize_slurry()
         
-        # Names and target compounds
+        # Names and target compounds for crystallization
         self.name_species = self.mother_liquor.name_species
         self.num_species = len(self.name_species)
+        if self.target_comp is not None:
+            self.target_ind = []
+            for tc in self.target_comp:
+                name_bool = [name == tc for name in self.name_species] #TODO check that it selects correctly
+                self.target_ind.append(np.where(name_bool)[0][0])
+        self._initialize_phase_states()
         # # Input defaults TODO delete this if not necessary
         # self.input_defaults = {
         #     'distrib': np.zeros_like(self.Solid_1.distrib)}
         # Species
-        self.states_in_dict = {
-            'Liquid_1': {'mass_conc': len(self.Liquid_1.name_species)},
-            'Inlet': {'vol_flow': 1, 'temp': 1,'mole_conc': len(self.Liquid_1.name_species)}}
+        self.define_material_states()
         self.nomenclature() 
 
-        
-    
-    def _create_default_cryst_diss_paths(self):
+    def _initialize_phase_states(self):
 
-        name_bool = [name in self.target_comp for name in self.name_species]
-        self.target_ind = np.where(name_bool)[0][0]
-        if self.crystallization_paths is None:
-            weights = np.zeros_like(self.mother_liquor.massfracs)
-            weights[self.target_ind] = 1
-            self.crystallization_paths = [
-                PhaseConnection(source_phase=("liquid",0),
-                                sink_phase=("solid",0),
-                                species_weights=weights
-                )
-            ]
-        
-        if self.dissolution_paths is None:
-            weights = np.zeros_like(self.mother_liquor.massfracs)
-            weights[self.target_ind] = 1
-            self.dissolution_paths = [
-                PhaseConnection(source_phase=("solid",0),
-                                sink_phase=("liquid",0),
-                                species_weights=weights
-                )
-            ]
-            
-    def _post_set_cryst(self):
-            
-        self.cryst_transfer_vector = build_transfer_vectors(self.crystallization_paths)
-        self.dissolution_transfer_vector = build_transfer_vectors(self.dissolution_paths)
-        # ---------- Names
-        # Moments
-        # assumes solid 1 is target solid
-        if self.population_balance_method == 'moments':
-            name_mom = [r'\mu_{}'.format(ind) for ind
-                        in range(self.Solid_1.num_mom)]
-            name_mom.append('C')
+        self.phase_states = PhaseStateCollection()
 
-            self.num_distr = len(self.Solid_1.moments)
+        # Stream variables are not phases. They describe inlet/outlet connections.
+        self.stream_states = StateCollection()
 
-        else:
-            self.num_distr = len(self.Solid_1.distrib)
+        # States exposed to solver
+        self.solver_state_collection = StateCollection()
 
-        
-        
+        # States exposed as outputs
+        self.output_state_collection = StateCollection()
+
+    def define_material_states(self):
+
+        material_state = self._material_state_definition()
+
+        for i, phase in enumerate(self.Phases):
+
+            phase_ref = PhaseRef(
+                phase_type=phase.__class__.__name__.replace("Phase","").lower(),
+                index=i
+            )
+
+            self.phase_states.add(
+                phase_ref,
+                copy.deepcopy(material_state)
+            )
+    def define_stream_states(self):
+
+        self.stream_states.add(
+            StateVariable(
+                name="vol_flow",
+                dim=1,
+                units="m3/s",
+                stream="inlet"
+            )
+        )
+
+        self.stream_states.add(
+            StateVariable(
+                name="temp",
+                dim=1,
+                units="K",
+                stream="inlet"
+            )
+        )
+
+        # self.stream_states.add(
+        #     StateVariable(
+        #         name=self.basis,
+        #         dim=self.num_species,
+        #         units=self._material_state_definition().units,
+        #         stream="inlet"
+        #     )
+        # )
+        self.stream_states.add(
+            StateVariable(
+                name='mole_conc',
+                dim=self.num_species,
+                units='kmol/m3',
+                stream='inlet'
+            )
+        )
     @property
-    def PhasesByType(self):
+    def phases_by_type(self):
         out = {
             "liquid": [],
             "solid": [],
@@ -296,70 +421,177 @@ class _BaseReactiveCryst():
         return out
     @property
     def Liquids(self):
-        return self.PhasesByType["liquid"]
+        return self.phases_by_type["liquid"]
 
     @property
     def Solids(self):
-        return self.PhasesByType["solid"]
+        return self.phases_by_type["solid"]
 
     @property
     def Vapors(self):
-        return self.PhasesByType["vapor"]
+        return self.phases_by_type["vapor"]
     @property
     def mother_liquor(self):
         return self.Liquids[0]
     
     @property
     def CrystKinetics(self):
-        return self._CrystKinetics
+        raise AttributeError(
+            "CrystKinetics is a convenience initializer only. Modify self.phase_connections directly instead."
+            "Use phase_connections[ind].kinetics if the kinetics are desired."
+        )
 
     @CrystKinetics.setter
-    def CrystKinetics(self, instance):
-        # TODO change syntax so this can be a list unless that is already supported
-        # TODO add DissKinetics and have it created/autopopulated from first crystkinetics if not specified originally
+    def CrystKinetics(self, instance: pk.CrystKinetics|list):
+        ''' CrystKinetics is only a convenience initializer ONLY that assumes transfer between liquid1 and solid1 for each Crystkinetic in the list
+            and that those connections are always active. It also assumes that target_comp is the only species moving for that index
+            THIS CANNOT BE SET BEFORE PHASES
+        If any more complex behavior is needed, or if phases need to be set after this, the user should set phase_connections directly using a list of PhaseConnection objects'''
+        assert self._Phases is not None, 'Phases must be set before using the crystkinetics convenienve API. Otherwise, you must set phase_connections directly'
+        if not isinstance(instance,list) and not isinstance(instance,pk.CrystKinetics):
+            raise TypeError("CrystKinetics must be set by either a CrystKinetics object or a list of CrystKinetics objects")
+        if not isinstance(instance,list):
+            instance = [instance]
         self._CrystKinetics = instance
+        self._create_default_phase_connections()
+        self._post_CrystKinetics_setter()
 
-        name_params = self._CrystKinetics.name_params
-        if self.mask_params_cryst is None:
-            self.mask_params_cryst = [True] * self._CrystKinetics.num_params
-            self.name_params_cryst = name_params
-
-        else:
-            self.name_params = [name for ind, name in enumerate(name_params)
-                                if self.mask_params_cryst[ind]]
-
-        self.mask_params_cryst = np.array(self.mask_params_cryst)
-        self._create_default_cryst_diss_paths()
-        self._create_DistKinetics()
-        self._check_cryst_diss() # TODO make function that checks that for every cryst/diss path there are kinetics
-        self._post_set_cryst()
+    def _post_CrystKinetics_setter(self):
+        "Place holder in case future children need special behavior"
+        pass
+        
 
     @property
+    def phase_connections(self):
+        return self._phase_connections
+    
+    @phase_connections.setter
+    def phase_connections(self,connections:list):
+        if not all([isinstance(c,PhaseConnection) for c in connections]):
+            raise TypeError("phase_connections should all be PhaseConnection objects")
+        if not isinstance(connections,list):
+            raise TypeError("phase_connections is expected to be a list")
+        self._phase_connections = connections
+
+    def _create_default_phase_connections(self):
+        ''' Assumes everything occurs between the first liquid and the first solid phases
+        Assumes that whatever the target index is for that Crystkinetic, the massfrac is 100% that compound and 0 everything else
+        Only runs if phase_connections are not already set'''
+
+        if len(self.phase_connections)>0:
+            raise RuntimeError(
+                "phase_connections already defined. "
+                "Cannot use CrystKinetics convenience API."
+            )
+        connections = []
+        for i,ck in enumerate(self._CrystKinetics):
+            weights = np.zeros(self.num_species)
+            weights[self.target_ind[i]] = 1
+            if ck.supports(['growth','nucl_prim','nucl_sec']):
+                # liquid to solid because crystallization is valid
+                connection = PhaseConnection(source_phase=PhaseRef("liquid",0),
+                                             sink_phase=PhaseRef('solid',0),
+                                             kinetics=ck,
+                                             species_weights=weights,
+                                             active_condition=lambda mass_j,temp:True,
+                                             mechanism=self.Solid_1.transfer_mechanism
+                                             )
+                connections.append(connection)
+            if ck.supports('dissolution'):
+                #solid to liquid because dissolution
+                connection = PhaseConnection(source_phase=PhaseRef("solid",0),
+                                             sink_phase=PhaseRef('liquid',0),
+                                             kinetics=ck,
+                                             species_weights=weights,
+                                             active_condition=lambda mass_j,temp:True,
+                                             mechanism=DirectTransfer()
+
+                                             )
+                connections.append(connection)
+        
+
+    @property
+    def reaction_regions(self):
+        return self._reaction_regions
+    @reaction_regions.setter
+    def reaction_regions(self,regions):
+        if not all([isinstance(r,ReactionRegion) for r in regions]):
+            raise TypeError("reaction_regions should all be ReactionRegion objects")
+        if not isinstance(regions,list):
+            raise TypeError("reaction_regions is expected to be a list")
+        self._reaction_regions = regions
+        if len(self.reaction_regions) == 0:
+            self.mask_species = np.ones(
+                self.num_species,
+                dtype=bool
+            )
+            return
+
+        participating_species = set()
+
+        for region in self.reaction_regions:
+
+            rk = region.kinetics
+
+            if hasattr(rk, "partic_species"):
+                participating_species.update(
+                    rk.partic_species
+                )
+
+        self.mask_species = np.array(
+            [
+                species in participating_species
+                for species in self.name_species
+            ]
+        )
+
+        self.conc_inert = np.zeros(self.num_species)
+
+        for i, active in enumerate(self.mask_species):
+            if not active:
+                self.conc_inert[i] = getattr(
+                    self.Phases[0],
+                    self.basis
+                )[i]
+        
+    @property
     def RxnKinetics(self):
-        return self._RxnKinetics
+        raise AttributeError(
+            "RxnKinetics is a convenience initializer only. Modify self.reaction_regions directly instead"
+            "Use reaction_regions[ind].kinetics if kinetics access are desired."
+        )
 
     @RxnKinetics.setter
     def RxnKinetics(self, instance):
-        self._RxnKinetics = instance
-        self.partic_species = instance.partic_species
+        """Conveniene initializer to instantiate reaction kinetics in their proper regimes"""
+        if not isinstance(instance,list):
+            instance = [instance]
+        self._create_ReactionRegions_from_RxnKinetics(instance)
+        self._post_RxnKinetics_setter(instance)
 
-        name_params = self._RxnKinetics.name_params
-        if self.mask_params_rxn is None:
-            self.mask_params_rxn = [True] * self._RxnKinetics.num_params
-            self.name_params_rxn = name_params
+    def _create_ReactionRegions_from_RxnKinetics(self,RKs):
+        '''Creates reaction_regions from RxnKinetics, assuming everything is in the liquid phase corresponding to the index of the RxnKinetic
+        This is because RxnKinetics handles multiple reactions, but assumes a single phase
+        If reaction_regions is already defined, this step is ignored
+        For reactions in other phases, the user must define reaction_regions directly
+        '''
+        if len(self.reaction_regions) >0:
+            raise RuntimeError(
+                "reaction_regions already defined. "
+                "Cannot use RxnKinetics convenience API."
+            )
+        reaction_regions = []
+        for i,rk in enumerate(RKs):
+            assert len(self.Liquids)>=i-1, "The number of reaction kinetics must match or be less than the number of liquid phases or you must specify reaction_regions manually"
+            region = ReactionRegion(phase=PhaseRef("liquid",i),
+                                    kinetics=rk)
+            reaction_regions.append(region)
+        self.reaction_regions = reaction_regions
 
-        else:
-            self.name_params = [name for ind, name in enumerate(name_params)
-                                if self.mask_params_rxn[ind]]
+    def _post_RxnKinetics_setter(self,RKs):
+        "Place holder in case future children need special behavior"
+        pass
 
-        self.mask_params_rxn = np.array(self.mask_params_rxn)
-
-        ind_true = np.where(self.mask_params_rxn)[0]
-        ind_false = np.where(~self.mask_params_rxn)[0]
-
-        self.params_fixed = self.RxnKinetics.concat_params()[ind_false]
-
-        self.ind_maskpar = np.argsort(np.concatenate((ind_true, ind_false)))
     @property
     def Utility(self):
         return self._Utility
@@ -382,19 +614,28 @@ class _BaseReactiveCryst():
             idx = int(name.split("_")[1]) - 1
             return self.Vapors[idx]
 
-        raise AttributeError(name) 
+        raise AttributeError(name) #TODO Check if this raises unwanted errors
        
-    def _initialize_states(self,reset_states):
-        self.reset_states = reset_states
+    def _initialize_states(self,reset=False):
+
+        self.reset_states = reset
+
+        self.state_variables = StateCollection()
+
+        self.input_states = StateCollection()
+
+        self.output_states = StateCollection()
+
+        self.solver_states = []
+
         self.elapsed_time = 0
-        self.solver_states = ['mass_j']  #solver_states used to be states_uo, it is what states the solver/integrator actually is tracking
-        self.names_states_in = ['mass_conc']
-        self.states_out_dict = {}
+
         self.outputs = None
         #TODO add what's needed to solver_states (temp etc.) based on nomenclature logic here
         
     def reset(self):
         self._initialize_states(self.reset_states)
+        self.nomenclature()
 
         for phase, di in zip(self.Phases, self.__original_phase_dict__):
             phase.__dict__.update(di)
@@ -415,151 +656,198 @@ class _BaseReactiveCryst():
         # Heat transfer area ##r
         heat_transf = self.u_ht * self.area_ht * (temp - temp_ht)
         return heat_transf
-    
-    def nomenclature(self):
-        name_class = self.__class__.__name__
-       
-        states_di = {
-            }
+    def define_solver_states(self):
 
-        di_distr = {'dim': self.num_distr,
-                    'index': list(range(self.num_distr)), 'type': 'diff',
-                    'depends_on': ['time', 'x_cryst']}
-
-        if 'batch' not in name_class.lower() and 'semi' not in name_class.lower(): #batch reactive cryst
-            self.names_states_in += ['vol_flow', 'temp']
-
-            if self.population_balance_method == 'moments':
-                self.states_in_dict['Inlet']['mu_n'] = self.num_distr
-            else:
-                self.states_in_dict['Inlet']['distrib'] = self.num_distr
-
-        if self.population_balance_method == 'moments':
-            # mom_names = ['mu_%s0' % ind for ind in range(self.num_mom)]
-
-            # for mom in mom_names[::-1]:
-            self.names_states_in.insert(0, 'mu_n')
-
-            # self.states_in_dict['solid']['moments']
-
-            if 'msmpr' in name_class.lower():
-                self.solver_states.append('moments')
-                # self.states_in_dict['Inlet']['distrib'] = self.num_distr
-
-                di_distr['units'] = 'm**n/m**3'
-                states_di['mu_n'] = di_distr
-            else:
-                self.solver_states.append('total_moments')
-
-                di_distr['units'] = 'm**n'
-                states_di['mu_n'] = di_distr
-
-                # if name_class == 'SemibatchCryst':
-                    # self.states_in_dict['Inlet']['distrib'] = self.num_distr
-
-        elif self.population_balance_method == '1D-FVM':
-            self.names_states_in.insert(0, 'distrib')
-
-            states_di['distrib'] = di_distr
-
-            if name_class == 'MSMPR':
-                self.solver_states.insert(0, 'distrib')
-                di_distr['units'] = '#/m**3/um'
-
-            else:
-                self.solver_states.insert(0, 'total_distrib')
-                di_distr['units'] = '#/um'
-        if self.basis != 'mass_j':
-            states_di['mass_conc'] = {'dim': len(self.name_species),
-                                    'index': self.name_species,
-                                    'units': 'kg/m**3', 'type': 'diff',
-                                    'depends_on': ['time']}
         
-         
-            if 'msmpr' not in name_class.lower():
-                states_di['vol'] = {'dim': 1, 'units': 'm**3', 'type': 'diff',
-                                    'depends_on': ['time']}
-                self.solver_states.append('vol')
-        else:
-            states_di['mass_j'] = {'dim': len(self.name_species),
-                                  'index': self.name_species,
-                                  'units': 'kg', 'type': 'diff',
-                                  'depends_on': ['time']}
+        for phase_state in self.phase_states:
 
+            self.solver_state_collection.add(
+                copy.deepcopy(phase_state.state)
+            )
+        
         if self.adiabatic:
-            self.solver_states.append('temp')
 
-            states_di['temp'] = {'dim': 1, 'units': 'K', 'type': 'diff',
-                                 'depends_on': ['time']}
-        elif 'temp' not in self.controls:
-            self.solver_states += ['temp', 'temp_ht']
+            self.solver_state_collection.add(
+                StateVariable(
+                    name="temp",
+                    dim=1,
+                    units="K"
+                )
+            )
+            
+        elif "temp" not in self.controls:
 
-            states_di['temp'] = {'dim': 1, 'units': 'K', 'type': 'diff',
-                                 'depends_on': ['time']}
-            states_di['temp_ht'] = {'dim': 1, 'units': 'K', 'type': 'diff',
-                                    'depends_on': ['time']}
+            self.solver_state_collection.add(
+                StateVariable(
+                    name="temp",
+                    dim=1,
+                    units="K"
+                )
+            )
+            self.solver_state_collection.add(
+                StateVariable(
+                    name="temp_ht",
+                    dim=1,
+                    units="K"
+                )
+            )
+    def define_output_states(self):
 
-        self.states_in_phaseid = {'mass_conc': 'Liquid_1'}
-        self.names_states_out = self.names_states_in
+        self.output_state_collection.add(
+            StateVariable(
+                name="q_rxn",
+                dim=1,
+                units="W",
+                state_type="alg"
+            )
+        )
 
-        self.states_di = states_di
-        self.dim_states = [di['dim'] for di in self.states_di.values()]
-        self.name_states = list(self.states_di.keys())
+        self.output_state_collection.add(
+            StateVariable(
+                name="q_ht",
+                dim=1,
+                units="W",
+                state_type="alg"
+            )
+        )
 
-        self.fstates_di = {
-            'supersat': {'dim': 1, 'units': 'kg/m**3'},
-            'solubility': {'dim': 1, 'units': 'kg/m**3'},
-            'q_rxn': {'units': 'W', 'dim': 1},
-            'q_ht': {'units': 'W', 'dim': 1},
-            'm_flow':{'units':'kg/s', 'dim':1},
-            'tot_mass_cryst': {'units':'kg','dim':1}
-            }# TODO check if needs mass_j or mole_conc when mass_j=basis
+        self.output_state_collection.add(
+            StateVariable(
+                name="m_flow",
+                dim=1,
+                units="kg/s",
+                state_type="alg"
+            )
+        )
 
-        if 'temp' in self.controls:
-            self.fstates_di['temp'] = {'dim': 1, 'units': 'K'}
+        self.output_state_collection.add(
+            StateVariable(
+                name="tot_mass_cryst",
+                dim=1,
+                units="kg",
+                state_type="alg"
+            )
+        )
 
-        if self.population_balance_method != 'moments':
-            self.fstates_di['mu_n'] = {'dim': 4, 'index': list(range(4)),
-                                       'units': 'm**n'}
+        for conn in self.phase_connections:
 
-            self.fstates_di['vol_distrib'] = {
-                'dim': self.num_distr,
-                'index': list(range(self.num_distr)),
-                'units': 'm**3/m**3'}
-    def set_names(self):
-        ## ------reactor set_names implementation ## may need to remove mole_conc from states_di and push to fstates
-        name_class = self.__class__.__name__ #wasnt
-        mask_species = [True] * self.num_species
-        if self.name_species is not None:
-            mask_species = [name in self.partic_species for name in self.name_species]
-        self.mask_species = np.asarray(mask_species) #wasnt self
-        index_conc = self.RxnKinetics.partic_species if 'batch' in name_class.lower()\
-                    and 'semi' not in name_class.lower() else self.name_species
-        if self.basis != 'mass_j':
-            self.states_di['mole_conc']= {'index': index_conc, 'dim': len(index_conc),
-                            'units': 'mol/L', 'type': 'diff'}
-        
-        if self.isothermal or (self.controls is not None and 'temp' in self.controls.keys()):
-            self.fstates_di['temp'] = {'units': 'K', 'dim': 1, 'type': 'diff'}
-        else:
-            self.states_di['temp'] = {'units': 'K', 'dim': 1, 'type': 'diff'}
-            if 'plugflow' not in name_class.lower():
-                self.states_di['temp_ht'] = {'units': 'K', 'dim': 1,
-                                             'type': 'diff'}
-        self.dim_states = [di['dim'] for di in self.states_di.values()] #wasnt
-        self.name_states = list(self.states_di.keys()) #wasnt
-        ## end set_names implementation
+            if conn.mechanism is not None:
+                conn.mechanism.add_output_state_variables(
+                    self.output_state_collection
+                )
+    def nomenclature(self):
 
-    def get_inputs(self, time, solvent_pass=False):
-        ##r
-        inlet = getattr(self, 'Inlet', None)
-        if inlet is None:
-            inputs = {}
-        else:
-            inputs = get_inputs_new(time, inlet, self.states_in_dict, solvent_pass=solvent_pass)
+        self.solver_state_collection = StateCollection()
+        self.output_state_collection = StateCollection()
+        self.define_solver_states()
+        self.define_output_states()
+        self.define_stream_states()
+        # ------------------------------
+        # mechanism states
+        # ------------------------------
+
+        for connection in self.phase_connections:
+
+            if connection.mechanism is not None:
+                connection.mechanism.add_solver_state_variables(
+                    self.solver_state_collection
+                )
+
+        self.build_states_in_dict()
+        self.name_states = self.solver_state_collection.names()
+        self.dim_states = self.solver_state_collection.dims()
+
+    def _evaluate_stream(self, stream_name, stream, time):
+
+        inputs = {}
+
+        stream_states = [
+            state for state in self.stream_states.states.values()
+            if state.stream == stream_name
+        ]
+
+        for state in stream_states:
+
+            value = getattr(stream, state.name)
+
+            if callable(value):
+                value = value(time)
+
+            inputs[state.name] = np.asarray(value)
 
         return inputs
     
+    def get_inputs(self, time,solvent_pass=False):
+
+        inlet = getattr(self, "Inlet", None)
+
+        if inlet is None:
+            return {}
+
+        inputs = {}
+
+        if hasattr(inlet, "add_stream_state_variables"):
+
+            temp_collection = StateCollection()
+
+            inlet.add_stream_state_variables(
+                temp_collection
+            )
+
+            for state in temp_collection.states.values():
+
+                value = getattr(inlet, state.name)
+
+                if callable(value):
+                    value = value(time)
+
+                inputs[state.name] = np.asarray(value)
+
+        inputs.update(
+            get_inputs_new(
+                time,
+                inlet,
+                self.states_in_dict,
+                solvent_pass=solvent_pass
+                )
+            )
+        return inputs
+        
+    def build_states_in_dict(self):
+        #exists for backwards compatiblity
+        self.states_in_dict = {}
+
+        for phase_state in self.phase_states:
+
+            phase_name = self.phase_ref_to_legacy_name(
+                phase_state.phase
+            )
+
+            self.states_in_dict.setdefault(
+                phase_name,
+                {}
+            )
+
+            self.states_in_dict[phase_name][
+                phase_state.state.name
+            ] = phase_state.state.dim
+
+        for state in self.stream_states.states.values():
+
+            stream_name = (
+                state.stream.capitalize()
+                if state.stream is not None
+                else "Inlet"
+            )
+
+            self.states_in_dict.setdefault(
+                stream_name,
+                {}
+            )
+
+            self.states_in_dict[stream_name][
+                state.name
+            ] = state.dim
     def method_of_moments(self, mu, conc, temp, params, rho_cry, vol=1):
         kv = self.Solid_1.kv # shape factor
 

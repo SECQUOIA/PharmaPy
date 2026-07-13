@@ -220,6 +220,33 @@ class LiquidStream(LiquidPhase):
             inputs = self.DynamicInlet.evaluate_inputs(time)
 
         return inputs
+    def add_stream_state_variables(self, collection):
+        collection.add(
+            StateVariable(
+                name="vol_flow",
+                dim=1,
+                units="m3/s",
+                stream="inlet"
+            )
+        )
+
+        collection.add(
+            StateVariable(
+                name="temp",
+                dim=1,
+                units="K",
+                stream="inlet"
+            )
+        )
+
+        collection.add(
+            StateVariable(
+                name="mole_conc",
+                dim=len(self.name_species),
+                units="kmol/m3",
+                stream="inlet"
+            )
+        )
 
 
 class SolidStream(SolidPhase):

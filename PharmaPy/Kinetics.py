@@ -1004,5 +1004,14 @@ class CrystKinetics:
         ddiss_dpar = dmech_dparam(self.dissol, d_par)
 
         return dbp_dpar, dbs_dpar, dgr_dpar, ddiss_dpar, conc_sat
-
+    def supports(self, mechanism):
+        if not isinstance(mechanism,list):
+            mechanism = [mechanism]
+        checks = []
+        for m in mechanism:
+            try:
+                checks.append(np.any(self.params[m]))
+            except KeyError:
+                checks.append(False)
+        return any(checks)
 
