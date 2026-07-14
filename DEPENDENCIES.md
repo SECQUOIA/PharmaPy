@@ -2,14 +2,17 @@
 
 The default install keeps only the core runtime dependencies. Assimulo is an
 optional solver dependency because it is difficult to build on common pip-only
-environments and is only needed for the solver-backed unit-operation models.
+environments, is not published on PyPI above version 3.0, and is only needed for
+the solver-backed unit-operation models. Use the conda-forge environment in
+`environment.yml`, or a local source build of Assimulo, for solver-backed runs.
 
 Current bounds:
 
 `pyproject.toml` is the source of truth for install metadata. The
 `requirements.txt` and `requirements-assimulo.txt` files are convenience
 mirrors for pip-based workflows and should stay synchronized with
-`[project.dependencies]` and the `assimulo` optional extra.
+`[project.dependencies]` and the pip-installable entries in the `assimulo`
+optional extra.
 
 - `numpy>=1.22`: the lower bound gives a modern baseline for supported Python
   versions while allowing the NumPy 2 line to be exercised by CI and Dependabot.
@@ -18,7 +21,11 @@ mirrors for pip-based workflows and should stay synchronized with
   `scipy.integrate.simpson`, so current SciPy releases can be tested directly.
 - `matplotlib>=3.5` and `pandas>=1.5`: lower bounds avoid unbounded old
   releases while leaving current releases open for Dependabot and CI.
-- `cython>=0.29,<3` and `assimulo==3.4.3`: these are confined to the
-  `assimulo` optional extra until the Assimulo integration job proves a broader
-  solver stack works. Dependabot intentionally ignores Assimulo updates and
-  Cython major-version updates until that broader solver stack is verified.
+- `cython>=0.29,<3`: kept in the `assimulo` optional extra as a pip-installable
+  build helper for source-install workflows. The extra does not install
+  Assimulo itself.
+- `assimulo==3.4.3`: the supported Assimulo version for the conda-forge
+  environment and source-build workflows. It is documented here instead of
+  pinned in pip metadata because that release is not available from PyPI.
+  Dependabot intentionally ignores Assimulo updates and Cython major-version
+  updates until a broader solver stack is verified.
