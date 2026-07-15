@@ -2217,11 +2217,11 @@ class SemibatchCryst(MSMPR):
 
         if temp_ht is not None:
             ht_media = self.Utility.get_inputs(time)
-            tht_in = ht_media['temp_in']
-            flow_ht = ht_media['vol_flow']
-            cp_ht = self.Utility.cp
-            rho_ht = self.Utility.rho
-            vol_ht = self.vol_tank*0.14  # m**3
+            tht_in = ht_media['temp_in']  # [K]
+            flow_ht = ht_media['vol_flow']  # [m**3/s]
+            cp_ht = self.Utility.cp  # [J/kg/K]
+            rho_ht = self.Utility.rho  # [kg/m**3]
+            vol_ht = self.vol_tank*0.14  # [m**3]
 
             dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
                 self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
