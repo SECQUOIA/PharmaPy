@@ -24,7 +24,7 @@ def test_drying_rate_mass_basis_converts_molar_rates_with_component_mw():
         [3.0, 0.0, 5.0],
     ])  # [mol/m**3/s]
 
-    dry_rate_mass = dryer._drying_rate_mass_basis(dry_rate)
+    dry_rate_mass = dryer._drying_rate_mass_basis(dry_rate)  # [kg/m**3/s]
 
     expected = np.array([
         [0.036, 0.0, 0.184],
@@ -71,7 +71,7 @@ def test_material_balance_uses_mass_drying_rate_for_saturation():
         dens_gas=dens_gas,
         dry_rate=dry_rate,
         inputs=inputs,
-    )
+    )  # [1/s]
 
     mass_rate = np.array([0.22, 0.284])  # [kg/m**3/s]
     expected_dsat_dt = -mass_rate / dryer.rho_liq / dryer.porosity  # [1/s]
@@ -135,7 +135,7 @@ def test_unit_model_converts_drying_rate_before_balance_equations(monkeypatch):
         [0.7, 0.20, 0.70, 0.10, 0.60, 0.40, 301.0, 300.0],
     ])  # S [-], w_gas [-], w_liq [-], Tg [K], Ts [K]
 
-    model_eqns = dryer.unit_model(time=0.0, states=states.ravel())
+    model_eqns = dryer.unit_model(time=0.0, states=states.ravel())  # [1/s] and [K/s]
 
     np.testing.assert_allclose(captured["material_dry_rate"], expected_mass_rate)
     np.testing.assert_allclose(captured["energy_dry_rate"], expected_mass_rate)
@@ -180,7 +180,7 @@ def test_material_balance_uses_mass_drying_rate_for_gas_species():
         dens_gas=dens_gas,
         dry_rate=dry_rate,
         inputs=inputs,
-    )
+    )  # [1/s]
 
     expected_dygas_dt = np.array([
         [0.239912, -0.000704, 1.2265786666666665],
