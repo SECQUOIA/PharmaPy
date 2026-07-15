@@ -5,7 +5,10 @@ instead of building a complete ``solve_unit`` drying example. That keeps the
 test to a single right-hand-side evaluation while still exercising the real
 ``unit_model -> energy_balance`` path for issue #48. No checked-in PharmaPy
 example currently constructs an end-to-end Drying run from full phase/cake
-classes, so the fixture below documents the assumed state layout and units.
+classes. External class-material examples can seed future integration coverage,
+but a full Drying transient regression is deferred until the open Drying
+correctness issues are resolved; this fixture documents the assumed state layout
+and units for the focused energy-basis path.
 """
 
 from types import SimpleNamespace
