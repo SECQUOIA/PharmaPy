@@ -356,11 +356,15 @@ class RxnKinetics:
                     orders = orders[np.newaxis, ...]
 
                 params_f = orders
-            elif params_f is None:
-                raise RuntimeError("For user-defined kinetic function, "
-                                   "argument 'params_f' is mandatory.")
+            else:
+                params_f = params.get('params_f', None)
+                if params_f is None:
+                    raise RuntimeError("For user-defined kinetic function, "
+                                       "argument 'params_f' is mandatory.")
+                params_f = np.asarray(params_f)
+                self.params_f_shape = params_f.shape
 
-            self.params_f = orders
+            self.params_f = params_f
             self.order_map = self.stoich_matrix < 0
 
         else:
@@ -373,6 +377,9 @@ class RxnKinetics:
                                                   dtype=np.float64)
 
                     self.params_f[self.order_map] = params[self.num_paramsk:]
+            else:
+                params_f = np.asarray(params[self.num_paramsk:])
+                self.params_f = params_f.reshape(self.params_f_shape)
 
     def nomenclature(self, stoich_matrix, kvals):
 
@@ -387,9 +394,14 @@ class RxnKinetics:
             name_e = ['E_{a, %i}' % ind for ind in range(1, num_kpar + 1)]
 
         if self.fit_paramsf:
-            num_orders = (stoich_matrix < 0).sum()
-            name_orders = [r'\alpha_{}'.format(ind)
-                           for ind in range(1, num_orders + 1)]
+            if self.elem_flag:
+                num_orders = (stoich_matrix < 0).sum()
+                name_orders = [r'\alpha_{}'.format(ind)
+                               for ind in range(1, num_orders + 1)]
+            else:
+                num_orders = np.asarray(self.params_f).size
+                name_orders = [r'\theta_{f,%i}' % ind
+                               for ind in range(1, num_orders + 1)]
         else:
             name_orders = []
 
@@ -424,7 +436,8 @@ class RxnKinetics:
                 params_concat = params_k_conc
 
         else:
-            params_concat = np.concatenate((params_k_conc, self.params_f))
+            params_concat = np.concatenate(
+                (params_k_conc, np.asarray(self.params_f).ravel()))
 
         return params_concat
 
@@ -452,13 +465,18 @@ class RxnKinetics:
 
     def equil_term(self, temp, deltah_temp):
         temp = np.asarray(temp)
+        deltah_temp = np.asarray(deltah_temp)
         inv_temp = (1/temp - 1/self.tref_hrxn)
 
         if temp.ndim == 0:
             k_eq = self.keq_params * np.exp(-deltah_temp/gas_ct * inv_temp)
         else:
-            k_eq = self.keq_params * \
-                np.exp(-np.outer(inv_temp, deltah_temp/gas_ct))
+            if deltah_temp.ndim <= 1:
+                exponent = np.outer(inv_temp, deltah_temp/gas_ct)
+            else:
+                exponent = inv_temp[:, np.newaxis] * deltah_temp/gas_ct
+
+            k_eq = self.keq_params * np.exp(-exponent)
 
         return k_eq
 
@@ -523,8 +541,13 @@ class RxnKinetics:
         else:
             r_term = np.zeros((n_conc, self.num_rxns))
             for ind in range(self.num_rxns):
+                if keq_temp.ndim == 1:
+                    keq_rxn = keq_temp[ind]
+                else:
+                    keq_rxn = keq_temp[:, ind]
+
                 r_term[:, ind] = np.prod(
-                    conc**(orders[ind]), axis=1) / keq_temp[ind]
+                    conc**(orders[ind]), axis=1) / keq_rxn
 
         overall_rate = f_term - r_term
 
@@ -825,8 +848,17 @@ class CrystKinetics:
 
     def get_kinetics(self, conc, temp, kv_cry,
                      moments=None, nucl_sec_out=False):
+        """Evaluate crystallization kinetics for target concentration states.
 
-        conc_target = conc.T[self.target_idx]
+        Scalar concentrations are treated as the already-selected target
+        concentration, matching single-component steady-state solves.
+        """
+
+        conc_array = np.asarray(conc)
+        if conc_array.ndim == 0:
+            conc_target = conc_array.item()
+        else:
+            conc_target = conc_array.T[self.target_idx]
 
         # Supersaturation
         conc_sat = self.get_solubility(temp, conc)
@@ -838,6 +870,17 @@ class CrystKinetics:
         if self.sup_sat_type == 'ratio':
             sup_sat = sup_sat / conc_sat + 1
 
+        def is_default_secondary(name):
+            """Return whether secondary nucleation is the inactive default."""
+            if name != 'nucl_sec' or name in self.custom_mechanisms:
+                return False
+
+            default = np.zeros_like(self.params['nucl_sec'], dtype=float)
+            if self.reformulate_kin:
+                default[0] = np.log(eps)
+
+            return np.allclose(self.params['nucl_sec'], default)
+
         par_p, par_s, par_g, par_d = self.params.values()
 
         if 'nucl_sec' in self.custom_mechanisms:
@@ -847,7 +890,12 @@ class CrystKinetics:
             args_sec = (kv_cry, self.reformulate_kin)
             par_sec = par_s
 
-        if isinstance(sup_sat, float):
+        if np.ndim(sup_sat) == 0:
+            sup_sat = np.asarray(sup_sat).item()
+            conc_sat = np.asarray(conc_sat).item()
+            if np.ndim(temp) == 0:
+                temp = np.asarray(temp).item()
+
             # print(sup_sat)
             args = [sup_sat, conc_sat, moments, temp, self.temp_ref]
             if sup_sat >= 0:
@@ -860,7 +908,9 @@ class CrystKinetics:
             mechs = {}
 
             for name in subset_mech:
-                if name in self.custom_mechanisms:
+                if is_default_secondary(name):
+                    mechs[name] = 0
+                elif name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
                     mechs[name] = self.custom_mechanisms[name](*args_concat)
                 else:
@@ -907,7 +957,9 @@ class CrystKinetics:
                     temp_positive, self.temp_ref]
 
             for name in subset_mech:
-                if name in self.custom_mechanisms:
+                if is_default_secondary(name):
+                    continue
+                elif name in self.custom_mechanisms:
                     args_concat = args + [self.params[name]]
                     mechs[name][positive_map] = self.custom_mechanisms[name](*args_concat)
                 else:
