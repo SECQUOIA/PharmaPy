@@ -11,21 +11,23 @@ pytestmark = [pytest.mark.assimulo, pytest.mark.unit]
 
 
 class _EnthalpySource:
+    """Provide fixed enthalpy [J/mol] and bubble point [K] test values."""
+
     def __init__(self, enthalpy):
-        self.enthalpy = enthalpy
+        self.enthalpy = enthalpy  # [J/mol]
 
     def getEnthalpy(self, *args, **kwargs):
-        return self.enthalpy
+        return self.enthalpy  # [J/mol]
 
     def getBubblePoint(self, *args, **kwargs):
-        return 325.0
+        return 325.0  # [K]
 
 
 @pytest.mark.parametrize(
     "reflux_ratio, expected_energy_rate",
     [
-        (0, -40.0),
-        (0.25, -10.0),
+        (0, -40.0),  # [-], [J/s]
+        (0.25, -10.0),  # [-], [J/s]
     ],
 )
 def test_adiabatic_energy_residual_includes_vapor_enthalpy(
@@ -33,14 +35,14 @@ def test_adiabatic_energy_residual_includes_vapor_enthalpy(
     # Enthalpies are J/mol; flows are mol/s, amounts are mol, pressure is Pa,
     # and volume is m^3. Thus the two residuals are J/s and J, respectively.
     evaporator = ContinuousEvaporator.__new__(ContinuousEvaporator)
-    evaporator._Inlet = _EnthalpySource(10.0)
-    evaporator.Liquid_1 = _EnthalpySource(20.0)
-    evaporator.Vapor_1 = _EnthalpySource(30.0)
-    evaporator.reflux_ratio = reflux_ratio
-    evaporator.adiabatic = True
-    evaporator.vol_tot = 2.0
+    evaporator._Inlet = _EnthalpySource(10.0)  # [J/mol]
+    evaporator.Liquid_1 = _EnthalpySource(20.0)  # [J/mol]
+    evaporator.Vapor_1 = _EnthalpySource(30.0)  # [J/mol]
+    evaporator.reflux_ratio = reflux_ratio  # [-]
+    evaporator.adiabatic = True  # [-]
+    evaporator.vol_tot = 2.0  # [m^3]
 
-    result = evaporator.energy_balances(
+    result = evaporator.energy_balances(  # [J/s, J]
         time=0.0,
         flow_liq=1.0,
         flow_vap=2.0,
@@ -60,7 +62,8 @@ def test_adiabatic_energy_residual_includes_vapor_enthalpy(
         },
     )
 
-    expected_internal_energy = 3.0 * 20.0 + 4.0 * 30.0 - 5.0 * 2.0 - 40.0
+    expected_internal_energy = 3.0 * 20.0 + 4.0 * 30.0 - \
+        5.0 * 2.0 - 40.0  # [J]
     np.testing.assert_allclose(
         result,
         [expected_energy_rate, expected_internal_energy],
