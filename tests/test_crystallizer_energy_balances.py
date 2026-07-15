@@ -4,17 +4,31 @@ import types
 import numpy as np
 import pytest
 
+_MISSING = object()
+_ASSIMULO_STUBS = {}
+
 try:
     from assimulo.problem import Explicit_Problem  # noqa: F401
     from assimulo.solvers import CVode  # noqa: F401
 except ImportError:
     for module_name in ("assimulo", "assimulo.problem", "assimulo.solvers"):
-        sys.modules.setdefault(module_name, types.ModuleType(module_name))
+        _ASSIMULO_STUBS[module_name] = sys.modules.get(module_name, _MISSING)
+        sys.modules[module_name] = types.ModuleType(module_name)
 
+    sys.modules["assimulo"].problem = sys.modules["assimulo.problem"]
+    sys.modules["assimulo"].solvers = sys.modules["assimulo.solvers"]
     sys.modules["assimulo.problem"].Explicit_Problem = object
     sys.modules["assimulo.solvers"].CVode = object
 
-from PharmaPy.Crystallizers import MSMPR, SemibatchCryst
+try:
+    from PharmaPy.Crystallizers import MSMPR, SemibatchCryst
+finally:
+    for module_name, previous in reversed(_ASSIMULO_STUBS.items()):
+        if previous is _MISSING:
+            sys.modules.pop(module_name, None)
+        else:
+            sys.modules[module_name] = previous
+
 from PharmaPy.MixedPhases import Slurry
 
 
