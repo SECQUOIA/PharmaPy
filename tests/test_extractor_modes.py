@@ -1,3 +1,9 @@
+"""Regression tests for extractor operating-mode flow/amount routing.
+
+Continuous extraction should consume and return mole-flow rates [mol/s].
+Batch extraction should keep material amounts [mol].
+"""
+
 import numpy as np
 import pytest
 
@@ -9,25 +15,25 @@ pytestmark = pytest.mark.unit
 
 class _Inlet:
     name_species = ["solute", "solvent"]
-    mole_flow = 8.0
-    moles = 3.0
-    temp = 298.15
-    pres = 101325.0
-    mole_frac = np.array([0.25, 0.75])
+    mole_flow = 8.0  # mol/s
+    moles = 3.0  # mol
+    temp = 298.15  # K
+    pres = 101325.0  # Pa
+    mole_frac = np.array([0.25, 0.75])  # [-]
     path_data = "dummy-path"
 
 
 class _DummyOutlet:
     def __init__(self, path, mole_frac, temp, pres, **amount):
         self.path = path
-        self.mole_frac = mole_frac
-        self.temp = temp
-        self.pres = pres
-        self.amount = amount
+        self.mole_frac = mole_frac  # [-]
+        self.temp = temp  # K
+        self.pres = pres  # Pa
+        self.amount = amount  # mole_flow [mol/s] or moles [mol]
 
     def getDensity(self, basis):
         assert basis == "mole"
-        return 1000.0
+        return 1000.0  # arbitrary molar density [mol/m^3]
 
 
 class _DummyStream(_DummyOutlet):
@@ -39,6 +45,7 @@ class _DummyPhase(_DummyOutlet):
 
 
 def test_continuous_extractor_uses_mole_flow_and_stream_outlets(monkeypatch):
+    """Continuous extractor routes inlet and outlet quantities as mol/s."""
     created = {"stream": [], "phase": []}
 
     def stream_factory(*args, **kwargs):
@@ -61,9 +68,9 @@ def test_continuous_extractor_uses_mole_flow_and_stream_outlets(monkeypatch):
     assert extractor.in_flow == pytest.approx(_Inlet.mole_flow)
 
     extractor.retrieve_results((
-        0.25,
-        np.array([0.4, 0.6]),
-        np.array([0.1, 0.9]),
+        0.25,  # phase fraction [-]
+        np.array([0.4, 0.6]),  # liquid-a mole fractions [-]
+        np.array([0.1, 0.9]),  # liquid-b mole fractions [-]
         {"error": 0.0, "num_iter": 1},
     ))
 
@@ -80,6 +87,7 @@ def test_continuous_extractor_uses_mole_flow_and_stream_outlets(monkeypatch):
 
 
 def test_batch_extractor_keeps_batch_amount_semantics():
+    """Batch extractor keeps inlet amount semantics as mol."""
     extractor = BatchExtractor()
     extractor.Phases = _Inlet()
 
