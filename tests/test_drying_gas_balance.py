@@ -1,3 +1,11 @@
+"""Focused Drying gas-balance regressions for issue #81.
+
+These tests use compact synthetic RHS/state-assembly fixtures rather than a
+full ``Drying.solve_unit`` transient. The end-to-end transient remains deferred
+until the open Drying correctness issues are resolved, so the assertions here
+pin the local unit and holdup contracts affected by #81.
+"""
+
 import sys
 from types import ModuleType, SimpleNamespace
 

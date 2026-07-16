@@ -217,9 +217,15 @@ class Drying:
         return dry_rates
 
     def unit_model(self, time, states, sw=None):
-        '''
-        state vector in the order: S|w_gas|w_liq|Tg|Ts
-        '''
+        """
+        Evaluate the drying model right-hand side.
+
+        The flattened per-node state order is
+        ``S | w_gas | w_liq | Tg | Ts``: saturation, gas and liquid mass
+        fractions are dimensionless ``[-]``; temperatures are ``[K]``.
+        The Darcy gas velocity computed here is a superficial velocity
+        ``[m/s]`` throttled by relative permeability ``k_ra [-]``.
+        """
 
         num_comp = self.Liquid_1.num_species
         states_reord = states.reshape(-1, 3 + num_comp + self.num_volatiles)
@@ -289,6 +295,16 @@ class Drying:
 
     def material_balance(self, time, satur, temp_gas, temp_sol, y_gas, x_liq,
                          u_gas, dens_gas, dry_rate, inputs, return_terms=False):
+        """
+        Return saturation, gas-fraction, and liquid-fraction derivatives.
+
+        ``satur``, ``y_gas``, and ``x_liq`` are dimensionless ``[-]``.
+        ``u_gas`` is the superficial gas velocity ``[m/s]`` and
+        ``dens_gas`` is gas density ``[kg/m**3]``. The gas transfer source
+        divides by the gas holdup only once through
+        ``epsilon_gas = porosity * (1 - satur)``; #21 / PR #108 owns the
+        separate drying-rate molar-to-mass basis conversion.
+        """
         
         satur[satur < eps] = eps
         satur[satur >= 1] = 1 - eps
@@ -416,6 +432,13 @@ class Drying:
 
     def solve_unit(self, deltaP, runtime=None, time_grid=None, any_event=True,
                    verbose=True, sundials_opts=None):
+        """
+        Initialize and integrate the drying model.
+
+        The initial per-node state vector is assembled as
+        ``S[-] | y_gas[-] | x_liq[-] | temp_gas[K] | temp_cond[K]`` for both
+        distributed and uniform single-node cake initial conditions.
+        """
         
         p_atm=101325
         # ---------- Initialization
