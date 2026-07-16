@@ -49,10 +49,11 @@ class DynamicExtractor:
 
         self.num_stages = num_stages
 
+        self.gamma_model = gamma_model
         if callable(k_fun):
             self.k_fun = k_fun
         else:
-            pass  # Use UNIFAC/UNIQUAC
+            self.k_fun = self._default_k_fun
 
         self._Phases = None
         self._Inlet = None
@@ -70,6 +71,16 @@ class DynamicExtractor:
         self.oper_mode = 'Continuous'
         self.is_continuous = True
         self.default_output = 'feed'
+
+    def _default_k_fun(self, x_light, x_heavy, temp):
+        """Return liquid-liquid distribution coefficients ``K_i`` [-]."""
+        gamma_light = self.Liquid_1.getActivityCoeff(
+            method=self.gamma_model, mole_frac=x_light, temp=temp)
+
+        gamma_heavy = self.Liquid_1.getActivityCoeff(
+            method=self.gamma_model, mole_frac=x_heavy, temp=temp)
+
+        return gamma_light / gamma_heavy
 
     def nomenclature(self):
         num_comp = self.num_comp
@@ -600,4 +611,3 @@ class DynamicExtractor:
         fig.tight_layout()
 
         return fig, axis
-
