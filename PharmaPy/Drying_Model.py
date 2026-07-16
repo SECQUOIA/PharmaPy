@@ -239,9 +239,8 @@ class Drying:
         sat_red = (satur - self.s_inf) / (1 - self.s_inf)
         sat_red = np.maximum(0, sat_red)
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)
-        # vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas
-        vel_gas = self.dPg_dz/ \
-        (self.CakePhase.alpha * visc_gas * self.rho_sol * (1 - self.porosity))/ np.mean(satur)
+        # Darcy velocity: [m**2] * [Pa/m] / [Pa*s] = [m/s].
+        vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas
         
         # ---------- Drying rate term
         mw_avg_gas = np.dot(y_gas, self.Vapor_1.mw)
@@ -323,7 +322,8 @@ class Drying:
 
         convection = -u_gas * dygas_dz / epsilon_gas
         # Transfer term
-        transfer_gas = dry_rate.T / epsilon_gas / dens_gas/ (1 - satur)
+        # epsilon_gas already includes porosity*(1 - satur), the gas holdup.
+        transfer_gas = dry_rate.T / epsilon_gas / dens_gas
         # Dynamic saturation correction term
         total_mass_correction = y_gas.T / (1 - satur) * dsat_dt
 
@@ -460,8 +460,9 @@ class Drying:
                 states_prev = np.column_stack((satur_init, state_tiled))
                 
             else:
-                
-                states_tuple = (satur_init, y_gas_init, x_liq_init, temp_gas_init)
+
+                states_tuple = (satur_init, y_gas_init, x_liq_init,
+                                temp_gas_init, temp_cond_init)
     
                 states_stacked = np.hstack(states_tuple)
                 states_prev = np.tile(states_stacked, (self.num_nodes, 1))
