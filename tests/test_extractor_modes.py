@@ -93,3 +93,10 @@ def test_batch_extractor_keeps_batch_amount_semantics():
 
     assert extractor.oper_mode == "Batch"
     assert extractor.in_flow == pytest.approx(_Inlet.moles)
+
+
+@pytest.mark.parametrize("extractor_cls", [ContinuousExtractor, BatchExtractor])
+def test_extractors_reject_unknown_activity_model(extractor_cls):
+    """Extractor constructors reject unknown activity-model selectors."""
+    with pytest.raises(ValueError, match="gamma_method must be one of"):
+        extractor_cls(gamma_method="uniquac")

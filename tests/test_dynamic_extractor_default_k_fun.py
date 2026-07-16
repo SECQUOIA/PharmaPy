@@ -42,6 +42,10 @@ class _ActivityPhase:
         return 1.0 + 0.5 * np.asarray(mole_frac)  # gamma_i [-]
 
 
+class _StopAfterConstruction(Exception):
+    """Raised by the stub to stop initialization at a known point."""
+
+
 def test_default_k_fun_uses_selected_activity_model(monkeypatch):
     """The default DynamicExtractor k_fun returns gamma_light/gamma_heavy."""
     module = _load_dynamic_extraction(monkeypatch)
@@ -63,6 +67,14 @@ def test_default_k_fun_uses_selected_activity_model(monkeypatch):
     assert extractor.Liquid_1.calls[0][2] == pytest.approx(temp)
 
 
+def test_default_k_fun_rejects_unknown_activity_model(monkeypatch):
+    """DynamicExtractor rejects unknown default activity-model selectors."""
+    module = _load_dynamic_extraction(monkeypatch)
+
+    with pytest.raises(ValueError, match="gamma_model must be one of"):
+        module.DynamicExtractor(num_stages=1, gamma_model="uniquac")
+
+
 def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
     """The default constructor supplies a callable equilibrium function."""
     module = _load_dynamic_extraction(monkeypatch)
@@ -72,12 +84,15 @@ def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
         def __init__(self, k_fun=None):
             captured["k_fun"] = k_fun
 
+        def solve_unit(self):
+            raise _StopAfterConstruction
+
     monkeypatch.setattr(module, "BatchExtractor", _BatchExtractor)
 
     extractor = module.DynamicExtractor(num_stages=1)
     extractor.Liquid_1 = object()
 
-    with pytest.raises(AttributeError):
+    with pytest.raises(_StopAfterConstruction):
         extractor.initialize_model()
 
     assert captured["k_fun"] is extractor.k_fun

@@ -54,6 +54,17 @@ def material_setter(instance, oper_mode):
     return out
 
 
+VALID_GAMMA_METHODS = ('ideal', 'UNIFAC', 'UNIQUAC')
+
+
+def validate_gamma_method(gamma_method, param_name='gamma_method'):
+    """Validate activity-coefficient model selectors."""
+    if gamma_method not in VALID_GAMMA_METHODS:
+        raise ValueError(
+            f"{param_name} must be one of {VALID_GAMMA_METHODS}, "
+            f"got {gamma_method!r}")
+
+
 class ContinuousExtractor:
     def __init__(self, k_fun=None, gamma_method='UNIQUAC'):
         """Create a continuous extractor.
@@ -67,6 +78,7 @@ class ContinuousExtractor:
         gamma_method : {'ideal', 'UNIFAC', 'UNIQUAC'}, optional
             Activity-coefficient method used by the default ``k_fun``.
         """
+        validate_gamma_method(gamma_method)
 
         self._Inlet = None
 

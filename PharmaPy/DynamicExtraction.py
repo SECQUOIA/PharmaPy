@@ -9,7 +9,7 @@ from PharmaPy.Commons import unpack_discretized, retrieve_pde_result, flatten_st
 from PharmaPy.Results import DynamicResult
 from PharmaPy.Streams import LiquidStream
 
-from PharmaPy.Extractors import BatchExtractor
+from PharmaPy.Extractors import BatchExtractor, validate_gamma_method
 from PharmaPy.Plotting import plot_distrib
 
 from assimulo.solvers import IDA
@@ -65,6 +65,7 @@ class DynamicExtractor:
 
         self.num_stages = num_stages
 
+        validate_gamma_method(gamma_model, param_name='gamma_model')
         self.gamma_model = gamma_model
         if callable(k_fun):
             self.k_fun = k_fun
