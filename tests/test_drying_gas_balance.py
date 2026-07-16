@@ -22,9 +22,13 @@ def _stub_assimulo_modules(monkeypatch):
     problem = ModuleType("assimulo.problem")
     problem.Explicit_Problem = ExplicitProblem
 
+    exception = ModuleType("assimulo.exception")
+    exception.TerminateSimulation = Exception
+
     monkeypatch.setitem(sys.modules, "assimulo", assimulo)
     monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
     monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
+    monkeypatch.setitem(sys.modules, "assimulo.exception", exception)
 
 
 def _import_drying_model(monkeypatch):
