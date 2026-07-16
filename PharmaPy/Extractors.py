@@ -58,7 +58,20 @@ VALID_GAMMA_METHODS = ('ideal', 'UNIFAC', 'UNIQUAC')
 
 
 def validate_gamma_method(gamma_method, param_name='gamma_method'):
-    """Validate activity-coefficient model selectors."""
+    """Validate an activity-coefficient model selector.
+
+    Parameters
+    ----------
+    gamma_method : {'ideal', 'UNIFAC', 'UNIQUAC'}
+        Activity-coefficient model selector.
+    param_name : str, optional
+        Parameter name to use in the validation error.
+
+    Raises
+    ------
+    ValueError
+        If ``gamma_method`` is not one of ``VALID_GAMMA_METHODS``.
+    """
     if gamma_method not in VALID_GAMMA_METHODS:
         raise ValueError(
             f"{param_name} must be one of {VALID_GAMMA_METHODS}, "
