@@ -97,29 +97,35 @@ class ContinuousExtractor:
 
         gamma_extr = self.matter.getActivityCoeff(method=self.gamma_method,
                                                   mole_frac=x_extr,
-                                                  temp=self.temp)
+                                                  temp=self.temp)  # [-]
 
         gamma_raff = self.matter.getActivityCoeff(method=self.gamma_method,
                                                   mole_frac=x_raff,
-                                                  temp=self.temp)
+                                                  temp=self.temp)  # [-]
 
-        global_bce = 1 - extr - raff
-        comp_bces = z_i - extr*x_extr - raff*x_raff
-        equilibria = x_extr * gamma_extr - x_raff * gamma_raff
+        global_bce = 1 - extr - raff  # [-]
+        comp_bces = z_i - extr*x_extr - raff*x_raff  # [-]
+        equilibria = x_extr * gamma_extr - x_raff * gamma_raff  # [-]
 
-        diff_frac = np.sum(x_extr - x_raff)
-        args_mid = np.array([raff, diff_frac, raff - 1])
-        vap_flow = mid_fn(args_mid)
+        diff_frac = np.sum(x_extr - x_raff)  # [-]
+        args_mid = np.array([raff, diff_frac, raff - 1])  # [-]
+        vap_flow = mid_fn(args_mid)  # phase-presence residual [-]
 
         balance = np.concatenate(
             (np.array([global_bce]),
              comp_bces, equilibria,
              np.array([vap_flow]))
             )
+        # All entries are dimensionless material/equilibrium residuals [-].
 
         return balance
 
     def material_balance(self, phi_seed, x_1_seed, x_2_seed, z_i, temp):
+        """Solve dimensionless liquid split and equilibrium relations.
+
+        ``phi_seed`` is a phase fraction [-], ``x_1_seed``, ``x_2_seed``,
+        and ``z_i`` are mole fractions [-], and ``temp`` is temperature [K].
+        """
 
         def get_ki(x1, x2, temp):
             gamma_1 = self.matter.getActivityCoeff(method=self.gamma_method,
@@ -160,19 +166,20 @@ class ContinuousExtractor:
 
         while error > tol and count < max_iter:
             k_i = k_fun(x_1_seed, x_2_seed, self.temp)  # K_i [-]
-            phi_k = newton(func_phi, phi_seed, args=(k_i, ), fprime=deriv_phi)
+            phi_k = newton(func_phi, phi_seed, args=(k_i, ),
+                           fprime=deriv_phi)  # phase fraction [-]
 
-            x_1_k = z_i / (1 + phi_k*(k_i - 1))
-            x_2_k = x_1_k * k_i
+            x_1_k = z_i / (1 + phi_k*(k_i - 1))  # mole fractions [-]
+            x_2_k = x_1_k * k_i  # mole fractions [-]
 
             # Normalize x's
             x_1_k *= 1 / x_1_k.sum()
             x_2_k *= 1 / x_2_k.sum()
 
-            x_k = np.concatenate((x_1_k, x_2_k))
-            x_km1 = np.concatenate((x_1_seed, x_2_seed))
+            x_k = np.concatenate((x_1_k, x_2_k))  # mole fractions [-]
+            x_km1 = np.concatenate((x_1_seed, x_2_seed))  # [-]
 
-            error = np.linalg.norm(x_k - x_km1)
+            error = np.linalg.norm(x_k - x_km1)  # [-]
 
             # Update
             x_1_seed = x_1_k

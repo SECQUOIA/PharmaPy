@@ -282,6 +282,7 @@ class DynamicExtractor:
                           di_sdot, augm_arrays):
 
         x_augm, y_augm, temp_augm, light_flows, heavy_flows = augm_arrays
+        # Augmented mole fractions [-], temperatures [K], and flows [mol/s].
 
         # print(x_augm.sum(axis=1))
 
@@ -290,23 +291,25 @@ class DynamicExtractor:
         m_ij = k_ij / self.eff  # [-]
 
         # ---------- Differential block
+        # Component flow imbalance [mol/s].
         dxij_dt = y_augm[1:] * heavy_flows[1:, np.newaxis] \
             + x_augm[:-1] * light_flows[:-1, np.newaxis] \
             - y_augm[:-1] * heavy_flows[:-1, np.newaxis] \
             - x_augm[1:] * light_flows[1:, np.newaxis]
 
+        # Effective liquid holdup [mol].
         div = holdup_light[:, np.newaxis] + holdup_heavy[:, np.newaxis] * m_ij
 
-        dxij_dt *= 1 / div
+        dxij_dt *= 1 / div  # mole-fraction rate [1/s]
 
         # ---------- Algebraic block
         equilibrium_alg = m_ij * (x_augm[1:] - x_augm[:-1] * (1 - self.eff)) \
-            - y_i
+            - y_i  # [-]
 
         # ---------- Modify outputs for stage two on
         if self.num_stages > 1:
             deriv_term = holdup_heavy[0] * m_ij * (1 - self.eff) / div[1:] * \
-                dxij_dt[:-1]
+                dxij_dt[:-1]  # mole-fraction rate [1/s]
 
             dxij_dt[1:] += deriv_term
 
@@ -314,7 +317,7 @@ class DynamicExtractor:
             #     - y_i[1:]
 
         if di_sdot is not None:
-            dxij_dt = dxij_dt - di_sdot['x_i']
+            dxij_dt = dxij_dt - di_sdot['x_i']  # [1/s]
 
         # nij_alg = x_i * holdup_light[:, np.newaxis] \
         #     + y_i * holdup_heavy[:, np.newaxis] - mol_i
@@ -449,43 +452,43 @@ class DynamicExtractor:
 
         # ---------- Equilibrium correction for x_i and y_i
         def equilibrium_eqns(fracs, temp, mol_i, holdups):
-            var = fracs.reshape(self.num_stages, -1)
+            var = fracs.reshape(self.num_stages, -1)  # mole fractions [-]
 
-            xi = var[:, :self.num_comp]
-            yi = var[:, self.num_comp:2 * self.num_comp]
+            xi = var[:, :self.num_comp]  # light-phase mole fractions [-]
+            yi = var[:, self.num_comp:2 * self.num_comp]  # heavy-phase [-]
 
-            HR, HE = holdups
+            HR, HE = holdups  # liquid holdups [mol]
 
-            x_eqns = (HR * xi + HE * yi - mol_i) / HR
+            x_eqns = (HR * xi + HE * yi - mol_i) / HR  # [-]
 
             k_ij = self.k_fun(xi, yi, temp)  # K_i [-]
 
             m_ij = k_ij / self.eff  # [-]; TODO: stage-wise
 
-            y_eqns = np.zeros_like(yi)
+            y_eqns = np.zeros_like(yi)  # equilibrium residuals [-]
             y_eqns[0] = m_ij * xi[0] - yi[0]
 
             if self.num_stages > 1:
                 y_eqns[1:] = m_ij * (xi[1:] - xi[:-1] * (1 - self.eff)) - yi[1:]
 
-            eqns = np.column_stack((x_eqns, y_eqns)).ravel()
+            eqns = np.column_stack((x_eqns, y_eqns)).ravel()  # [-]
 
             return eqns
 
-        holdups = [res.mol_light, res.mol_heavy]
-        mol_i = res.mol_light * res.x_light + res.mol_heavy * res.x_heavy
+        holdups = [res.mol_light, res.mol_heavy]  # [mol]
+        mol_i = res.mol_light * res.x_light + res.mol_heavy * res.x_heavy  # [mol]
 
         args_eq = (di_init['temp'], mol_i, holdups)
-        x0 = np.column_stack((di_init['x_i'], di_init['y_i'])).ravel()
+        x0 = np.column_stack((di_init['x_i'], di_init['y_i'])).ravel()  # [-]
 
         optimopts = {'xtol': 2**(-52)}
         frac_result = root(equilibrium_eqns, x0, args=args_eq)
 
-        frac_noneq = frac_result.x
+        frac_noneq = frac_result.x  # mole fractions [-]
 
         frac_noneq = frac_noneq.reshape(self.num_stages, -1)
 
-        x_noneq, y_noneq = np.split(frac_noneq, 2, axis=1)
+        x_noneq, y_noneq = np.split(frac_noneq, 2, axis=1)  # [-]
 
         di_init['x_i'] = x_noneq
         di_init['y_i'] = y_noneq
