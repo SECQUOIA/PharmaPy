@@ -46,6 +46,22 @@ def complete_molefrac(mole_frac, mapping):
 
 class DynamicExtractor:
     def __init__(self, num_stages, k_fun=None, eff=1, gamma_model='UNIQUAC'):
+        """Create a staged dynamic extractor.
+
+        Parameters
+        ----------
+        num_stages : int
+            Number of extractor stages [-].
+        k_fun : callable, optional
+            Equilibrium function. It must accept light-phase mole fractions
+            ``x_light`` [-], heavy-phase mole fractions ``x_heavy`` [-], and
+            temperature ``temp`` [K], and return distribution coefficients
+            ``K_i = gamma_light/gamma_heavy`` [-].
+        eff : float, optional
+            Stage efficiency [-].
+        gamma_model : {'ideal', 'UNIFAC', 'UNIQUAC'}, optional
+            Activity-coefficient method used by the default ``k_fun``.
+        """
 
         self.num_stages = num_stages
 
@@ -73,14 +89,19 @@ class DynamicExtractor:
         self.default_output = 'feed'
 
     def _default_k_fun(self, x_light, x_heavy, temp):
-        """Return liquid-liquid distribution coefficients ``K_i`` [-]."""
+        """Return liquid-liquid distribution coefficients ``K_i`` [-].
+
+        ``x_light`` and ``x_heavy`` are liquid mole fractions [-], and
+        ``temp`` is temperature [K]. Activity coefficients are dimensionless,
+        so their ratio is the dimensionless extraction equilibrium constant.
+        """
         gamma_light = self.Liquid_1.getActivityCoeff(
-            method=self.gamma_model, mole_frac=x_light, temp=temp)
+            method=self.gamma_model, mole_frac=x_light, temp=temp)  # [-]
 
         gamma_heavy = self.Liquid_1.getActivityCoeff(
-            method=self.gamma_model, mole_frac=x_heavy, temp=temp)
+            method=self.gamma_model, mole_frac=x_heavy, temp=temp)  # [-]
 
-        return gamma_light / gamma_heavy
+        return gamma_light / gamma_heavy  # K_i [-]
 
     def nomenclature(self):
         num_comp = self.num_comp
@@ -265,8 +286,8 @@ class DynamicExtractor:
         # print(x_augm.sum(axis=1))
 
         # ---------- Equilibrium
-        k_ij = self.k_fun(x_i, y_i, temp)  # TODO: make this stage-wise
-        m_ij = k_ij / self.eff
+        k_ij = self.k_fun(x_i, y_i, temp)  # K_i [-]; TODO: stage-wise
+        m_ij = k_ij / self.eff  # [-]
 
         # ---------- Differential block
         dxij_dt = y_augm[1:] * heavy_flows[1:, np.newaxis] \
@@ -437,9 +458,9 @@ class DynamicExtractor:
 
             x_eqns = (HR * xi + HE * yi - mol_i) / HR
 
-            k_ij = self.k_fun(xi, yi, temp)
+            k_ij = self.k_fun(xi, yi, temp)  # K_i [-]
 
-            m_ij = k_ij / self.eff  # TODO: it's not calculated stage-wise (yet)
+            m_ij = k_ij / self.eff  # [-]; TODO: stage-wise
 
             y_eqns = np.zeros_like(yi)
             y_eqns[0] = m_ij * xi[0] - yi[0]

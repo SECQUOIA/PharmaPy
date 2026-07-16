@@ -56,6 +56,17 @@ def material_setter(instance, oper_mode):
 
 class ContinuousExtractor:
     def __init__(self, k_fun=None, gamma_method='UNIQUAC'):
+        """Create a continuous extractor.
+
+        Parameters
+        ----------
+        k_fun : callable, optional
+            Equilibrium function. It must accept two liquid mole-fraction
+            vectors ``x1`` [-] and ``x2`` [-] plus temperature ``temp`` [K],
+            and return distribution coefficients ``K_i`` [-].
+        gamma_method : {'ideal', 'UNIFAC', 'UNIQUAC'}, optional
+            Activity-coefficient method used by the default ``k_fun``.
+        """
 
         self._Inlet = None
 
@@ -113,13 +124,13 @@ class ContinuousExtractor:
         def get_ki(x1, x2, temp):
             gamma_1 = self.matter.getActivityCoeff(method=self.gamma_method,
                                                    mole_frac=x1,
-                                                   temp=temp)
+                                                   temp=temp)  # [-]
 
             gamma_2 = self.matter.getActivityCoeff(method=self.gamma_method,
                                                    mole_frac=x2,
-                                                   temp=temp)
+                                                   temp=temp)  # [-]
 
-            k_i = gamma_1 / gamma_2
+            k_i = gamma_1 / gamma_2  # K_i [-]
 
             return k_i
 
@@ -129,11 +140,13 @@ class ContinuousExtractor:
             k_fun = self.k_fun
 
         def func_phi(phi, k_i):
+            # phi, z_i, and K_i are dimensionless, so f_phi is dimensionless.
             f_phi = z_i * (1 - k_i) / (1 + phi*(k_i - 1))
 
             return f_phi.sum()
 
         def deriv_phi(phi, k_i):
+            # d(f_phi)/d(phi) is dimensionless because phi is dimensionless.
             deriv = z_i * (1 - k_i)**2 / (1 + phi*(k_i - 1))**2
 
             return deriv.sum()
@@ -146,7 +159,7 @@ class ContinuousExtractor:
         count = 0
 
         while error > tol and count < max_iter:
-            k_i = k_fun(x_1_seed, x_2_seed, self.temp)
+            k_i = k_fun(x_1_seed, x_2_seed, self.temp)  # K_i [-]
             phi_k = newton(func_phi, phi_seed, args=(k_i, ), fprime=deriv_phi)
 
             x_1_k = z_i / (1 + phi_k*(k_i - 1))

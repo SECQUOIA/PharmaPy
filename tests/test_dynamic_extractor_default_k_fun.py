@@ -39,7 +39,7 @@ class _ActivityPhase:
 
     def getActivityCoeff(self, method, mole_frac, temp):
         self.calls.append((method, np.asarray(mole_frac), np.asarray(temp)))
-        return 1.0 + 0.5 * np.asarray(mole_frac)
+        return 1.0 + 0.5 * np.asarray(mole_frac)  # gamma_i [-]
 
 
 def test_default_k_fun_uses_selected_activity_model(monkeypatch):
@@ -52,9 +52,9 @@ def test_default_k_fun_uses_selected_activity_model(monkeypatch):
     x_heavy = np.array([[0.5, 0.5], [0.1, 0.9]])  # [-]
     temp = np.array([298.15, 301.15])  # K
 
-    k_i = extractor.k_fun(x_light, x_heavy, temp)
+    k_i = extractor.k_fun(x_light, x_heavy, temp)  # K_i [-]
 
-    expected = (1.0 + 0.5 * x_light) / (1.0 + 0.5 * x_heavy)
+    expected = (1.0 + 0.5 * x_light) / (1.0 + 0.5 * x_heavy)  # [-]
     assert k_i == pytest.approx(expected)
     assert [call[0] for call in extractor.Liquid_1.calls] == [
         "UNIFAC",
