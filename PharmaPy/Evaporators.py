@@ -1480,60 +1480,105 @@ class ContinuousEvaporator:
     def energy_balances(self, time, flow_liq, flow_vap, vol_liq, u_int, temp,
                         x_liq, y_vap, mol_i, mol_liq, mol_vap, pres,
                         u_inputs, heat_prof=False):
+        """Compute the DAE energy residuals.
 
-        input_flow = u_inputs['mole_flow']
-        input_fracs = u_inputs['mole_frac']
-        input_temp = u_inputs['temp']
+        Parameters
+        ----------
+        time : float
+            Current time [s].
+        flow_liq : float
+            Liquid outlet molar flow rate [mol/s].
+        flow_vap : float
+            Vapor outlet molar flow rate [mol/s].
+        vol_liq : float
+            Liquid volume [m**3].
+        u_int : float
+            Internal energy state [J].
+        temp : float
+            Unit temperature [K].
+        x_liq : ndarray
+            Liquid mole fractions [-].
+        y_vap : ndarray
+            Vapor mole fractions [-].
+        mol_i : ndarray
+            Component mole holdups [mol].
+        mol_liq : float
+            Liquid molar holdup [mol].
+        mol_vap : float
+            Vapor molar holdup [mol].
+        pres : float
+            Unit pressure [Pa].
+        u_inputs : dict
+            Inlet controls with ``mole_flow`` [mol/s], ``mole_frac`` [-],
+            and ``temp`` [K].
+        heat_prof : bool, optional
+            Return heat profile terms instead of residuals [-].
 
-        # Enthalpies
+        Returns
+        -------
+        ndarray or tuple
+            If ``heat_prof`` is False, residuals for energy rate [J/s] and
+            internal energy [J]. If True, net enthalpy flow [J/s] and
+            heat-transfer rate [J/s].
+        """
+
+        input_flow = u_inputs['mole_flow']  # [mol/s]
+        input_fracs = u_inputs['mole_frac']  # [-]
+        input_temp = u_inputs['temp']  # [K]
+
+        # Molar enthalpies [J/mol]
         h_in = self.Inlet.getEnthalpy(temp=input_temp, mole_frac=input_fracs,
-                                      basis='mole')
+                                      basis='mole')  # [J/mol]
 
-        h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_liq, basis='mole')
+        h_liq = self.Liquid_1.getEnthalpy(temp, mole_frac=x_liq,
+                                          basis='mole')  # [J/mol]
 
         if self.reflux_ratio == 0:
             h_top = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap,
-                                             basis='mole')
+                                             basis='mole')  # [J/mol]
+            h_vap = h_top  # [J/mol]
         else:
-            temp_bubble = self.Liquid_1.getBubblePoint(pres, mole_frac=y_vap)
+            temp_bubble = self.Liquid_1.getBubblePoint(
+                pres, mole_frac=y_vap)  # [K]
             h_top = self.Liquid_1.getEnthalpy(temp=temp_bubble,
-                                              mole_frac=y_vap, basis='mole')
+                                              mole_frac=y_vap,
+                                              basis='mole')  # [J/mol]
+            h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap,
+                                             basis='mole')  # [J/mol]
 
-        # Heat transfer
+        # Heat-transfer rate [J/s]
         if self.adiabatic:
-            heat_transfer = 0
+            heat_transfer = 0  # [J/s]
         else:
-            height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)
-            area_ht = np.pi * self.diam_tank * height_liq + self.area_base
+            height_liq = vol_liq / (np.pi/4 * self.diam_tank**2)  # [m]
+            area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # [m^2]
 
-            ht_controls = self.Utility.get_inputs(time)
-            temp_ht = ht_controls['temp_in']
+            ht_controls = self.Utility.get_inputs(time)  # contains temp_in [K]
+            temp_ht = ht_controls['temp_in']  # [K]
 
-            heat_transfer = self.h_conv * area_ht * (temp - temp_ht)
+            heat_transfer = self.h_conv * area_ht * (temp - temp_ht)  # [J/s]
 
             if self.reflux_ratio == 0:
-                q_cond = 0
-                h_vap = h_top
+                q_cond = 0  # [J/s]
             else:
-                h_vap = self.Vapor_1.getEnthalpy(temp, mole_frac=y_vap,
-                                                 basis='mole')
-
-                q_cond = flow_vap * (h_vap - h_top)
+                q_cond = flow_vap * (h_vap - h_top)  # [J/s]
 
             heat_transfer += q_cond
 
+        # Net enthalpy flow [J/s]
         flow_term = input_flow * h_in - flow_liq * h_liq - \
-            (1 - self.reflux_ratio) * flow_vap * h_top
+            (1 - self.reflux_ratio) * flow_vap * h_top  # [J/s]
         if heat_prof:
             return flow_term, heat_transfer
         else:
             # Compute balances
-            duint_dt = flow_term - heat_transfer
+            duint_dt = flow_term - heat_transfer  # [J/s]
 
-            pv_term = pres * self.vol_tot
-            internal_energy = mol_liq * h_liq + mol_vap * h_vap - pv_term - u_int
+            pressure_volume_energy = pres * self.vol_tot  # [J]
+            internal_energy = mol_liq * h_liq + mol_vap * h_vap - \
+                pressure_volume_energy - u_int  # [J]
 
-            out_energy = np.array([duint_dt, internal_energy])
+            out_energy = np.array([duint_dt, internal_energy])  # [J/s, J]
 
             return out_energy
 
