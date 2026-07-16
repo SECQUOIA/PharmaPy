@@ -54,7 +54,7 @@ def _import_drying_model(monkeypatch):
 
 def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
     drying_model = _import_drying_model(monkeypatch)
-    dryer = drying_model.Drying(number_nodes=2, supercrit_names=["nitrogen"])
+    dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
     dryer.idx_volatiles = np.array([0, 2])
     dryer.num_volatiles = 2
     dryer.s_inf = 0.1  # [-]
@@ -62,7 +62,7 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
     dryer.rho_sol = 5.0  # [kg/m**3]
     dryer.dPg_dz = 11.0  # [Pa/m]
     dryer.k_perm = 0.2  # [m**2]
-    dryer.pres_gas = np.array([101325.0, 101300.0])  # [Pa]
+    dryer.pres_gas = np.array([101325.0, 101300.0, 101275.0])  # [Pa]
     dryer.CakePhase = SimpleNamespace(alpha=2.0)  # [m/kg]
     dryer.Liquid_1 = SimpleNamespace(
         num_species=3,
@@ -70,9 +70,9 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
     )
     dryer.Vapor_1 = SimpleNamespace(
         mw=np.array([18.0, 28.0, 44.0]),  # [g/mol]
-        getViscosity=lambda temp, mass_frac: np.array([2.0, 4.0]),  # [Pa*s]
+        getViscosity=lambda temp, mass_frac: np.array([2.0, 4.0, 5.0]),  # [Pa*s]
     )
-    dryer.get_drying_rate = lambda *args: np.zeros((2, 3))  # [mol/m**3/s]
+    dryer.get_drying_rate = lambda *args: np.zeros((3, 3))  # [mol/m**3/s]
     dryer.get_inputs = lambda time: {
         "Inlet": {
             "mass_frac": np.array([0.01, 0.98, 0.01]),  # [-]
@@ -95,7 +95,7 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
         inputs,
     ):
         captured["u_gas"] = u_gas.copy()
-        return [np.zeros(2), np.zeros((2, 3)), np.zeros((2, 2))]
+        return [np.zeros(3), np.zeros((3, 3)), np.zeros((3, 2))]
 
     def energy_balance(
         time,
@@ -109,7 +109,7 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
         dry_rate,
         inputs,
     ):
-        return [np.zeros(2), np.zeros(2)]
+        return [np.zeros(3), np.zeros(3)]
 
     dryer.material_balance = material_balance
     dryer.energy_balance = energy_balance
@@ -118,36 +118,42 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
         [
             [1.0, 0.02, 0.96, 0.02, 0.25, 0.75, 300.0, 299.0],
             [0.1, 0.02, 0.96, 0.02, 0.25, 0.75, 301.0, 298.0],
+            [1.2, 0.02, 0.96, 0.02, 0.25, 0.75, 302.0, 297.0],
         ]
     )
 
     dryer.unit_model(0.0, states.ravel())
 
-    # k_ra is dimensionless. At S=1 it is zero, and at S=s_inf it is one.
+    # k_ra is dimensionless. At S=1 and above it is zero; at S=s_inf it is one.
     # k_perm*dP/dz/viscosity: [m**2] * [Pa/m] / [Pa*s] = [m/s].
-    np.testing.assert_allclose(captured["u_gas"], np.array([0.0, 0.55]))
+    np.testing.assert_allclose(captured["u_gas"], np.array([0.0, 0.55, 0.0]))
 
 
 def test_material_balance_uses_single_gas_holdup_factor_for_transfer(monkeypatch):
     drying_model = _import_drying_model(monkeypatch)
-    dryer = drying_model.Drying(number_nodes=2, supercrit_names=["nitrogen"])
+    dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
     dryer.idx_volatiles = np.array([0, 2])
     dryer.porosity = 0.5  # [-]
-    dryer.rho_liq = np.array([800.0, 900.0])  # [kg/m**3]
-    dryer.dz = np.ones(2)  # [m]
+    dryer.rho_liq = np.array([800.0, 900.0, 1000.0])  # [kg/m**3]
+    dryer.dz = np.ones(3)  # [m]
     dryer.Liquid_1 = SimpleNamespace(mw=np.array([18.0, 28.0, 46.0]))  # [g/mol]
 
-    satur = np.array([0.75, 0.25])  # [-]
-    temp_gas = np.array([300.0, 305.0])  # [K]
-    temp_sol = np.array([299.0, 304.0])  # [K]
-    y_gas = np.zeros((2, 3))  # [-], keeps the saturation correction out
-    x_liq = np.array([[0.25, 0.75], [0.40, 0.60]])  # [-]
-    u_gas = np.zeros(2)  # [m/s], isolates the transfer term
-    dens_gas = np.array([2.0, 4.0])  # [kg/m**3]
+    satur = np.array([0.75, 0.25, 0.50])  # [-]
+    temp_gas = np.array([300.0, 305.0, 310.0])  # [K]
+    temp_sol = np.array([299.0, 304.0, 309.0])  # [K]
+    y_gas = np.zeros((3, 3))  # [-], keeps the saturation correction out
+    x_liq = np.array([
+        [0.25, 0.75],
+        [0.40, 0.60],
+        [0.55, 0.45],
+    ])  # [-]
+    u_gas = np.zeros(3)  # [m/s], isolates the transfer term
+    dens_gas = np.array([2.0, 4.0, 5.0])  # [kg/m**3]
     dry_rate = np.array(
         [
             [0.2, 0.0, 0.0],
             [0.4, 0.0, 0.0],
+            [0.6, 0.0, 0.0],
         ]
     )  # current material_balance dry_rate basis
     inputs = {"mass_frac": np.zeros(3)}
@@ -169,6 +175,7 @@ def test_material_balance_uses_single_gas_holdup_factor_for_transfer(monkeypatch
         [
             [0.8, 0.0, 0.0],
             [0.26666666666666666, 0.0, 0.0],
+            [0.48, 0.0, 0.0],
         ]
     )
     np.testing.assert_allclose(dygas_dt, expected)
@@ -220,6 +227,9 @@ def test_solve_unit_single_node_initial_state_includes_condensed_temperature(
     def assert_initial_state_width(time, states, sw=None):
         expected_width = 3 + dryer.Liquid_1.num_species + 2
         assert states.size == dryer.num_nodes * expected_width
+        node = states.reshape(dryer.num_nodes, expected_width)
+        assert node[0, -2] == 300.0  # temp_gas [K]
+        assert node[0, -1] == 302.0  # temp_cond [K]
         raise CapturedInitialState
 
     dryer.unit_model = assert_initial_state_width

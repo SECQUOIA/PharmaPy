@@ -243,7 +243,7 @@ class Drying:
                                              mass_frac=y_gas)
 
         sat_red = (satur - self.s_inf) / (1 - self.s_inf)
-        sat_red = np.maximum(0, sat_red)
+        sat_red = np.clip(sat_red, 0, 1)
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)
         # Darcy velocity: [m**2] * [Pa/m] / [Pa*s] = [m/s].
         vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas
