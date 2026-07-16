@@ -1,9 +1,7 @@
-import sys
-from types import ModuleType
-
 import numpy as np
 import pytest
 
+from conftest import import_module_with_assimulo_stub
 from PharmaPy.Kinetics import CrystKinetics
 
 
@@ -21,35 +19,14 @@ def _primary_growth_kinetics():
     return kin
 
 
-def _stub_assimulo_modules(monkeypatch):
-    assimulo = ModuleType("assimulo")
-
-    solvers = ModuleType("assimulo.solvers")
-    solvers.CVode = object
-
-    problem = ModuleType("assimulo.problem")
-    problem.Explicit_Problem = object
-
-    exception = ModuleType("assimulo.exception")
-    exception.TerminateSimulation = Exception
-
-    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
-    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
-    monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
-    monkeypatch.setitem(sys.modules, "assimulo.exception", exception)
-
-
 def _import_msmpr(monkeypatch):
-    try:
-        from PharmaPy.Crystallizers import MSMPR
-    except ModuleNotFoundError as exc:
-        if exc.name != "assimulo":
-            raise
-        _stub_assimulo_modules(monkeypatch)
-
-        from PharmaPy.Crystallizers import MSMPR
-
-    return MSMPR
+    module = import_module_with_assimulo_stub(
+        monkeypatch,
+        "PharmaPy.Crystallizers",
+        solvers={"CVode": object},
+        problem={"Explicit_Problem": object},
+    )
+    return module.MSMPR
 
 
 @pytest.mark.parametrize("conc", [0.5, np.array(0.5)])

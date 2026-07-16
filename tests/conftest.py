@@ -1,5 +1,7 @@
+import importlib
 from pathlib import Path
 import sys
+from types import ModuleType
 
 import pytest
 
@@ -17,6 +19,38 @@ def _has_assimulo():
     except ImportError:
         return False
     return True
+
+
+def _stub_assimulo_modules(monkeypatch, *, solvers, problem):
+    assimulo = ModuleType("assimulo")
+
+    solvers_module = ModuleType("assimulo.solvers")
+    for name, value in solvers.items():
+        setattr(solvers_module, name, value)
+
+    problem_module = ModuleType("assimulo.problem")
+    for name, value in problem.items():
+        setattr(problem_module, name, value)
+
+    exception = ModuleType("assimulo.exception")
+    exception.TerminateSimulation = Exception
+
+    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
+    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers_module)
+    monkeypatch.setitem(sys.modules, "assimulo.problem", problem_module)
+    monkeypatch.setitem(sys.modules, "assimulo.exception", exception)
+
+
+def import_module_with_assimulo_stub(monkeypatch, module_name, *,
+                                     solvers, problem):
+    try:
+        return importlib.import_module(module_name)
+    except ModuleNotFoundError as exc:
+        if exc.name != "assimulo":
+            raise
+
+        _stub_assimulo_modules(monkeypatch, solvers=solvers, problem=problem)
+        return importlib.import_module(module_name)
 
 
 @pytest.fixture(scope="session")

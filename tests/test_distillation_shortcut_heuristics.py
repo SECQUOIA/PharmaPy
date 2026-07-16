@@ -1,43 +1,22 @@
 """Shortcut distillation heuristic regressions for issue #72."""
 
-import importlib
-import sys
-from types import ModuleType
-
 import numpy as np
 import pytest
+
+from conftest import import_module_with_assimulo_stub
 
 
 pytestmark = pytest.mark.unit
 
 
-def _stub_assimulo_modules(monkeypatch):
-    assimulo = ModuleType("assimulo")
-
-    solvers = ModuleType("assimulo.solvers")
-    solvers.IDA = object
-
-    problem = ModuleType("assimulo.problem")
-    problem.Implicit_Problem = object
-
-    exception = ModuleType("assimulo.exception")
-    exception.TerminateSimulation = Exception
-
-    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
-    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
-    monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
-    monkeypatch.setitem(sys.modules, "assimulo.exception", exception)
-
-
 def _import_distillation_column(monkeypatch):
-    try:
-        return importlib.import_module("PharmaPy.Distillation").DistillationColumn
-    except ModuleNotFoundError as exc:
-        if exc.name != "assimulo":
-            raise
-
-        _stub_assimulo_modules(monkeypatch)
-        return importlib.import_module("PharmaPy.Distillation").DistillationColumn
+    module = import_module_with_assimulo_stub(
+        monkeypatch,
+        "PharmaPy.Distillation",
+        solvers={"IDA": object},
+        problem={"Implicit_Problem": object},
+    )
+    return module.DistillationColumn
 
 
 def test_positive_reflux_below_minimum_uses_current_minimum(monkeypatch):
