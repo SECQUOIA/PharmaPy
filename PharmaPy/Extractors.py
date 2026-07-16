@@ -17,6 +17,24 @@ from PharmaPy.Results import DynamicResult
 
 
 def material_setter(instance, oper_mode):
+    """Return inlet metadata for extractor amount or flow routing.
+
+    Parameters
+    ----------
+    instance : LiquidPhase or LiquidStream
+        Material object passed to the extractor. Batch phases provide total
+        ``moles`` [mol]; continuous streams provide ``mole_flow`` [mol/s].
+    oper_mode : {'Batch', 'Continuous'}
+        Extractor operating mode. ``Continuous`` selects flow-rate semantics;
+        ``Batch`` selects amount semantics.
+
+    Returns
+    -------
+    out : dict
+        Inlet metadata with ``in_flow`` in mol/s for continuous operation or
+        mol for batch operation, ``temp`` [K], ``pres`` [Pa], component count,
+        and result-state metadata.
+    """
     name_comp = instance.name_species
     num_comp = len(name_comp)
     states_di = {
@@ -25,7 +43,7 @@ def material_setter(instance, oper_mode):
         'moles_heavy': {'dim': 1, 'type': 'alg'},
         'moles_light': {'dim': 1, 'type': 'alg'}}
 
-    if oper_mode == 'continuous':
+    if oper_mode == 'Continuous':
         in_flow = instance.mole_flow
     else:
         in_flow = instance.moles
@@ -45,7 +63,7 @@ class ContinuousExtractor:
 
         self.gamma_method = gamma_method
 
-        self.oper_mode = 'Batch'
+        self.oper_mode = 'Continuous'
 
     @property
     def Inlet(self):
@@ -242,7 +260,7 @@ class ContinuousExtractor:
         path = self.matter.path_data
 
         # Store in objects
-        if self.oper_mode == 'continuous':
+        if self.oper_mode == 'Continuous':
             Liquid_a = LiquidStream(path, mole_frac=xa_liq,
                                     mole_flow=liquid_a,
                                     temp=self.temp, pres=self.pres)
@@ -289,6 +307,9 @@ class BatchExtractor(ContinuousExtractor):
     def __init__(self, k_fun=None, gamma_method='UNIQUAC'):
         super().__init__(k_fun, gamma_method)
 
+        # ``super`` sets the continuous default; batch extraction must keep
+        # amount semantics [mol] for Phases and downstream result objects.
+        self.oper_mode = 'Batch'
         self._Phases = None
 
     @property
