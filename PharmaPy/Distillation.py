@@ -203,6 +203,32 @@ class _BaseDistillation:
 
     def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate,
                         z_feed=None):
+        """Calculate the Underwood minimum reflux ratio.
+
+        Parameters
+        ----------
+        x_dist : array_like
+            Distillate mole fractions [-].
+        x_bot : array_like
+            Bottoms mole fractions [-]. Kept for the shortcut-design
+            interface; the Underwood equations use the distillate composition.
+        dist_flowrate : float
+            Distillate molar flow rate [mol/s].
+        bot_flowrate : float
+            Bottoms molar flow rate [mol/s]. Kept for interface consistency.
+        z_feed : array_like, optional
+            Feed mole fractions [-]. If not provided, ``self.z_feed`` is used.
+
+        Returns
+        -------
+        float
+            Minimum reflux ratio, ``L_min / D`` [-].
+
+        Notes
+        -----
+        ``self.q_feed`` is the feed liquid fraction on a molar basis [-].
+
+        """
         if z_feed is None:
             z_feed = self.z_feed
 
@@ -210,10 +236,13 @@ class _BaseDistillation:
         HK_index = self.HK_index
 
         alpha = self.get_alpha(self.pres, z_feed)
+        underwood_target = 1 - self.q_feed  # [-], q_feed is liquid fraction.
 
         def f(phi):
-            fun = (sum(alpha * z_feed /
-                       (alpha - phi + np.finfo(float).eps)))**2
+            # First Underwood equation; all terms are dimensionless.
+            underwood_sum = np.sum(
+                alpha * z_feed / (alpha - phi + np.finfo(float).eps))
+            fun = (underwood_sum - underwood_target)**2
 
             return fun
 
@@ -221,10 +250,10 @@ class _BaseDistillation:
 
         phi = scipy.optimize.minimize(
             f, (alpha[LK_index] + alpha[HK_index])/2, bounds=bounds, tol=1e-10)
-        phi = phi.x
+        phi = phi.x[0]
 
-        # Second underwood equation
-        V_min = sum(alpha * dist_flowrate * x_dist / (alpha - phi))
+        # Second Underwood equation gives V_min and L_min in [mol/s].
+        V_min = np.sum(alpha * dist_flowrate * x_dist / (alpha - phi))
         L_min = V_min - dist_flowrate
 
         min_reflux = L_min/dist_flowrate
@@ -263,7 +292,7 @@ class _BaseDistillation:
                 'Specified reflux less than min_reflux, calculation proceeds '
                 'with 1.5 * min_reflux')
 
-            reflux = 1.5 * self.min_reflux
+            reflux = 1.5 * min_reflux
 
         else:
             reflux = self.reflux
