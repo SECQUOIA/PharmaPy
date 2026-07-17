@@ -31,7 +31,7 @@ def test_steady_state_solve_uses_calc_plates_results(monkeypatch):
     }
     calls = []
 
-    def fake_calculate_heuristics():
+    def fake_calculate_shortcut_design():
         return expected
 
     def fake_calc_plates(**kwargs):
@@ -40,7 +40,8 @@ def test_steady_state_solve_uses_calc_plates_results(monkeypatch):
     def fail_retrieve_results(*args, **kwargs):
         raise AssertionError("solve_unit should not retrieve results twice")
 
-    monkeypatch.setattr(column, "calculate_heuristics", fake_calculate_heuristics)
+    monkeypatch.setattr(
+        column, "calculate_shortcut_design", fake_calculate_shortcut_design)
     monkeypatch.setattr(column, "calc_plates", fake_calc_plates)
     monkeypatch.setattr(column, "retrieve_results", fail_retrieve_results)
 

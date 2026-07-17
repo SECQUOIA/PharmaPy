@@ -19,13 +19,20 @@ import scipy.sparse
 from matplotlib.ticker import AutoMinorLocator, MaxNLocator
 
 
+# Shortcut-design default for choosing actual reflux above Rmin; this
+# multiplier is not part of Underwood's equations.
+DEFAULT_REFLUX_TO_MINIMUM_RATIO = 1.5
+
+
 class _BaseDistillation:
     def __init__(self, pres, q_feed, LK, HK,
                  perc_LK, perc_HK, reflux=None, num_plates=None,
-                 gamma_model='ideal', num_feed=None):
+                 gamma_model='ideal', num_feed=None,
+                 reflux_to_minimum_ratio=DEFAULT_REFLUX_TO_MINIMUM_RATIO):
 
         self.num_plates = num_plates
         self.reflux = reflux
+        self.reflux_to_minimum_ratio = reflux_to_minimum_ratio  # [-]
         self.q_feed = q_feed
         self.pres = pres
 
@@ -201,8 +208,8 @@ class _BaseDistillation:
 
         return np.round(num_rect), np.round(num_strip)
 
-    def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate,
-                        z_feed=None):
+    def calc_underwood_min_reflux(self, x_dist, x_bot, dist_flowrate,
+                                  bot_flowrate, z_feed=None):
         """Calculate the Underwood minimum reflux ratio.
 
         Parameters
@@ -227,6 +234,9 @@ class _BaseDistillation:
         Notes
         -----
         ``self.q_feed`` is the feed liquid fraction on a molar basis [-].
+        This method solves the Underwood equations only; the separate
+        ``reflux_to_minimum_ratio`` shortcut-design default chooses an actual
+        operating reflux above this minimum.
 
         """
         if z_feed is None:
@@ -260,7 +270,36 @@ class _BaseDistillation:
 
         return min_reflux
 
-    def calculate_heuristics(self, time=None):
+    def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate,
+                        z_feed=None):
+        """Backward-compatible alias for ``calc_underwood_min_reflux``."""
+        return self.calc_underwood_min_reflux(
+            x_dist, x_bot, dist_flowrate, bot_flowrate, z_feed)
+
+    def calculate_shortcut_design(self, time=None):
+        """Estimate shortcut-design values for the distillation column.
+
+        Parameters
+        ----------
+        time : float, optional
+            Time used to retrieve dynamic inlet composition [s]. If not
+            provided, ``self.z_feed`` is used.
+
+        Returns
+        -------
+        dict
+            Material balances [mol/s, -], minimum reflux ratio [-], minimum
+            and actual stage counts [-], actual reflux ratio [-], and feed tray
+            number [-].
+
+        Notes
+        -----
+        The calculation combines Fenske, Underwood, Gilliland-Molokanov, and
+        Kirkbride shortcut-design equations/correlations. The
+        ``reflux_to_minimum_ratio`` multiplier is an operating-reflux default,
+        not part of Underwood's equations.
+
+        """
 
         if time is None:
             z_feed = self.z_feed
@@ -272,9 +311,8 @@ class _BaseDistillation:
         x_dist, x_bot, dist_flowrate, bot_flowrate = self.global_material_bce(
             z_feed)
 
-        min_reflux = self.calc_min_reflux(x_dist, x_bot,
-                                          dist_flowrate, bot_flowrate,
-                                          z_feed)
+        min_reflux = self.calc_underwood_min_reflux(
+            x_dist, x_bot, dist_flowrate, bot_flowrate, z_feed)
 
         num_min = self.calc_num_min(x_dist, x_bot)
 
@@ -283,16 +321,18 @@ class _BaseDistillation:
 
         # Actual reflux
         if self.reflux is None or self.reflux == 0:
-            print('Using reflux = 1.5 * min_reflux')
-            reflux = 1.5 * min_reflux  # Heuristic
+            print('Using reflux = %g * min_reflux'
+                  % self.reflux_to_minimum_ratio)
+            reflux = self.reflux_to_minimum_ratio * min_reflux
         elif self.reflux < 0:
             reflux = -self.reflux * min_reflux
         elif self.reflux > 0 and self.reflux < min_reflux:
             print(
                 'Specified reflux less than min_reflux, calculation proceeds '
-                'with 1.5 * min_reflux')
+                'with %g * min_reflux'
+                % self.reflux_to_minimum_ratio)
 
-            reflux = 1.5 * min_reflux
+            reflux = self.reflux_to_minimum_ratio * min_reflux
 
         else:
             reflux = self.reflux
@@ -337,11 +377,16 @@ class _BaseDistillation:
 
         return out
 
+    def calculate_heuristics(self, time=None):
+        """Backward-compatible alias for ``calculate_shortcut_design``."""
+        return self.calculate_shortcut_design(time)
+
 
 class DistillationColumn(_BaseDistillation):
     def __init__(self, pres, q_feed, LK, HK,
                  perc_LK, perc_HK, reflux=None, num_plates=None,
-                 gamma_model='ideal', num_feed=None):
+                 gamma_model='ideal', num_feed=None,
+                 reflux_to_minimum_ratio=DEFAULT_REFLUX_TO_MINIMUM_RATIO):
 
         """
         Create an object to solve a steady-state distillation column
@@ -351,7 +396,7 @@ class DistillationColumn(_BaseDistillation):
         pres : float
             column pressure [Pa].
         q_feed : float
-            fraction of liquid in the feed stream in molar basis.
+            fraction of liquid in the feed stream in molar basis [-].
         LK : str
             name of the light key component.
         HK : str
@@ -364,8 +409,9 @@ class DistillationColumn(_BaseDistillation):
             the top product.
         reflux : float, optional
             reflux ratio (L/D), with L the internal liquid flow and D the
-            distillate flow. If None, reflux = Rmin * 1.5, where Rmin is
-            calculated using the Underwood equation. If negative,
+            distillate flow. If None, reflux = Rmin *
+            reflux_to_minimum_ratio, where Rmin is calculated using
+            Underwood's equations. If negative,
             reflux = Rmin * abs(reflux). The default is None.
         num_plates : int, optional
             number of equilibrium stages. If None, num_plates will be estimated
@@ -379,6 +425,11 @@ class DistillationColumn(_BaseDistillation):
         num_feed : int, optional
             feed tray (trays are numbered from top to bottom).
             The default is None.
+        reflux_to_minimum_ratio : float, optional
+            Multiplier used to choose an actual reflux ratio from Rmin when
+            ``reflux`` is None, zero, or below the calculated minimum reflux
+            ratio [-]. This shortcut-design default is not part of
+            Underwood's equations. The default is 1.5.
 
         Returns
         -------
@@ -387,7 +438,8 @@ class DistillationColumn(_BaseDistillation):
         """
 
         super().__init__(pres, q_feed, LK, HK, perc_LK, perc_HK, reflux,
-                         num_plates, gamma_model, num_feed)
+                         num_plates, gamma_model, num_feed,
+                         reflux_to_minimum_ratio)
 
     def VLE(self, y_oneplate=None, temp=None, need_x_vap=True):
         # VLE uses vapor stream, need vapor stream object temporarily.
@@ -524,7 +576,7 @@ class DistillationColumn(_BaseDistillation):
         return num_plates
 
     def solve_unit(self, runtime=None, t0=0, solve_ss=True):
-        result = self.calculate_heuristics()
+        result = self.calculate_shortcut_design()
 
         self.min_reflux = result['min_reflux']
         self.num_min = result['num_min']
@@ -571,7 +623,8 @@ class DistillationColumn(_BaseDistillation):
 class DynamicDistillation(_BaseDistillation):
     def __init__(self, pres, q_feed, LK, HK,
                  perc_LK, perc_HK, reflux=None, num_plates=None,
-                 gamma_model='ideal', num_feed=None, state_events=None):
+                 gamma_model='ideal', num_feed=None, state_events=None,
+                 reflux_to_minimum_ratio=DEFAULT_REFLUX_TO_MINIMUM_RATIO):
         """ Create an object to solve a dynamic distillation column
 
         Parameters
@@ -579,7 +632,7 @@ class DynamicDistillation(_BaseDistillation):
         pres : float
             column pressure [Pa].
         q_feed : float
-            fraction of liquid in the feed stream in molar basis.
+            fraction of liquid in the feed stream in molar basis [-].
         LK : str
             name of the light key component.
         HK : str
@@ -589,8 +642,11 @@ class DynamicDistillation(_BaseDistillation):
         x_HK : float
             desired mole fraction of the heavy key in the top product.
         reflux : float, optional
-            reflux ratio (L/D), begin L the internal liquid flow and D the
-            distillate flow. The default is None.
+            reflux ratio (L/D), with L the internal liquid flow and D the
+            distillate flow. If None, reflux = Rmin *
+            reflux_to_minimum_ratio, where Rmin is calculated using
+            Underwood's equations. If negative,
+            reflux = Rmin * abs(reflux). The default is None.
         num_plates : int, optional
             number of equilibrium stages. If not provided, it will be estimated
             using the YYY method. The default is None.
@@ -601,6 +657,11 @@ class DynamicDistillation(_BaseDistillation):
         num_feed : int, optional
             feed tray (trays are numbered from top to bottom).
             The default is None.
+        reflux_to_minimum_ratio : float, optional
+            Multiplier used to choose an actual reflux ratio from Rmin when
+            ``reflux`` is None, zero, or below the calculated minimum reflux
+            ratio [-]. This shortcut-design default is not part of
+            Underwood's equations. The default is 1.5.
 
         Returns
         -------
@@ -609,7 +670,8 @@ class DynamicDistillation(_BaseDistillation):
         """
 
         super().__init__(pres, q_feed, LK, HK, perc_LK, perc_HK, reflux,
-                         num_plates, gamma_model, num_feed)
+                         num_plates, gamma_model, num_feed,
+                         reflux_to_minimum_ratio)
 
         self.oper_mode = 'Continuous'
         self.outputs = None
@@ -663,8 +725,8 @@ class DynamicDistillation(_BaseDistillation):
 
         self.nomenclature()
 
-    def column_startup(self, time_heuristics):
-        result = self.calculate_heuristics(time_heuristics)
+    def column_startup(self, time_shortcut_design):
+        result = self.calculate_shortcut_design(time_shortcut_design)
 
         global_mbce = result['material_balances']
 
@@ -681,6 +743,7 @@ class DynamicDistillation(_BaseDistillation):
         self.min_reflux = result['min_reflux']
         self.num_min = result['num_min']
 
+        self.shortcut_design = result
         self.heuristics = result
 
     def _eval_state_events(self, time, states, sdot, sw):
@@ -774,8 +837,8 @@ class DynamicDistillation(_BaseDistillation):
         elif time_grid is not None:
             final_time = time_grid[-1] + self.elapsed_time
 
-        # Use inputs coming from the upstream UO in the future for heuristics,
-        # i.e. as close to steady-state as possible
+        # Use inputs coming from the upstream UO in the future for shortcut
+        # design estimates, i.e. as close to steady-state as possible.
         self.column_startup(final_time)
 
         self.len_states = len(self.name_species) + 1
