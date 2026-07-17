@@ -96,7 +96,19 @@ def test_batch_extractor_keeps_batch_amount_semantics():
 
 
 @pytest.mark.parametrize("extractor_cls", [ContinuousExtractor, BatchExtractor])
+@pytest.mark.parametrize("gamma_method", ["ideal", "UNIFAC", "UNIQUAC"])
+def test_extractors_accept_documented_activity_models(extractor_cls,
+                                                     gamma_method):
+    """Extractor constructors accept the documented selector spellings."""
+    extractor = extractor_cls(gamma_method=gamma_method)
+
+    assert extractor.gamma_method == gamma_method
+
+
+@pytest.mark.parametrize("extractor_cls", [ContinuousExtractor, BatchExtractor])
 def test_extractors_reject_unknown_activity_model(extractor_cls):
     """Extractor constructors reject unknown activity-model selectors."""
+    # Lowercase ``uniquac`` is deliberate: the documented selector is the
+    # exact-cased ``UNIQUAC`` branch used by Phases.getActivityCoeff.
     with pytest.raises(ValueError, match="gamma_method must be one of"):
         extractor_cls(gamma_method="uniquac")

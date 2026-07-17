@@ -71,12 +71,20 @@ def test_default_k_fun_rejects_unknown_activity_model(monkeypatch):
     """DynamicExtractor rejects unknown default activity-model selectors."""
     module = _load_dynamic_extraction(monkeypatch)
 
+    # Lowercase ``uniquac`` is deliberate: activity-model selectors are
+    # case-sensitive and must match the exact Phases.getActivityCoeff branch.
     with pytest.raises(ValueError, match="gamma_model must be one of"):
         module.DynamicExtractor(num_stages=1, gamma_model="uniquac")
 
 
 def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
-    """The default constructor supplies a callable equilibrium function."""
+    """The default constructor supplies ``BatchExtractor`` a callable k_fun.
+
+    This pins the DynamicExtractor -> BatchExtractor handoff without running a
+    full static extraction solve. The real solve depends on thermodynamic phase
+    objects, outlet construction, and broader stage-wise K_i behavior tracked
+    separately in #123; the sentinel stops at the fixed boundary.
+    """
     module = _load_dynamic_extraction(monkeypatch)
     captured = {}
 

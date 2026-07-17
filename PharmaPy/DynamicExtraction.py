@@ -285,10 +285,9 @@ class DynamicExtractor:
         x_augm, y_augm, temp_augm, light_flows, heavy_flows = augm_arrays
         # Augmented mole fractions [-], temperatures [K], and flows [mol/s].
 
-        # print(x_augm.sum(axis=1))
-
         # ---------- Equilibrium
-        k_ij = self.k_fun(x_i, y_i, temp)  # K_i [-]; TODO: stage-wise
+        # Stage-wise ``K_i`` callback support is tracked in #123.
+        k_ij = self.k_fun(x_i, y_i, temp)  # K_i [-]
         m_ij = k_ij / self.eff  # [-]
 
         # ---------- Differential block
@@ -314,28 +313,10 @@ class DynamicExtractor:
 
             dxij_dt[1:] += deriv_term
 
-            # equilibrium_alg[1:] = m_ij * (x_i[1:] - x_i[:-1] * (1 - self.eff)) \
-            #     - y_i[1:]
-
         if di_sdot is not None:
             dxij_dt = dxij_dt - di_sdot['x_i']  # [1/s]
 
-        # nij_alg = x_i * holdup_light[:, np.newaxis] \
-        #     + y_i * holdup_heavy[:, np.newaxis] - mol_i
-
-        # equilibrium_alg = m_ij * (x_augm[1:] - x_augm[:-1] * (1 - self.eff)) \
-        #     - y_i
-
-        # global_alg = holdup_light + holdup_heavy - mol_i.sum(axis=1)
-        # volume_alg = holdup_light/rho_light + holdup_heavy/rho_heavy \
-        #     - self.vol * 1000
-
         out = [dxij_dt, equilibrium_alg]
-
-        # di_flows = {'heavy': {'in': heavy_flows[1], 'out': heavy_flows[0]},
-        #             'light': {'in': light_flows[0], 'out': light_flows[1]}}
-
-        # print(di_flows)
 
         return out
 
@@ -464,7 +445,8 @@ class DynamicExtractor:
 
             k_ij = self.k_fun(xi, yi, temp)  # K_i [-]
 
-            m_ij = k_ij / self.eff  # [-]; TODO: stage-wise
+            # Stage-wise ``K_i`` callback support is tracked in #123.
+            m_ij = k_ij / self.eff  # [-]
 
             y_eqns = np.zeros_like(yi)  # equilibrium residuals [-]
             y_eqns[0] = m_ij * xi[0] - yi[0]
