@@ -55,8 +55,8 @@ def _import_drying_model(monkeypatch):
 def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
     drying_model = _import_drying_model(monkeypatch)
     dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
-    dryer.idx_volatiles = np.array([0, 2])
-    dryer.num_volatiles = 2
+    dryer.idx_volatiles = np.array([0, 2])  # component indices [-]
+    dryer.num_volatiles = 2  # [-]
     dryer.s_inf = 0.1  # [-]
     dryer.porosity = 0.5  # [-]
     dryer.rho_sol = 5.0  # [kg/m**3]
@@ -66,6 +66,7 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
     dryer.CakePhase = SimpleNamespace(alpha=2.0)  # [m/kg]
     dryer.Liquid_1 = SimpleNamespace(
         num_species=3,
+        mw=np.array([18.0, 28.0, 44.0]),  # [g/mol]
         rho_liq=np.array([800.0, 850.0, 900.0]),  # [kg/m**3]
     )
     dryer.Vapor_1 = SimpleNamespace(
@@ -95,7 +96,11 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
         inputs,
     ):
         captured["u_gas"] = u_gas.copy()
-        return [np.zeros(3), np.zeros((3, 3)), np.zeros((3, 2))]
+        return [
+            np.zeros(3),  # saturation derivative [1/s]
+            np.zeros((3, 3)),  # gas mass-fraction derivative [1/s]
+            np.zeros((3, 2)),  # liquid mass-fraction derivative [1/s]
+        ]
 
     def energy_balance(
         time,
@@ -109,7 +114,10 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
         dry_rate,
         inputs,
     ):
-        return [np.zeros(3), np.zeros(3)]
+        return [
+            np.zeros(3),  # gas-temperature derivative [K/s]
+            np.zeros(3),  # condensed-temperature derivative [K/s]
+        ]
 
     dryer.material_balance = material_balance
     dryer.energy_balance = energy_balance
@@ -132,7 +140,7 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
 def test_material_balance_uses_single_gas_holdup_factor_for_transfer(monkeypatch):
     drying_model = _import_drying_model(monkeypatch)
     dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
-    dryer.idx_volatiles = np.array([0, 2])
+    dryer.idx_volatiles = np.array([0, 2])  # component indices [-]
     dryer.porosity = 0.5  # [-]
     dryer.rho_liq = np.array([800.0, 900.0, 1000.0])  # [kg/m**3]
     dryer.dz = np.ones(3)  # [m]
@@ -155,8 +163,8 @@ def test_material_balance_uses_single_gas_holdup_factor_for_transfer(monkeypatch
             [0.4, 0.0, 0.0],
             [0.6, 0.0, 0.0],
         ]
-    )  # current material_balance dry_rate basis
-    inputs = {"mass_frac": np.zeros(3)}
+    )  # [kg/m**3/s]
+    inputs = {"mass_frac": np.zeros(3)}  # [-]
 
     _, dygas_dt, _ = dryer.material_balance(
         time=0.0,
@@ -177,7 +185,7 @@ def test_material_balance_uses_single_gas_holdup_factor_for_transfer(monkeypatch
             [0.26666666666666666, 0.0, 0.0],
             [0.48, 0.0, 0.0],
         ]
-    )
+    )  # [1/s]
     np.testing.assert_allclose(dygas_dt, expected)
 
 
@@ -225,7 +233,7 @@ def test_solve_unit_single_node_initial_state_includes_condensed_temperature(
         pass
 
     def assert_initial_state_width(time, states, sw=None):
-        expected_width = 3 + dryer.Liquid_1.num_species + 2
+        expected_width = 3 + dryer.Liquid_1.num_species + 2  # state columns [-]
         assert states.size == dryer.num_nodes * expected_width
         node = states.reshape(dryer.num_nodes, expected_width)
         assert node[0, -2] == 300.0  # temp_gas [K]
