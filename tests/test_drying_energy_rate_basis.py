@@ -116,12 +116,11 @@ def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
         2475.0 / 700.0,
     ])  # [K/s]
 
-    # The mass-rate latent powers are [256000, 338000, 128000] J/m**3/s. Issue #24
-    # separately tracks the existing factor of two applied to those powers.
+    # The mass-rate latent powers are [256000, 338000, 128000] J/m**3/s.
     expected_condensed_temperature_rate = np.array([
-        -512000.0 / 900000.0,
-        -676000.0 / 900000.0,
         -256000.0 / 900000.0,
+        -338000.0 / 900000.0,
+        -128000.0 / 900000.0,
     ])  # [K/s]
 
     np.testing.assert_allclose(

@@ -424,6 +424,44 @@ class Drying:
 
     def energy_balance(self, time, temp_gas, temp_sol, satur, y_gas, x_liq,
                        u_gas, rho_gas, dry_rate, inputs, return_terms=False):
+        """Evaluate gas and condensed-phase energy balances.
+
+        Parameters
+        ----------
+        time : float
+            Current integration time [s].
+        temp_gas : ndarray
+            Gas-phase temperature by spatial node [K].
+        temp_sol : ndarray
+            Condensed-phase temperature by spatial node [K].
+        satur : ndarray
+            Cake saturation by spatial node [-].
+        y_gas : ndarray
+            Gas-phase mass fractions by node and species [-].
+        x_liq : ndarray
+            Liquid mass fractions by node and volatile species [-].
+        u_gas : ndarray
+            Gas velocity by spatial node [m/s].
+        rho_gas : ndarray
+            Gas density by spatial node [kg/m**3].
+        dry_rate : ndarray
+            Component drying rates on a mass basis [kg/m**3/s].
+        inputs : dict
+            Inlet condition dictionary; ``temp`` is the gas inlet
+            temperature [K].
+        return_terms : bool, optional
+            Return stored diagnostic terms instead of temperature derivatives [-].
+
+        Returns
+        -------
+        list of ndarray
+            ``dTg_dt`` and ``dTcond_dt`` by spatial node [K/s].
+
+        Notes
+        -----
+        ``latent_heat`` is requested on a mass basis [J/kg], so multiplying by
+        ``dry_rate`` gives the full latent power [J/m**3/s].
+        """
 
         # temp_ref = 298
         mw_avg_gas = np.dot(y_gas, self.Vapor_1.mw)
@@ -476,7 +514,7 @@ class Drying:
         # heat_loss_cond = self.h_T_loss * self.a_V * (temp_sol - self.T_ambient)
         heat_loss_cond = self.h_T_loss * self.cake_height * (2*np.pi*1.5/2/100) *(temp_sol - self.T_ambient)
         heat_loss_cond = 0
-        drying_terms = (dry_rate[:, self.idx_volatiles] * latent_heat * 2).sum(axis=1)
+        drying_terms = (dry_rate[:, self.idx_volatiles] * latent_heat).sum(axis=1)
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
             self.porosity * satur * cpl_mix * dens_liq
 
