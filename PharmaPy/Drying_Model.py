@@ -455,7 +455,11 @@ class Drying:
         Returns
         -------
         list of ndarray
-            ``dTg_dt`` and ``dTcond_dt`` by spatial node [K/s].
+            ``dTg_dt`` and ``dTcond_dt`` by spatial node [K/s] when
+            ``return_terms`` is False.
+        tuple of ndarray
+            When ``return_terms`` is True, returns the diagnostic terms
+            ``(convec_term, drying, heat_cond, heat_loss_emp)`` instead.
 
         Notes
         -----
