@@ -403,10 +403,10 @@ class DistillationColumn(_BaseDistillation):
             name of the heavy key component.
         perc_LK : float
             percentage of the light key component in the feed that appears in
-            the top product.
+            the top product [%].
         perc_HK : float
             percentage of the heavy key component in the feed that appears in
-            the top product.
+            the top product [%].
         reflux : float, optional
             reflux ratio (L/D), with L the internal liquid flow and D the
             distillate flow. If None, reflux = Rmin *
@@ -637,10 +637,12 @@ class DynamicDistillation(_BaseDistillation):
             name of the light key component.
         HK : str
             name of the heavy key component.
-        x_LK : float
-            desired mole fraction of the light key in the top product.
-        x_HK : float
-            desired mole fraction of the heavy key in the top product.
+        perc_LK : float
+            percentage of the light key component in the feed that appears in
+            the top product [%].
+        perc_HK : float
+            percentage of the heavy key component in the feed that appears in
+            the top product [%].
         reflux : float, optional
             reflux ratio (L/D), with L the internal liquid flow and D the
             distillate flow. If None, reflux = Rmin *
