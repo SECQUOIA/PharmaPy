@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 from assimulo.problem import Implicit_Problem
 from PharmaPy.Phases import classify_phases
@@ -272,7 +274,20 @@ class _BaseDistillation:
 
     def calc_min_reflux(self, x_dist, x_bot, dist_flowrate, bot_flowrate,
                         z_feed=None):
-        """Backward-compatible alias for ``calc_underwood_min_reflux``."""
+        """Deprecated alias for ``calc_underwood_min_reflux``.
+
+        Warns
+        -----
+        DeprecationWarning
+            Use ``calc_underwood_min_reflux`` instead.
+
+        """
+        warnings.warn(
+            "calc_min_reflux is deprecated; use "
+            "calc_underwood_min_reflux instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.calc_underwood_min_reflux(
             x_dist, x_bot, dist_flowrate, bot_flowrate, z_feed)
 
@@ -378,7 +393,20 @@ class _BaseDistillation:
         return out
 
     def calculate_heuristics(self, time=None):
-        """Backward-compatible alias for ``calculate_shortcut_design``."""
+        """Deprecated alias for ``calculate_shortcut_design``.
+
+        Warns
+        -----
+        DeprecationWarning
+            Use ``calculate_shortcut_design`` instead.
+
+        """
+        warnings.warn(
+            "calculate_heuristics is deprecated; use "
+            "calculate_shortcut_design instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self.calculate_shortcut_design(time)
 
 

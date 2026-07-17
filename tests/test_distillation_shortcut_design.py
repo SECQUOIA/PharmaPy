@@ -99,8 +99,16 @@ def test_backward_compatible_shortcut_aliases(monkeypatch):
     monkeypatch.setattr(
         column, "calc_underwood_min_reflux", fake_calc_underwood_min_reflux)
 
-    assert column.calculate_heuristics() is expected
-    assert column.calc_min_reflux(None, None, None, None) == pytest.approx(0.7)
+    with pytest.warns(
+            DeprecationWarning,
+            match="calculate_heuristics is deprecated"):
+        assert column.calculate_heuristics() is expected
+
+    with pytest.warns(
+            DeprecationWarning,
+            match="calc_min_reflux is deprecated"):
+        assert column.calc_min_reflux(None, None, None, None) == pytest.approx(
+            0.7)
 
 
 def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
