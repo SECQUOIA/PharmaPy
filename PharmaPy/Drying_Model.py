@@ -201,6 +201,24 @@ class Drying:
         return y_equil
 
     def get_drying_rate(self, x_liq, temp_cond, y_gas, p_gas):
+        """Calculate component drying rates on a molar basis.
+
+        Parameters
+        ----------
+        x_liq : ndarray
+            Liquid mass fractions for volatile components [-].
+        temp_cond : ndarray
+            Condensed-phase temperature [K].
+        y_gas : ndarray
+            Gas-phase mass fractions for all vapor species [-].
+        p_gas : float
+            Gas pressure [Pa].
+
+        Returns
+        -------
+        ndarray
+            Component drying rates on a molar basis [mol/m**3/s].
+        """
 
         y_gas_mole_frac = self.Vapor_1.frac_to_frac(mass_frac=y_gas)
         y_equil = self.get_y_equilib(temp_cond, x_liq, p_gas)
@@ -216,10 +234,44 @@ class Drying:
 
         return dry_rates
 
+    def _drying_rate_mass_basis(self, dry_rate):
+        """Convert molar drying rates to mass rates.
+
+        Parameters
+        ----------
+        dry_rate : ndarray
+            Component drying rates on a molar basis [mol/m**3/s].
+
+        Returns
+        -------
+        ndarray
+            Component drying rates on a mass basis [kg/m**3/s].
+        """
+        mw = np.asarray(self.Liquid_1.mw) / 1000  # [kg/mol]
+
+        return dry_rate * mw
+
     def unit_model(self, time, states, sw=None):
-        '''
-        state vector in the order: S|w_gas|w_liq|Tg|Ts
-        '''
+        """Evaluate the drying model residual equations.
+
+        Parameters
+        ----------
+        time : float
+            Current integration time [s].
+        states : ndarray
+            Flattened state vector ordered by node as
+            ``S|w_gas|w_liq|Tg|Ts``; saturation and mass fractions are
+            dimensionless [-], and temperatures are [K].
+        sw : sequence of bool, optional
+            Assimulo event switches [-].
+
+        Returns
+        -------
+        ndarray
+            Flattened state derivatives ordered like ``states``. Saturation
+            and mass-fraction derivatives are [1/s]; temperature derivatives
+            are [K/s].
+        """
 
         num_comp = self.Liquid_1.num_species
         states_reord = states.reshape(-1, 3 + num_comp + self.num_volatiles)
@@ -262,10 +314,12 @@ class Drying:
 
         limiter_factor = self.eta_fun(sat_eta, w_eta)
 
-        # Dry rate
+        # Drying rate from get_drying_rate is molar [mol/m**3/s].
         self.dry_rate = self.get_drying_rate(x_liq, temp_sol, y_gas,
                                              self.pres_gas)
 
+        # Balances below consume mass-basis drying rates [kg/m**3/s].
+        self.dry_rate = self._drying_rate_mass_basis(self.dry_rate)
         self.dry_rate *= limiter_factor[..., np.newaxis]
 
         # ---------- Model equations
@@ -290,44 +344,75 @@ class Drying:
 
     def material_balance(self, time, satur, temp_gas, temp_sol, y_gas, x_liq,
                          u_gas, dens_gas, dry_rate, inputs, return_terms=False):
+        """Evaluate the saturation and composition material balances.
+
+        Parameters
+        ----------
+        time : float
+            Current integration time [s].
+        satur : ndarray
+            Cake saturation by spatial node [-].
+        temp_gas : ndarray
+            Gas-phase temperature by spatial node [K].
+        temp_sol : ndarray
+            Condensed-phase temperature by spatial node [K].
+        y_gas : ndarray
+            Gas-phase mass fractions by node and species [-].
+        x_liq : ndarray
+            Liquid mass fractions by node and volatile species [-].
+        u_gas : ndarray
+            Gas velocity by spatial node [m/s].
+        dens_gas : ndarray
+            Gas density by spatial node [kg/m**3].
+        dry_rate : ndarray
+            Component drying rates on a mass basis [kg/m**3/s].
+        inputs : dict
+            Inlet condition dictionary; ``mass_frac`` entries are gas mass
+            fractions [-].
+        return_terms : bool, optional
+            Return stored diagnostic terms instead of balance derivatives [-].
+
+        Returns
+        -------
+        list of ndarray
+            ``dsat_dt`` [1/s], ``dygas_dt`` [1/s], and ``dxliq_dt`` [1/s].
+        """
         
         satur[satur < eps] = eps
         satur[satur >= 1] = 1 - eps
         # ----- Reading inputs
-        y_gas_inputs = inputs['mass_frac']
+        y_gas_inputs = inputs['mass_frac']  # [-]
 
         # ----- Liquid phase
-        dens_liq = self.rho_liq
+        dens_liq = self.rho_liq  # [kg/m**3]
 
-        # Convert molar drying rates to mass rates for the liquid balance (#20).
-        # Gas and energy balances still use molar rates pending #21 and #48.
-        mw_volatiles = self.Liquid_1.mw[self.idx_volatiles] / 1000  # [kg/mol]
-        dry_rate_mass = dry_rate[:, self.idx_volatiles] * mw_volatiles  # [kg/m**3/s]
-        sum_dry = dry_rate_mass.sum(axis=1)  # [kg/m**3/s]
+        dry_rate_volatiles = dry_rate[:, self.idx_volatiles]  # [kg/m**3/s]
+        sum_dry = dry_rate_volatiles.sum(axis=1)  # [kg/m**3/s]
 
-        dsat_dt = -sum_dry / dens_liq / self.porosity
+        dsat_dt = -sum_dry / dens_liq / self.porosity  # [1/s]
 
         dxliq_dt = -1 / satur* \
-            (dry_rate_mass.T / dens_liq / self.porosity +
-              x_liq.T * dsat_dt)
+            (dry_rate_volatiles.T / dens_liq / self.porosity +
+              x_liq.T * dsat_dt)  # [1/s]
 
         # ----- Gas phase
         # Convective term
-        epsilon_gas = self.porosity * (1 - satur)
-        epsilon_gas[epsilon_gas <= eps] = eps
+        epsilon_gas = self.porosity * (1 - satur)  # [-]
+        epsilon_gas[epsilon_gas <= eps] = eps  # [-]
 
         # fluxes_yg = high_resolution_fvm(y_gas, boundary_cond=y_gas_inputs)
-        fluxes_yg = upwind_fvm(y_gas, boundary_cond=y_gas_inputs)
+        fluxes_yg = upwind_fvm(y_gas, boundary_cond=y_gas_inputs)  # [-]
 
-        dygas_dz = np.diff(fluxes_yg, axis=0).T / self.dz
+        dygas_dz = np.diff(fluxes_yg, axis=0).T / self.dz  # [1/m]
 
-        convection = -u_gas * dygas_dz / epsilon_gas
+        convection = -u_gas * dygas_dz / epsilon_gas  # [1/s]
         # Transfer term
-        transfer_gas = dry_rate.T / epsilon_gas / dens_gas/ (1 - satur)
+        transfer_gas = dry_rate.T / epsilon_gas / dens_gas / \
+            (1 - satur)  # [1/s]
         # Dynamic saturation correction term
-        total_mass_correction = y_gas.T / (1 - satur) * dsat_dt
+        total_mass_correction = y_gas.T / (1 - satur) * dsat_dt  # [1/s]
 
-        dygas_dt = convection + transfer_gas + total_mass_correction
+        dygas_dt = convection + transfer_gas + total_mass_correction  # [1/s]
 
         if return_terms:    # TODO: check term by term in material balance down this line
             self.masstrans_comp = 1
