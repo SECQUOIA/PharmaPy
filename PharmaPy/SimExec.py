@@ -781,7 +781,9 @@ class SimulationExec:
             Reserved for lumped OPEX reporting.
         kwargs_items : dict, optional
             Per-item keyword arguments for ``duties``, ``raw_materials``, and
-            ``labor`` calculations.
+            ``labor`` calculations. Top-level ``steady_raw`` and
+            ``include_holdups`` take precedence over same-named entries in
+            ``kwargs_items['raw_materials']``.
 
         Returns
         -------

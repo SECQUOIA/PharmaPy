@@ -104,6 +104,27 @@ def test_get_opex_passes_raw_material_keywords_and_holdup_flag():
     )
 
 
+def test_get_opex_includes_initial_holdup_by_default():
+    inlet = _RawPhase(mass_flow=2.0, mass_frac=(0.25, 0.75))
+    initial_holdup = _RawPhase(mass=5.0, mass_frac=(0.4, 0.6))
+    unit = _UnitOperation(inlet)
+    unit.__original_phase__ = initial_holdup
+    sim = _sim_with_unit(unit)
+
+    _, raw_cost, _ = sim.GetOPEX(
+        1.0,
+        kwargs_items={"raw_materials": {"basis": "mass"}},
+    )
+
+    holdup_cost = raw_cost.xs("Initial_holdup", level=1)
+
+    assert len(holdup_cost) == 1
+    np.testing.assert_allclose(
+        holdup_cost.iloc[0][["mass", "mass_A", "mass_B"]],
+        [5.0, 2.0, 3.0],
+    )
+
+
 def test_mole_basis_totals_use_canonical_singular_basis():
     inlet = _RawPhase(mole_flow=4.0, mole_frac=(0.25, 0.75))
     sim = _sim_with_unit(_UnitOperation(inlet))
