@@ -1,3 +1,9 @@
+"""Test crystallizer energy balance regressions.
+
+This module covers unit-basis and utility-jacket paths for crystallizer energy
+balances.
+"""
+
 import sys
 import types
 

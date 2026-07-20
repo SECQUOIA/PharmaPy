@@ -1520,7 +1520,7 @@ class BatchCryst(_BaseCryst):
 
         dmaterial_dt = np.concatenate((ddistr_dt, dliq_dt))
 
-        return dmaterial_dt, transf
+        return dmaterial_dt, transf  # transf [kg/s]
 
     def energy_balances(self, time, params, cryst_rate, u_inputs, rhos,
                         mu_n, distrib, mass_conc, temp, temp_ht, vol,
@@ -1546,7 +1546,7 @@ class BatchCryst(_BaseCryst):
         height_liq = vol / (np.pi/4 * self.diam_tank**2)
         area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
 
-        source_term = dh_cryst*cryst_rate
+        source_term = dh_cryst*cryst_rate  # [J/s], cryst_rate [kg/s]
 
         if self.adiabatic:
             ht_term = 0
@@ -1564,8 +1564,8 @@ class BatchCryst(_BaseCryst):
 
             if temp_ht is not None:
                 ht_dict = self.Utility.get_inputs(time)
-                tht_in = ht_dict['temp_in']
-                flow_ht = ht_dict['vol_flow']
+                tht_in = ht_dict['temp_in']  # [K], Utility inlet temperature
+                flow_ht = ht_dict['vol_flow']  # [m**3/s]
 
                 cp_ht = 4180  # J/kg/K
                 rho_ht = 1000
@@ -1845,7 +1845,7 @@ class MSMPR(_BaseCryst):
 
         dmaterial_dt = np.concatenate((ddistr_dt, dcomp_dt))
 
-        return dmaterial_dt, transf
+        return dmaterial_dt, transf  # transf [kg/m**3/s]
 
     def energy_balances(self, time, params, cryst_rate, u_inputs, rhos, mu_n,
                         distrib, mass_conc, temp, temp_ht, vol,
@@ -1872,10 +1872,10 @@ class MSMPR(_BaseCryst):
 
         # Energy terms (W)
         flow_term = input_flow * (h_in - h_sp)
-        source_term = dh_cryst*cryst_rate * vol
+        source_term = dh_cryst*cryst_rate * vol  # [J/s], cryst_rate [kg/m**3/s]
 
         if self.adiabatic:
-            ht_term = 0
+            ht_term = 0  # [J/s]
         elif 'temp' in self.controls.keys():
             ht_term = capacitance * vol  # return capacitance
         elif 'temp' in self.states_uo:
@@ -1885,20 +1885,20 @@ class MSMPR(_BaseCryst):
             return heat_components
         else:
             # Balance inside the tank
-            dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
+            dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance  # [K/s]
 
             if self.adiabatic or temp_ht is None:
                 return dtemp_dt
 
             # Balance in the jacket
             ht_media = self.Utility.get_inputs(time)
-            flow_ht = ht_media['vol_flow']
-            tht_in = ht_media['temp_in']
+            flow_ht = ht_media['vol_flow']  # [m**3/s]
+            tht_in = ht_media['temp_in']  # [K], Utility inlet temperature
 
-            cp_ht = self.Utility.cp
-            rho_ht = self.Utility.rho
+            cp_ht = self.Utility.cp  # [J/kg/K]
+            rho_ht = self.Utility.rho  # [kg/m**3]
 
-            vol_ht = self.vol_tank*0.14  # m**3
+            vol_ht = self.vol_tank*0.14  # [m**3]
 
             dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
                 self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
@@ -2164,7 +2164,7 @@ class SemibatchCryst(MSMPR):
 
         dmaterial_dt = np.concatenate((ddistr_dt, dliq_dt))
 
-        return dmaterial_dt, transf
+        return dmaterial_dt, transf  # transf [kg/s]
 
     def energy_balances(self, time, params, cryst_rate, u_inputs, rhos,
                         distrib, mass_conc, temp, temp_ht, vol, mu_n, h_in):
@@ -2199,7 +2199,7 @@ class SemibatchCryst(MSMPR):
         accum_term = dmass_dt * h_sp/dens_slurry
         flow_term = input_flow * h_in
 
-        source_term = dh_cryst * cryst_rate
+        source_term = dh_cryst * cryst_rate  # [J/s], cryst_rate [kg/s]
 
         height_liq = vol / (np.pi/4 * self.diam_tank**2)
         area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
@@ -2211,13 +2211,11 @@ class SemibatchCryst(MSMPR):
 
         # Balance inside the tank
         dtemp_dt = (flow_term - source_term - ht_term - accum_term) / \
-            capacitance / vol
-
-        # print(dtemp_dt)
+            capacitance / vol  # [K/s]
 
         if temp_ht is not None:
             ht_media = self.Utility.get_inputs(time)
-            tht_in = ht_media['temp_in']  # [K]
+            tht_in = ht_media['temp_in']  # [K], Utility inlet temperature
             flow_ht = ht_media['vol_flow']  # [m**3/s]
             cp_ht = self.Utility.cp  # [J/kg/K]
             rho_ht = self.Utility.rho  # [kg/m**3]
