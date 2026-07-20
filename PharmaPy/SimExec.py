@@ -501,6 +501,9 @@ class SimulationExec:
         return out
 
     def get_raw_inlets(self, uo, basis='mass'):
+        if basis not in ('mass', 'mole'):
+            raise ValueError("basis must be either 'mass' or 'mole'")
+
         if hasattr(uo, 'Inlet'):
             if isinstance(uo.Inlet, dict):
                 inlets = uo.Inlet
@@ -523,7 +526,7 @@ class SimulationExec:
         out = {}
 
         for name, inlet in raws.items():
-            if inlet.__class__.__name__ == 'PharmaPy.MixedPhases':
+            if inlet.__module__ == 'PharmaPy.MixedPhases':
                 streams = inlet.Phases
             else:
                 streams = [inlet]
@@ -541,19 +544,23 @@ class SimulationExec:
                 if uo.oper_mode == 'Batch':
                     if basis == 'mass':
                         total = stream.mass
+                        di[name_stream] = {'mass': total}
+                        fields += ['mass_frac']
                     elif basis == 'mole':
                         total = stream.moles
+                        di[name_stream] = {'moles': total}
+                        fields += ['mole_frac']
                 elif inlet.DynamicInlet is None:
                     time = uo.result.time[-1] - uo.result.time[0]
                     if basis == 'mass':
-                        flow = inlet.mass_flow
+                        flow = stream.mass_flow
                         total = flow*time
 
                         di[name_stream] = {'mass': total}
                         fields += ['mass_frac', 'mass_flow', 'vol_flow']
 
                     else:
-                        flow = inlet.mole_flow
+                        flow = stream.mole_flow
                         total = flow*time
 
                         di[name_stream] = {'moles': total}
@@ -561,7 +568,7 @@ class SimulationExec:
 
                 else:
                     time = uo.result.time
-                    inputs = uo.Inlet.DynamicInlet.evaluate_inputs(time)
+                    inputs = inlet.DynamicInlet.evaluate_inputs(time)
 
                     if basis == 'mass':
                         if 'mass_flow' in inputs:
@@ -620,14 +627,44 @@ class SimulationExec:
 
         return out
 
-    def GetRawMaterials(self, basis='mass', totals=True, steady_state=False):
+    def GetRawMaterials(self, basis='mass', totals=True, steady_state=False,
+                        include_holdups=True):
+        """
+        Get raw material use for all solved unit operations.
+
+        Parameters
+        ----------
+        basis : {'mass', 'mole'}, optional
+            Accounting basis. Mass totals are reported in kg and molar totals
+            are reported in mol.
+        totals : bool, optional
+            If true, aggregate each raw stream into total and per-species
+            columns on the selected basis.
+        steady_state : bool, optional
+            Reserved for steady-state raw material accounting.
+        include_holdups : bool, optional
+            If true, include initial holdups that were not transferred from an
+            upstream unit operation.
+
+        Returns
+        -------
+        raw_df : pandas.DataFrame
+            Raw material table indexed by unit operation, raw source, and
+            stream or phase name.
+
+        """
+        if basis not in ('mass', 'mole'):
+            raise ValueError("basis must be either 'mass' or 'mole'")
 
         out = {}
         for name, uo in self.uos_instances.items():
             out[name] = {}
 
             raw_inlets = self.get_raw_inlets(uo, basis=basis)
-            raw_holdup = self.get_holdup(uo, basis=basis)
+            if include_holdups:
+                raw_holdup = self.get_holdup(uo, basis=basis)
+            else:
+                raw_holdup = {}
 
             for second in raw_inlets:  # flatten multidimensional states
                 for third in raw_inlets[second]:
@@ -669,7 +706,7 @@ class SimulationExec:
                     raw_df = pd.DataFrame(np.column_stack((mass, mass_comp)),
                                           columns=cols, index=raw_df.index)
 
-                elif basis == 'moles':
+                elif basis == 'mole':
                     mole_frac = raw_df.filter(regex='mole_frac').values
                     moles = raw_df['moles'].values[:, np.newaxis]
                     moles_comp = mole_frac * moles
@@ -729,6 +766,30 @@ class SimulationExec:
 
     def GetOPEX(self, cost_raw, include_holdups=True, steady_raw=False,
                 lumped=False, kwargs_items=None):
+        """
+        Get operating costs from duties, raw materials, and labor.
+
+        Parameters
+        ----------
+        cost_raw : array_like
+            Raw material unit costs compatible with the raw material table.
+        include_holdups : bool, optional
+            If true, raw material accounting includes initial holdups.
+        steady_raw : bool, optional
+            Forwarded to ``GetRawMaterials`` for steady-state raw accounting.
+        lumped : bool, optional
+            Reserved for lumped OPEX reporting.
+        kwargs_items : dict, optional
+            Per-item keyword arguments for ``duties``, ``raw_materials``, and
+            ``labor`` calculations.
+
+        Returns
+        -------
+        duty_cost, raw_cost, labor_cost : pandas.DataFrame
+            Operating-cost components for the solved flowsheet when ``lumped``
+            is false.
+
+        """
 
         opex_items = ('duties', 'raw_materials', 'labor')
         if kwargs_items is None:
@@ -755,9 +816,11 @@ class SimulationExec:
         duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
 
         # ---------- Raw materials
-        raw_materials = self.GetRawMaterials(
-            include_holdups, steady_raw, **kwargs_items.get('raw_materials',
-                                                            {}))
+        raw_kwargs = kwargs_items.get('raw_materials', {}).copy()
+        raw_kwargs['steady_state'] = steady_raw
+        raw_kwargs['include_holdups'] = include_holdups
+
+        raw_materials = self.GetRawMaterials(**raw_kwargs)
         raw_cost = cost_raw * raw_materials
 
         # ---------- Labor
