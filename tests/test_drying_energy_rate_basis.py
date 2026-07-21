@@ -33,6 +33,7 @@ def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
     dryer.rho_sol = 1000.0  # [kg/m**3]
     dryer.cp_sol = 1000.0  # [J/kg/K]
     dryer.s_inf = 0.1  # [-]
+    dryer.k_perm = 1.0  # [m**2]
     dryer.dPg_dz = 2.0  # [Pa/m]
     dryer.dz = np.ones(3)  # [m]
     dryer.pres_gas = np.array([60000.0, 122000.0, 62000.0])  # [Pa]
