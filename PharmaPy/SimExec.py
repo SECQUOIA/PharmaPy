@@ -442,6 +442,20 @@ class SimulationExec:
             return cost_equip
 
     def GetLabor(self, wage=35, num_weeks=48):
+        """Estimate yearly labor cost by unit-operation class.
+
+        Parameters
+        ----------
+        wage : float, optional
+            Operator wage [USD/h].
+        num_weeks : int, optional
+            Operating weeks per year [week/yr].
+
+        Returns
+        -------
+        pandas.DataFrame
+            Labor classification columns [-] and labor cost [USD/yr].
+        """
         # TODO: per/hour (per/shift) cost?
         has_solids = []
         is_batch = []
@@ -484,6 +498,22 @@ class SimulationExec:
         return labor_df
 
     def get_from_phases(self, phases, fields):
+        """Collect named attributes from one phase or a mixed phase.
+
+        Parameters
+        ----------
+        phases : object
+            PharmaPy phase or mixed-phase object.
+        fields : sequence of str
+            Attribute names to collect. Typical values include fractions [-],
+            temperature [K], pressure [Pa], amounts [kg] or [mol], and volumes
+            [m**3].
+
+        Returns
+        -------
+        dict
+            Attribute records keyed by phase object name.
+        """
         if phases.__module__ == 'PharmaPy.MixedPhases':
             phases = phases.Phases
         else:
@@ -499,6 +529,59 @@ class SimulationExec:
             out[name_phase] = phase_data
 
         return out
+
+    def get_dynamic_raw_inputs(self, inlet, stream, time):
+        """Evaluate dynamic raw-material inputs for one stream or phase.
+
+        Parameters
+        ----------
+        inlet : object
+            Raw inlet object. It may be a single stream or a mixed phase.
+        stream : object
+            Stream or phase currently being accounted.
+        time : ndarray
+            Simulation time grid [s].
+
+        Returns
+        -------
+        dict
+            Dynamic input profiles. Flow entries are [kg/s], [mol/s], or
+            [m**3/s] according to their key; temperature is [K].
+
+        Notes
+        -----
+        If a mixed phase owns a single dynamic inlet profile, the total dynamic
+        flow is split by each phase's steady flow fraction [-]. This preserves
+        the total mixed feed instead of integrating the full mixed profile once
+        for every phase.
+        """
+        if getattr(stream, 'DynamicInlet', None) is not None:
+            return stream.DynamicInlet.evaluate_inputs(time)
+
+        inputs = inlet.DynamicInlet.evaluate_inputs(time)
+        if stream is inlet:
+            return inputs
+
+        scaled = {}
+        flow_fields = ('mass_flow', 'mole_flow', 'vol_flow')
+        for field in flow_fields:
+            if field not in inputs:
+                continue
+
+            inlet_flow = getattr(inlet, field, 0)
+            stream_flow = getattr(stream, field, 0)
+            if inlet_flow == 0:
+                flow_fraction = 0
+            else:
+                flow_fraction = stream_flow / inlet_flow  # [-]
+
+            scaled[field] = inputs[field] * flow_fraction
+
+        for field in ('temp', 'pres'):
+            if field in inputs:
+                scaled[field] = inputs[field]
+
+        return scaled
 
     def get_raw_inlets(self, uo, basis='mass'):
         """Collect raw inlet data for a unit operation.
@@ -574,7 +657,8 @@ class SimulationExec:
                         total = stream.moles  # [mol]
                         stream_data[name_stream] = {'moles': total}
                         fields += ['mole_frac']
-                elif inlet.DynamicInlet is None:
+                elif (getattr(stream, 'DynamicInlet', None) is None and
+                      getattr(inlet, 'DynamicInlet', None) is None):
                     time = uo.result.time[-1] - uo.result.time[0]  # [s]
                     if basis == 'mass':
                         flow = stream.mass_flow  # [kg/s]
@@ -592,13 +676,13 @@ class SimulationExec:
 
                 else:
                     time = uo.result.time  # [s]
-                    inputs = inlet.DynamicInlet.evaluate_inputs(time)
+                    inputs = self.get_dynamic_raw_inputs(inlet, stream, time)
 
                     if basis == 'mass':
                         if 'mass_flow' in inputs:
                             flow = inputs['mass_flow']  # [kg/s]
                         else:
-                            flow = inputs['mole_flow'] * inlet.mw_av / 1000  # [kg/s]
+                            flow = inputs['mole_flow'] * stream.mw_av / 1000  # [kg/s]
 
                         total = trapezoidal_rule(time, flow)  # [kg]
 
@@ -610,7 +694,7 @@ class SimulationExec:
                         if 'mole_flow' in inputs:
                             flow = inputs['mole_flow']  # [mol/s]
                         else:
-                            flow = inputs['mass_flow'] / inlet.mw_av * 1000  # [mol/s]
+                            flow = inputs['mass_flow'] / stream.mw_av * 1000  # [mol/s]
 
                         total = trapezoidal_rule(time, flow)  # [mol]
 
@@ -812,6 +896,10 @@ class SimulationExec:
         ----------
         cost_raw : array_like
             Raw material unit costs compatible with the raw material table.
+            On a mass basis, values are [USD/kg]; on a mole basis, values are
+            [USD/mol]. A scalar applies to every raw-material column. A vector
+            must have one entry per raw-material column: the first entry prices
+            the total column and the remaining entries price per-species columns.
         include_holdups : bool, optional
             If true, raw material accounting includes initial holdups.
         steady_raw : bool, optional
@@ -827,8 +915,8 @@ class SimulationExec:
         Returns
         -------
         duty_cost, raw_cost, labor_cost : pandas.DataFrame
-            Operating-cost components for the solved flowsheet when ``lumped``
-            is false.
+            ``duty_cost`` [USD] and ``raw_cost`` [USD] are per simulated run.
+            ``labor_cost`` is [USD/yr]. Returned when ``lumped`` is false.
 
         """
 
@@ -862,6 +950,12 @@ class SimulationExec:
         raw_kwargs['include_holdups'] = include_holdups
 
         raw_materials = self.GetRawMaterials(**raw_kwargs)
+        if cost_raw.ndim > 1:
+            raise ValueError("cost_raw must be a scalar or a one-dimensional array")
+        if cost_raw.ndim == 1 and cost_raw.size not in (1, raw_materials.shape[1]):
+            raise ValueError(
+                "cost_raw must be scalar or have one entry per raw-material "
+                "column")
         raw_cost = cost_raw * raw_materials
 
         # ---------- Labor

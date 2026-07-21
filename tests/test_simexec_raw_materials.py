@@ -9,7 +9,48 @@ pytestmark = pytest.mark.unit
 
 class _Result:
     def __init__(self, time):
-        self.time = np.asarray(time, dtype=float)
+        """Create a minimal result object.
+
+        Parameters
+        ----------
+        time : array_like
+            Simulation time grid [s].
+        """
+        self.time = np.asarray(time, dtype=float)  # [s]
+
+
+class _DynamicInput:
+    def __init__(self, **profiles):
+        """Create a deterministic dynamic-input test double.
+
+        Parameters
+        ----------
+        **profiles
+            Dynamic profile values. Flow entries are [kg/s], [mol/s], or
+            [m**3/s] according to key; temperature values are [K].
+        """
+        self.profiles = profiles
+
+    def evaluate_inputs(self, time):
+        """Return dynamic raw-inlet profiles on the requested time grid.
+
+        Parameters
+        ----------
+        time : ndarray
+            Simulation time grid [s].
+
+        Returns
+        -------
+        dict
+            Flow profiles [kg/s], [mol/s], or [m**3/s] according to key.
+        """
+        out = {}
+        for key, value in self.profiles.items():
+            if np.ndim(value) == 0:
+                out[key] = np.ones_like(time, dtype=float) * value
+            else:
+                out[key] = np.asarray(value, dtype=float)
+        return out
 
 
 class _RawPhase:
@@ -68,11 +109,20 @@ class _UnitOperation:
     __module__ = "PharmaPy.Containers"
 
     def __init__(self, inlet=None, time=(0.0, 10.0)):
+        """Create a minimal solved unit operation.
+
+        Parameters
+        ----------
+        inlet : object, optional
+            Raw inlet or mixed inlet used by raw-material accounting.
+        time : tuple of float, optional
+            Simulated start and end times [s].
+        """
         self.Inlet = inlet
         self.oper_mode = "Continuous"
         self.result = _Result(time)
         self.heat_duty = np.array([0.0, 0.0])  # [J]
-        self.duty_type = np.array([0, 0], dtype=int)
+        self.duty_type = np.array([0, 0], dtype=int)  # [-]
         self.outputs = {}
 
 
@@ -84,6 +134,7 @@ def _sim_with_unit(unit):
 
 
 def test_get_opex_passes_raw_material_keywords_and_holdup_flag():
+    """Top-level raw-material flags take precedence in OPEX accounting."""
     inlet = _RawPhase(mass_flow=2.0, mass_frac=(0.25, 0.75))
     initial_holdup = _RawPhase(mass=5.0, mass_frac=(0.4, 0.6))
     unit = _UnitOperation(inlet)
@@ -105,6 +156,7 @@ def test_get_opex_passes_raw_material_keywords_and_holdup_flag():
 
 
 def test_get_opex_includes_initial_holdup_by_default():
+    """OPEX includes initial holdup raw material unless disabled."""
     inlet = _RawPhase(mass_flow=2.0, mass_frac=(0.25, 0.75))
     initial_holdup = _RawPhase(mass=5.0, mass_frac=(0.4, 0.6))
     unit = _UnitOperation(inlet)
@@ -126,6 +178,7 @@ def test_get_opex_includes_initial_holdup_by_default():
 
 
 def test_mole_basis_totals_use_canonical_singular_basis():
+    """Mole-basis totals use the singular ``basis='mole'`` path."""
     inlet = _RawPhase(mole_flow=4.0, mole_frac=(0.25, 0.75))
     sim = _sim_with_unit(_UnitOperation(inlet))
 
@@ -139,6 +192,7 @@ def test_mole_basis_totals_use_canonical_singular_basis():
 
 
 def test_batch_raw_inlet_records_total_before_aggregation():
+    """Batch raw inlets record total material before species aggregation."""
     inlet = _RawPhase(mass=6.0, mass_frac=(0.2, 0.8))
     unit = _UnitOperation(inlet)
     unit.oper_mode = "Batch"
@@ -154,6 +208,7 @@ def test_batch_raw_inlet_records_total_before_aggregation():
 
 
 def test_mixed_phase_raw_inlet_is_decomposed_by_phase():
+    """Static mixed raw inlets account each phase once."""
     liquid = _RawPhase(mass_flow=1.0, mass_frac=(0.8, 0.2))
     solid = _RawPhase(mass_flow=3.0, mass_frac=(0.1, 0.9))
     mixed = _MixedRawInlet([liquid, solid])
@@ -166,3 +221,50 @@ def test_mixed_phase_raw_inlet_is_decomposed_by_phase():
         np.sort(raw_materials["mass"].to_numpy()),
         [10.0, 30.0],
     )
+
+
+def test_dynamic_mixed_phase_raw_inlet_splits_total_flow_by_phase():
+    """Dynamic mixed raw inlets do not integrate the total flow per phase."""
+    liquid = _RawPhase(mass_flow=1.0, mass_frac=(0.8, 0.2))
+    solid = _RawPhase(mass_flow=3.0, mass_frac=(0.1, 0.9))
+    mixed = _MixedRawInlet([liquid, solid])
+    mixed.DynamicInlet = _DynamicInput(mass_flow=4.0)  # [kg/s]
+    sim = _sim_with_unit(_UnitOperation(mixed))
+
+    raw_materials = sim.GetRawMaterials(basis="mass", totals=False)
+
+    assert len(raw_materials) == 2
+    np.testing.assert_allclose(
+        np.sort(raw_materials["mass"].to_numpy()),
+        [10.0, 30.0],
+    )
+
+
+def test_get_opex_applies_nonunity_raw_cost_vector():
+    """Vector raw costs price total and species columns explicitly."""
+    inlet = _RawPhase(mass_flow=2.0, mass_frac=(0.25, 0.75))
+    sim = _sim_with_unit(_UnitOperation(inlet))
+
+    _, raw_cost, _ = sim.GetOPEX(
+        np.array([0.0, 2.0, 3.0]),  # [USD/kg]
+        include_holdups=False,
+        kwargs_items={"raw_materials": {"basis": "mass"}},
+    )
+
+    np.testing.assert_allclose(
+        raw_cost.iloc[0][["mass", "mass_A", "mass_B"]],
+        [0.0, 10.0, 45.0],  # [USD]
+    )
+
+
+def test_get_opex_rejects_raw_cost_vector_with_wrong_width():
+    """Raw cost vectors must match the raw-material table width."""
+    inlet = _RawPhase(mass_flow=2.0, mass_frac=(0.25, 0.75))
+    sim = _sim_with_unit(_UnitOperation(inlet))
+
+    with pytest.raises(ValueError, match="one entry per raw-material column"):
+        sim.GetOPEX(
+            np.array([1.0, 2.0]),  # [USD/kg]
+            include_holdups=False,
+            kwargs_items={"raw_materials": {"basis": "mass"}},
+        )
