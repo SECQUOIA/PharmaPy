@@ -410,7 +410,7 @@ class StatisticsClass:
                     method=self.inst.opt_method,
                     verbose=False, store_iter=False,
                     optim_options=self.inst.optim_options)
-            except:
+            except Exception:
                 print('Optimization failed.')
                 params = [np.nan] * self.inst.num_params
 

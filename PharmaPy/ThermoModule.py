@@ -79,8 +79,8 @@ def ParseDatabase(path_datafile, to_arrays=True):
                 props = vals
             try:
                 props = np.array(props, dtype=float)
-            except:
-                pass
+            except (ValueError, TypeError):
+                pass  # non-numeric property (e.g. strings), keep as list
 
             dd_arrays[key] = props
 

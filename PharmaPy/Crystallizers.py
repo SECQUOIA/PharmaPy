@@ -33,6 +33,7 @@ from scipy.optimize import newton
 
 import copy
 import string
+import warnings
 
 # try:
 #     from jax import jacfwd
@@ -121,8 +122,11 @@ class _BaseCryst:
             try:
                 import jax.numpy as np
                 _BaseCryst.np = np
-            except:
-                pass
+            except ImportError:
+                warnings.warn(
+                    "jac_type='AD' requires jax, which could not be "
+                    "imported. Falling back to numpy.",
+                    RuntimeWarning)
 
         self.distributed_uo = False
         self.mask_params = mask_params
