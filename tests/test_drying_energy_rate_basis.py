@@ -109,14 +109,14 @@ def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
     derivatives = derivatives.reshape(3, -1)
 
     # Sensible power [J/m**3/s] divided by gas capacity [J/m**3/K].
-    # power = cp_gas [J/kg/K] * (T_gas - 295 K) * sum(m_dot_i) [kg/m**3/s].
+    # power = cp_gas [J/kg/K] * (T_gas - 295 [K]) * sum(m_dot_i) [kg/m**3/s].
     expected_gas_temperature_rate = np.array([
         1100.0 / 450.0,
         3408.0 / 1100.0,
         2475.0 / 700.0,
     ])  # [K/s]
 
-    # The mass-rate latent powers are [256000, 338000, 128000] J/m**3/s.
+    # The mass-rate latent powers are [256000, 338000, 128000] [J/m**3/s].
     expected_condensed_temperature_rate = np.array([
         -256000.0 / 900000.0,
         -338000.0 / 900000.0,
