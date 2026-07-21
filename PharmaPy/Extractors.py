@@ -31,17 +31,19 @@ def material_setter(instance, oper_mode):
     Returns
     -------
     out : dict
-        Inlet metadata with ``in_flow`` in mol/s for continuous operation or
-        mol for batch operation, ``temp`` [K], ``pres`` [Pa], component count,
-        and result-state metadata.
+        Inlet metadata with ``in_flow`` in [mol/s] for continuous operation or
+        [mol] for batch operation, ``temp`` [K], ``pres`` [Pa], component
+        count, and result-state metadata.
     """
     name_comp = instance.name_species
     num_comp = len(name_comp)
     states_di = {
-        'x_heavy': {'dim': num_comp, 'type': 'alg', 'index': name_comp},
-        'x_light': {'dim': num_comp, 'type': 'alg', 'index': name_comp},
-        'moles_heavy': {'dim': 1, 'type': 'alg'},
-        'moles_light': {'dim': 1, 'type': 'alg'}}
+        'x_heavy': {'dim': num_comp, 'type': 'alg', 'index': name_comp,
+                    'units': '[-]'},
+        'x_light': {'dim': num_comp, 'type': 'alg', 'index': name_comp,
+                    'units': '[-]'},
+        'moles_heavy': {'dim': 1, 'type': 'alg', 'units': '[mol]'},
+        'moles_light': {'dim': 1, 'type': 'alg', 'units': '[mol]'}}
 
     if oper_mode == 'Continuous':
         in_flow = instance.mole_flow
@@ -223,20 +225,40 @@ class ContinuousExtractor:
         return phi_conv, x1_conv, x2_conv, info
 
     def energy_balance(self, liq, vap, x_i, y_i, z_i):
-        liq_flow = liq * self.in_flow  # mol/s
-        vap_flow = vap * self.in_flow  # mol/s
+        """Evaluate the continuous extractor energy residual.
 
-        tref = self.temp
+        Parameters
+        ----------
+        liq : float
+            Liquid split fraction [-].
+        vap : float
+            Extract phase split fraction [-].
+        x_i : ndarray
+            Liquid outlet mole fractions [-].
+        y_i : ndarray
+            Extract outlet mole fractions [-].
+        z_i : ndarray
+            Feed mole fractions [-].
 
-        h_liq = 0
+        Returns
+        -------
+        float
+            Heat duty for the outlet-minus-inlet enthalpy balance [J/s].
+        """
+        liq_flow = liq * self.in_flow  # [mol/s]
+        vap_flow = vap * self.in_flow  # [mol/s]
+
+        tref = self.temp  # [K]
+
+        h_liq = 0  # [J/mol]
         h_vap = self.VaporOut.getEnthalpy(self.temp, temp_ref=tref,
-                                          mole_frac=y_i, basis='mole')
+                                          mole_frac=y_i, basis='mole')  # [J/mol]
 
-        h_in = self.matter.getEnthalpy(temp_ref=tref, basis='mole')
+        h_in = self.matter.getEnthalpy(temp_ref=tref, basis='mole')  # [J/mol]
 
-        heat_duty = liq_flow * h_liq + vap_flow * h_vap - self.in_flow * h_in
+        heat_duty = liq_flow * h_liq + vap_flow * h_vap - self.in_flow * h_in  # [J/s]
 
-        return heat_duty  # W
+        return heat_duty  # [J/s]
 
     def unit_model(self, phi, x1, x2, temp, material=True):
         z_i = self.matter.mole_frac
