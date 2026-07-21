@@ -542,7 +542,7 @@ class SimulationExec:
             inlets = {'Inlet_%i' % num: obj for num, obj in enumerate(inlets)}
 
         raws = {key: val for key, val in inlets.items()
-                if val is not None and val.y_upstream is None}
+                if val is not None and val.y_upstream is None}  # raw inlets
 
         # inlets = [inlet for inlet in inlets
         #           if inlet is not None and inlet.y_upstream is None]
@@ -557,50 +557,50 @@ class SimulationExec:
 
             stream_data = {}
             for stream in streams:
-                fields = ['temp', 'pres']
+                fields = ['temp', 'pres']  # [K], [Pa]
 
                 name_stream = get_name_object(stream)
 
                 stream_data[name_stream] = {}
 
-                dens = stream.getDensity(basis=basis)
+                dens = stream.getDensity(basis=basis)  # [kg/m**3] or [mol/L]
 
                 if uo.oper_mode == 'Batch':
                     if basis == 'mass':
-                        total = stream.mass
+                        total = stream.mass  # [kg]
                         stream_data[name_stream] = {'mass': total}
                         fields += ['mass_frac']
                     elif basis == 'mole':
-                        total = stream.moles
+                        total = stream.moles  # [mol]
                         stream_data[name_stream] = {'moles': total}
                         fields += ['mole_frac']
                 elif inlet.DynamicInlet is None:
-                    time = uo.result.time[-1] - uo.result.time[0]
+                    time = uo.result.time[-1] - uo.result.time[0]  # [s]
                     if basis == 'mass':
-                        flow = stream.mass_flow
-                        total = flow*time
+                        flow = stream.mass_flow  # [kg/s]
+                        total = flow*time  # [kg]
 
                         stream_data[name_stream] = {'mass': total}
                         fields += ['mass_frac', 'mass_flow', 'vol_flow']
 
                     else:
-                        flow = stream.mole_flow
-                        total = flow*time
+                        flow = stream.mole_flow  # [mol/s]
+                        total = flow*time  # [mol]
 
                         stream_data[name_stream] = {'moles': total}
                         fields += ['mole_frac', 'mole_flow', 'vol_flow']
 
                 else:
-                    time = uo.result.time
+                    time = uo.result.time  # [s]
                     inputs = inlet.DynamicInlet.evaluate_inputs(time)
 
                     if basis == 'mass':
                         if 'mass_flow' in inputs:
-                            flow = inputs['mass_flow']
+                            flow = inputs['mass_flow']  # [kg/s]
                         else:
-                            flow = inputs['mole_flow'] * inlet.mw_av / 1000
+                            flow = inputs['mole_flow'] * inlet.mw_av / 1000  # [kg/s]
 
-                        total = trapezoidal_rule(time, flow)
+                        total = trapezoidal_rule(time, flow)  # [kg]
 
                         stream_data[name_stream] = {'mass': total}
 
@@ -608,20 +608,20 @@ class SimulationExec:
 
                     elif basis == 'mole':
                         if 'mole_flow' in inputs:
-                            flow = inputs['mole_flow']
+                            flow = inputs['mole_flow']  # [mol/s]
                         else:
-                            flow = inputs['mass_flow'] / inlet.mw_av * 1000
+                            flow = inputs['mass_flow'] / inlet.mw_av * 1000  # [mol/s]
 
-                        total = trapezoidal_rule(time, flow)
+                        total = trapezoidal_rule(time, flow)  # [mol]
 
                         stream_data[name_stream] = {'moles': total}
                         fields += ['mole_frac']
 
-                vol = total / dens
+                vol = total / dens  # [m**3] or [L]
                 if basis == 'mole':
-                    vol *= 1/1000
+                    vol *= 1/1000  # [m**3]
 
-                stream_data[name_stream]['vol'] = vol
+                stream_data[name_stream]['vol'] = vol  # [m**3]
 
             from_inlet = self.get_from_phases(inlet, fields)
 
@@ -633,6 +633,21 @@ class SimulationExec:
         return out
 
     def get_holdup(self, uo, basis='mass'):
+        """Collect initial holdup raw-material records.
+
+        Parameters
+        ----------
+        uo : object
+            Unit operation that may retain an original phase or mixed phase.
+        basis : {'mass', 'mole'}, optional
+            Accounting basis. Mass holdups are [kg]; molar holdups are [mol].
+
+        Returns
+        -------
+        dict
+            Initial holdup records including composition fractions [-],
+            temperature [K], pressure [Pa], and volume [m**3].
+        """
         out = {}
 
         if hasattr(uo, '__original_phase__'):
@@ -653,14 +668,13 @@ class SimulationExec:
 
     def GetRawMaterials(self, basis='mass', totals=True, steady_state=False,
                         include_holdups=True):
-        """
-        Get raw material use for all solved unit operations.
+        """Get raw material use for all solved unit operations.
 
         Parameters
         ----------
         basis : {'mass', 'mole'}, optional
-            Accounting basis. Mass totals are reported in kg and molar totals
-            are reported in mol.
+            Accounting basis. Mass totals are reported in [kg] and molar
+            totals are reported in [mol].
         totals : bool, optional
             If true, aggregate each raw stream into total and per-species
             columns on the selected basis.
@@ -674,7 +688,8 @@ class SimulationExec:
         -------
         raw_df : pandas.DataFrame
             Raw material table indexed by unit operation, raw source, and
-            stream or phase name.
+            stream or phase name. Total columns are [kg] or [mol], and
+            per-species columns use the same selected basis.
 
         """
         if basis not in ('mass', 'mole'):
@@ -719,10 +734,10 @@ class SimulationExec:
 
             if totals:
                 if basis == 'mass':
-                    mass_frac = raw_df.filter(regex='mass_frac').values
+                    mass_frac = raw_df.filter(regex='mass_frac').values  # [-]
 
-                    mass = raw_df['mass'].values[:, np.newaxis]
-                    mass_comp = mass_frac * mass
+                    mass = raw_df['mass'].values[:, np.newaxis]  # [kg]
+                    mass_comp = mass_frac * mass  # [kg]
 
                     cols = ['mass_%s' % comp for comp in self.NamesSpecies]
                     cols = ['mass'] + cols
@@ -731,9 +746,9 @@ class SimulationExec:
                                           columns=cols, index=raw_df.index)
 
                 elif basis == 'mole':
-                    mole_frac = raw_df.filter(regex='mole_frac').values
-                    moles = raw_df['moles'].values[:, np.newaxis]
-                    moles_comp = mole_frac * moles
+                    mole_frac = raw_df.filter(regex='mole_frac').values  # [-]
+                    moles = raw_df['moles'].values[:, np.newaxis]  # [mol]
+                    moles_comp = mole_frac * moles  # [mol]
 
                     cols = ['moles_%s' % comp for comp in self.NamesSpecies]
                     cols = ['moles'] + cols
