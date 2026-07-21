@@ -23,7 +23,7 @@ from matplotlib.ticker import AutoMinorLocator, MaxNLocator
 
 # Shortcut-design default for choosing actual reflux above Rmin; this
 # multiplier is not part of Underwood's equations.
-DEFAULT_REFLUX_TO_MINIMUM_RATIO = 1.5
+DEFAULT_REFLUX_TO_MINIMUM_RATIO = 1.5  # [-]
 
 
 class _BaseDistillation:
@@ -32,22 +32,22 @@ class _BaseDistillation:
                  gamma_model='ideal', num_feed=None,
                  reflux_to_minimum_ratio=DEFAULT_REFLUX_TO_MINIMUM_RATIO):
 
-        self.num_plates = num_plates
-        self.reflux = reflux
+        self.num_plates = num_plates  # [-]
+        self.reflux = reflux  # [-]
         self.reflux_to_minimum_ratio = reflux_to_minimum_ratio  # [-]
-        self.q_feed = q_feed
-        self.pres = pres
+        self.q_feed = q_feed  # [-]
+        self.pres = pres  # [Pa]
 
         self.LK = LK
         self.HK = HK
-        self.frac_HK = perc_HK/100
-        self.frac_LK = perc_LK/100
+        self.frac_HK = perc_HK/100  # [-]
+        self.frac_LK = perc_LK/100  # [-]
 
         self.gamma_model = gamma_model
 
-        self.num_feed = num_feed  # Num plate from bottom
-        self.x_NLK = 1  # Sharp split all NLK recovred in distillate
-        self.x_NHK = 0  # Sharp split no NHK in distillate
+        self.num_feed = num_feed  # [-], plate number from bottom.
+        self.x_NLK = 1  # [-], sharp split recovers all NLK in distillate.
+        self.x_NHK = 0  # [-], sharp split sends no NHK to distillate.
 
         self._Inlet = None
         self._Phases = None
@@ -60,35 +60,49 @@ class _BaseDistillation:
     def Inlet(self, inlet):
         self._Inlet = inlet
         self._Inlet.pres = self.pres
-        self.feed_flowrate = inlet.mole_flow
-        self.z_feed = inlet.mole_frac
+        self.feed_flowrate = inlet.mole_flow  # [mol/s]
+        self.z_feed = inlet.mole_frac  # [-]
 
         name_species = self.Inlet.name_species
-        self.num_species = len(name_species)
-        self.LK_index = name_species.index(self.LK)
-        self.HK_index = name_species.index(self.HK)
+        self.num_species = len(name_species)  # [-]
+        self.LK_index = name_species.index(self.LK)  # [-]
+        self.HK_index = name_species.index(self.HK)  # [-]
 
         self.name_species = name_species
 
         num_comp = self.num_species
-        self.len_in = [1, num_comp]  # , 1]
-        self.len_out = [1, num_comp]
+        self.len_in = [1, num_comp]  # [-]
+        self.len_out = [1, num_comp]  # [-]
 
         self.nomenclature()
 
     def nomenclature(self):  # TODO: We might need to make this child-specific
+        """Create distillation state metadata.
+
+        Returns
+        -------
+        None
+            The method populates state and final-state metadata on the column.
+
+        Notes
+        -----
+        The equilibrium stage state stores temperature [K] and liquid mole
+        fractions [-]; vapor mole fractions are final-state metadata [-].
+        """
         self.states_di = {
-            'temp': {'dim': 1, 'units': 'K'},
+            'temp': {'dim': 1, 'units': '[K]'},
             'x_liq': {'dim': len(self.name_species),
-                      'index': self.name_species}
+                      'index': self.name_species,
+                      'units': '[-]'}
             }
 
         self.states_uo = list(self.states_di.keys())
-        self.dim_states = [di['dim'] for di in self.states_di.values()]
+        self.dim_states = [di['dim'] for di in self.states_di.values()]  # [-]
 
         self.fstates_di = {
             'y_vap': {'dim': len(self.name_species),
-                      'index': self.name_species}
+                      'index': self.name_species,
+                      'units': '[-]'}
             }
 
     def get_inputs(self, time):
@@ -97,70 +111,104 @@ class _BaseDistillation:
         return inputs
 
     def get_alpha(self, pres, x_frac):
-        temp_bubble = self.Inlet.getBubblePoint(pres, mole_frac=x_frac)
+        """Calculate relative volatility at a liquid composition.
+
+        Parameters
+        ----------
+        pres : float
+            Column pressure [Pa].
+        x_frac : ndarray
+            Liquid mole fractions [-].
+
+        Returns
+        -------
+        ndarray
+            Component relative volatilities normalized to the heavy key [-].
+        """
+        temp_bubble = self.Inlet.getBubblePoint(pres, mole_frac=x_frac)  # [K]
 
         k_vals = self.Inlet.getKeqVLE(temp=temp_bubble,
                                       pres=pres, x_liq=x_frac,
-                                      gamma_model=self.gamma_model)
+                                      gamma_model=self.gamma_model)  # [-]
 
-        alpha = k_vals/k_vals[self.HK_index]
+        alpha = k_vals/k_vals[self.HK_index]  # [-]
 
         return alpha
 
     def global_material_bce(self, z_feed=None):
+        """Solve the global shortcut material balance.
+
+        Parameters
+        ----------
+        z_feed : ndarray, optional
+            Feed mole fractions [-]. If omitted, ``self.z_feed`` is used.
+
+        Returns
+        -------
+        x_dist : ndarray
+            Distillate mole fractions [-].
+        x_bot : ndarray
+            Bottoms mole fractions [-].
+        dist_flow : float
+            Distillate molar flow rate [mol/s].
+        bot_flow : float
+            Bottoms molar flow rate [mol/s].
+        """
         if z_feed is None:
-            z_feed = self.z_feed
+            z_feed = self.z_feed  # [-]
 
-        HK_index = self.HK_index
-        LK_index = self.LK_index
+        HK_index = self.HK_index  # [-]
+        LK_index = self.LK_index  # [-]
 
-        feed_flow = self.feed_flowrate
+        feed_flow = self.feed_flowrate  # [mol/s]
 
         # ---------- Determine Light Key and Heavy Key component numbers
         temp_bubble_feed = self.Inlet.getBubblePoint(pres=self.pres,
-                                                     mole_frac=z_feed)
+                                                     mole_frac=z_feed)  # [K]
 
-        k_feed = self.Inlet.getKeqVLE(temp=temp_bubble_feed, pres=self.pres)
-        volatility_order = np.argsort(k_feed)[::-1]
+        k_feed = self.Inlet.getKeqVLE(temp=temp_bubble_feed, pres=self.pres)  # [-]
+        volatility_order = np.argsort(k_feed)[::-1]  # [-]
         self.sorted_by_volatility = [self.name_species[ind]
                                      for ind in volatility_order]
 
-        hk_loc = np.where(volatility_order == HK_index)[0][0]
-        lk_loc = np.where(volatility_order == LK_index)[0][0]
+        hk_loc = np.where(volatility_order == HK_index)[0][0]  # [-]
+        lk_loc = np.where(volatility_order == LK_index)[0][0]  # [-]
 
-        lighter_idx = volatility_order[:lk_loc]
-        heavier_idx = volatility_order[hk_loc + 1:]
+        lighter_idx = volatility_order[:lk_loc]  # [-]
+        heavier_idx = volatility_order[hk_loc + 1:]  # [-]
 
         if hk_loc != lk_loc + 1:
             print('High key and low key indices are not adjacent', end='\n\n')
-            print('Volatility order at T_bubble = %.1f K (%.0f Pa, high to low): ' % (temp_bubble_feed, self.pres) +
-                  '-'.join(self.sorted_by_volatility))
+            print(
+                'Volatility order at T_bubble = %.1f [K] '
+                '(%.0f [Pa], high to low): ' % (temp_bubble_feed, self.pres) +
+                '-'.join(self.sorted_by_volatility))
 
         # ---------- Calculate Distillate and Bottom flow rates
         bot_flow = feed_flow * (z_feed[HK_index] * ((1 - self.frac_HK)) +
                                 z_feed[LK_index] * ((1 - self.frac_LK)) +
                                 z_feed[lighter_idx].sum() * (1 - self.x_NLK) +
-                                z_feed[heavier_idx].sum() * (1 - self.x_NHK))
+                                z_feed[heavier_idx].sum() * (1 - self.x_NHK))  # [mol/s]
 
-        dist_flow = feed_flow - bot_flow
+        dist_flow = feed_flow - bot_flow  # [mol/s]
 
         if bot_flow < 0 or dist_flow < 0:
             print('negative flow rates, given value not feasible')
 
         # ---------- Estimate component fractions
-        x_dist = np.zeros_like(z_feed)
-        x_bot = np.zeros_like(z_feed)
+        x_dist = np.zeros_like(z_feed)  # [-]
+        x_bot = np.zeros_like(z_feed)  # [-]
 
         x_bot[lighter_idx] = feed_flow * z_feed[lighter_idx] * \
-            (1 - self.x_NLK) / bot_flow
+            (1 - self.x_NLK) / bot_flow  # [-]
         x_bot[LK_index] = feed_flow * z_feed[LK_index] * \
-            (1 - self.frac_LK) / bot_flow
+            (1 - self.frac_LK) / bot_flow  # [-]
         x_bot[HK_index] = feed_flow * z_feed[HK_index] * \
-            (1 - self.frac_HK) / bot_flow
+            (1 - self.frac_HK) / bot_flow  # [-]
         x_bot[heavier_idx] = feed_flow * z_feed[heavier_idx] * \
-            (1 - self.x_NHK) / bot_flow
+            (1 - self.x_NHK) / bot_flow  # [-]
 
-        x_dist = (feed_flow*z_feed - bot_flow*x_bot) / dist_flow
+        x_dist = (feed_flow*z_feed - bot_flow*x_bot) / dist_flow  # [-]
 
         return x_dist, x_bot, dist_flow, bot_flow
 
@@ -244,31 +292,31 @@ class _BaseDistillation:
         if z_feed is None:
             z_feed = self.z_feed
 
-        LK_index = self.LK_index
-        HK_index = self.HK_index
+        LK_index = self.LK_index  # [-]
+        HK_index = self.HK_index  # [-]
 
-        alpha = self.get_alpha(self.pres, z_feed)
+        alpha = self.get_alpha(self.pres, z_feed)  # [-]
         underwood_target = 1 - self.q_feed  # [-], q_feed is liquid fraction.
 
         def f(phi):
             # First Underwood equation; all terms are dimensionless.
             underwood_sum = np.sum(
-                alpha * z_feed / (alpha - phi + np.finfo(float).eps))
-            fun = (underwood_sum - underwood_target)**2
+                alpha * z_feed / (alpha - phi + np.finfo(float).eps))  # [-]
+            fun = (underwood_sum - underwood_target)**2  # [-]
 
             return fun
 
-        bounds = ((alpha[HK_index], alpha[LK_index]), )
+        bounds = ((alpha[HK_index], alpha[LK_index]), )  # [-]
 
         phi = scipy.optimize.minimize(
             f, (alpha[LK_index] + alpha[HK_index])/2, bounds=bounds, tol=1e-10)
-        phi = phi.x[0]
+        phi = phi.x[0]  # [-]
 
-        # Second Underwood equation gives V_min and L_min in [mol/s].
-        V_min = np.sum(alpha * dist_flowrate * x_dist / (alpha - phi))
-        L_min = V_min - dist_flowrate
+        # Second Underwood equation gives V_min and L_min [mol/s].
+        V_min = np.sum(alpha * dist_flowrate * x_dist / (alpha - phi))  # [mol/s]
+        L_min = V_min - dist_flowrate  # [mol/s]
 
-        min_reflux = L_min/dist_flowrate
+        min_reflux = L_min/dist_flowrate  # [-]
 
         return min_reflux
 
@@ -317,78 +365,78 @@ class _BaseDistillation:
         """
 
         if time is None:
-            z_feed = self.z_feed
+            z_feed = self.z_feed  # [-]
 
         else:
             inputs = self.get_inputs(time)
-            z_feed = inputs['Inlet']['mole_frac']
+            z_feed = inputs['Inlet']['mole_frac']  # [-]
 
         x_dist, x_bot, dist_flowrate, bot_flowrate = self.global_material_bce(
-            z_feed)
+            z_feed)  # [-], [-], [mol/s], [mol/s]
 
         min_reflux = self.calc_underwood_min_reflux(
-            x_dist, x_bot, dist_flowrate, bot_flowrate, z_feed)
+            x_dist, x_bot, dist_flowrate, bot_flowrate, z_feed)  # [-]
 
-        num_min = self.calc_num_min(x_dist, x_bot)
+        num_min = self.calc_num_min(x_dist, x_bot)  # [-]
 
         mat_bce = {'x_dist': x_dist, 'x_bottom': x_bot,
-                   'dist_flow': dist_flowrate, 'bottom_flow': bot_flowrate}
+                   'dist_flow': dist_flowrate, 'bottom_flow': bot_flowrate}  # [-], [mol/s]
 
         # Actual reflux
         if self.reflux is None or self.reflux == 0:
             print('Using reflux = %g * min_reflux'
                   % self.reflux_to_minimum_ratio)
-            reflux = self.reflux_to_minimum_ratio * min_reflux
+            reflux = self.reflux_to_minimum_ratio * min_reflux  # [-]
         elif self.reflux < 0:
-            reflux = -self.reflux * min_reflux
+            reflux = -self.reflux * min_reflux  # [-]
         elif self.reflux > 0 and self.reflux < min_reflux:
             print(
                 'Specified reflux less than min_reflux, calculation proceeds '
                 'with %g * min_reflux'
                 % self.reflux_to_minimum_ratio)
 
-            reflux = self.reflux_to_minimum_ratio * min_reflux
+            reflux = self.reflux_to_minimum_ratio * min_reflux  # [-]
 
         else:
-            reflux = self.reflux
+            reflux = self.reflux  # [-]
 
         # Actual number of stages
         if self.num_plates == 0 or self.num_plates is None:
             print('Using Gilliland correlation for number of stages')
-            num_plates = self.molokanov_equation(reflux, min_reflux, num_min)
-            num_plates = np.ceil(num_plates)
+            num_plates = self.molokanov_equation(reflux, min_reflux, num_min)  # [-]
+            num_plates = np.ceil(num_plates)  # [-]
         elif self.num_plates < 0:
-            num_plates = np.ceil(num_min * abs(self.num_plates))
+            num_plates = np.ceil(num_min * abs(self.num_plates))  # [-]
         elif self.num_plates > 0:
             if self.num_plates < np.ceil(num_min):
                 print('Warning: Specified number of plates (%i) is lower than '
                       'the calculated minimum number of plates (%i)'
                       % (self.num_plates, int(np.ceil(num_min)))
                       )
-            num_plates = self.num_plates
+            num_plates = self.num_plates  # [-]
 
         # Feed stage
         if self.num_feed is None:
             num_rect, num_strip = self.kirkbride_correlation(
-                mat_bce, num_plates, z_feed)
+                mat_bce, num_plates, z_feed)  # [-]
 
             if num_rect > num_strip:
-                num_feed = num_rect
+                num_feed = num_rect  # [-]
                 num_rect -= 1
             else:
-                num_feed = num_rect + 1
+                num_feed = num_rect + 1  # [-]
                 num_strip -= 1
 
         elif self.num_feed > num_plates:
             raise ValueError(
                 'Feed number is larger than total number of plates')
         else:
-            num_feed = self.num_feed
+            num_feed = self.num_feed  # [-]
 
         out = {'material_balances': mat_bce,
                'min_reflux': min_reflux, 'num_min': num_min,
                'reflux': reflux, 'num_plates': num_plates,
-               'num_feed': num_feed}
+               'num_feed': num_feed}  # [-], [mol/s]
 
         return out
 
