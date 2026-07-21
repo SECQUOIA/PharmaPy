@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from conftest import import_module_with_assimulo_stub
+from assimulo_helpers import import_module_with_assimulo_stub
 from PharmaPy.Kinetics import CrystKinetics
 
 

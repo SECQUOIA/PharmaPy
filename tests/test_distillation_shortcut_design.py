@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from conftest import import_module_with_assimulo_stub
+from assimulo_helpers import import_module_with_assimulo_stub
 
 
 pytestmark = pytest.mark.unit
@@ -146,6 +146,6 @@ def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
         z_feed=z_feed,
     )
 
-    # With q_feed = 0.8, the first Underwood equation target is 1-q = 0.2 [-].
-    # For this fixture phi = 2.0 [-], Vmin = 17.0 mol/s, and Rmin = 0.7 [-].
+    # With q_feed = 0.8 [-], the first Underwood target is 1-q = 0.2 [-].
+    # For this fixture phi = 2.0 [-], Vmin = 17.0 [mol/s], and Rmin = 0.7 [-].
     assert min_reflux == pytest.approx(0.7)
