@@ -17,6 +17,18 @@ pytestmark = pytest.mark.unit
 
 
 def _stub_assimulo_modules(monkeypatch):
+    """Provide the minimal optional Assimulo API needed to import Drying.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest cleanup fixture used only to register temporary import modules.
+
+    Notes
+    -----
+    The stub is limited to import-time solver symbols. These tests do not
+    replace the drying calculations under review with solver behavior.
+    """
     assimulo = ModuleType("assimulo")
 
     class ExplicitProblem:
@@ -40,6 +52,18 @@ def _stub_assimulo_modules(monkeypatch):
 
 
 def _import_drying_model(monkeypatch):
+    """Import ``PharmaPy.Drying_Model`` for solver-free unit tests.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Used only when the optional Assimulo package is absent locally.
+
+    Returns
+    -------
+    module
+        Imported ``PharmaPy.Drying_Model`` module.
+    """
     try:
         from PharmaPy import Drying_Model
     except ModuleNotFoundError as exc:
@@ -192,8 +216,15 @@ def test_material_balance_uses_single_gas_holdup_factor_for_transfer(monkeypatch
 def test_solve_unit_single_node_initial_state_includes_condensed_temperature(
     monkeypatch,
 ):
+    """Pin single-node state assembly before the CVode solve boundary.
+
+    The test uses real ``solve_unit`` initialization, including the
+    ``get_sat_inf`` saturation calculation. It replaces ``unit_model`` only at
+    the final handoff so the initial state can be inspected without running a
+    full transient; the broader end-to-end Drying solve remains deferred until
+    the open Drying correctness issues are resolved.
+    """
     drying_model = _import_drying_model(monkeypatch)
-    monkeypatch.setattr(drying_model, "get_sat_inf", lambda *args: 0.2)
 
     dryer = drying_model.Drying(number_nodes=1, supercrit_names=["nitrogen"])
     dryer.names_states_in = ["temp", "mass_frac"]
@@ -210,6 +241,7 @@ def test_solve_unit_single_node_initial_state_includes_condensed_temperature(
         temp=302.0,  # [K]
         x_distrib=np.array([1.0, 2.0]),  # [m]
         distrib=np.array([1.0, 1.0]),  # [-]
+        # Synthetic distribution moments [m**0, m, m**2, m**3, m**4].
         moments=np.array([1.0, 1.0, 2.0, 4.0, 0.0]),
         getDensity=lambda: 1200.0,  # [kg/m**3]
         getCp=lambda: 700.0,  # [J/kg/K]

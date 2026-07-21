@@ -183,6 +183,9 @@ def test_material_balance_uses_mass_drying_rate_for_gas_species():
         inputs=inputs,
     )  # [1/s]
 
+    # This expectation updates the earlier mass-basis regression after #81
+    # removed the duplicate gas-holdup divisor: ``epsilon_gas`` already
+    # contains ``porosity * (1 - satur)`` [-].
     expected_dygas_dt = np.array([
         [0.119912, -0.000704, 0.6132453333333334],
         [0.1437728, -0.0007952, 0.6132197333333333],

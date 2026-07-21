@@ -69,9 +69,9 @@ class Drying:
         self.T_ambient = 298
 
         # Transfer coefficients
-        self.k_y = 1e-3  # mol/s/m**2 (Seader, Separation process)
-        # self.h_T_j = 30  # W/m**2/K
-        self.h_T_j = 10  # W/m**2/K
+        self.k_y = 1e-3  # [mol/s/m**2] (Seader, Separation process)
+        # self.h_T_j = 30  # [W/m**2/K]
+        self.h_T_j = 10  # [W/m**2/K]
         self.h_T_loss = 30
 
         self._Phases = None
@@ -275,7 +275,11 @@ class Drying:
         Notes
         -----
         The Darcy gas velocity is a superficial velocity [m/s] throttled by
-        relative permeability ``k_ra`` [-].
+        relative permeability ``k_ra`` [-]. The relative-permeability Darcy
+        form is part of the #81 fix: the removed cake-resistance expression
+        bypassed ``k_ra`` and scaled by mean saturation instead. Its
+        dimensional check is ``k_perm`` [m**2] * ``k_ra`` [-] *
+        ``dPg_dz`` [Pa/m] / ``visc_gas`` [Pa*s] = [m/s].
         """
 
         num_comp = self.Liquid_1.num_species
@@ -296,9 +300,7 @@ class Drying:
         sat_red = (satur - self.s_inf) / (1 - self.s_inf)  # [-]
         sat_red = np.clip(sat_red, 0, 1)  # [-]
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)  # [-]
-        # Darcy velocity:
-        # k_perm [m**2] * k_ra [-] * dPg_dz [Pa/m] / visc_gas [Pa*s] = [m/s].
-        vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas
+        vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas  # [m/s]
         
         # ---------- Drying rate term
         mw_avg_gas = np.dot(y_gas, self.Vapor_1.mw)
@@ -338,9 +340,6 @@ class Drying:
                                           satur, y_gas, x_liq, vel_gas,
                                           rho_gas, self.dry_rate, inputs)
 
-        # print(satur.min())
-        # print(inputs.values())
-
         model_eqns = np.column_stack(material_eqns + energy_eqns)
 
         self.derivatives = model_eqns.ravel()
@@ -379,8 +378,10 @@ class Drying:
 
         Returns
         -------
-        list of ndarray
+        list of ndarray or int
             ``dsat_dt`` [1/s], ``dygas_dt`` [1/s], and ``dxliq_dt`` [1/s].
+            When ``return_terms`` is True, returns the legacy
+            ``masstrans_comp`` diagnostic flag [-].
 
         Notes
         -----
@@ -428,7 +429,7 @@ class Drying:
 
         dygas_dt = convection + transfer_gas + total_mass_correction  # [1/s]
 
-        if return_terms:    # TODO: check term by term in material balance down this line
+        if return_terms:
             self.masstrans_comp = 1
 
             return self.masstrans_comp
@@ -447,7 +448,7 @@ class Drying:
         # ----- Gas phase equations
         cpg_mix = self.Vapor_1.getCp(temp=temp_gas, mass_frac=y_gas,
                                      basis='mass')
-        cvg_mix = cpg_mix - gas_ct / mw_avg_gas * 1000  # J/kg K
+        cvg_mix = cpg_mix - gas_ct / mw_avg_gas * 1000  # [J/kg/K]
 
         epsilon_gas = self.porosity * (1 - satur)
         denom_gas = cvg_mix * epsilon_gas * rho_gas
@@ -482,8 +483,6 @@ class Drying:
         # Empty port
         # dTg_dt = -u_gas * dTg_dz + (-heat_loss) / denom_gas
         # dTg_dt =  (conv_term - heat_loss) / denom_gas
-
-        # print(dTg_dt[0])
 
         # ----- Condensed phases equations
         dens_liq = self.rho_liq
@@ -624,9 +623,9 @@ class Drying:
 
         # Mass transfer
         moments = self.Solid_1.getMoments(mom_num=[0, 1, 2, 3, 4])
-        sauter_diam = moments[1] / moments[0]  # m
+        sauter_diam = moments[1] / moments[0]  # [m]
 
-        # self.a_V = 6 / sauter_diam  # m**2/m**3
+        # self.a_V = 6 / sauter_diam  # [m**2/m**3]
         self.a_V = moments[2] * (1 - porosity) / moments[3]
         # Gas pressure
         # deltaP_media = deltaP*self.resist_medium / \
@@ -648,10 +647,10 @@ class Drying:
         csd = self.Solid_1.distrib# * 1e6
         mom_zero = self.Solid_1.moments[0]
 
-        # rholiq_mass = np.mean(rho_liq[0] * self.Liquid_1.mw_av[0])  # kg/m**3
+        # rholiq_mass = np.mean(rho_liq[0] * self.Liquid_1.mw_av[0])  # [kg/m**3]
         self.s_inf = get_sat_inf(x_csd, csd, deltaP, porosity,
                                  self.cake_height, mom_zero,
-                                 (np.mean(surf_tens), rho_liq[0]))#rholiq_mass))
+                                 (np.mean(surf_tens), rho_liq[0]))
 
         # ---------- Solve model
         model = self.unit_model
