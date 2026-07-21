@@ -75,7 +75,7 @@ def test_default_k_fun_rejects_unknown_activity_model(monkeypatch):
 
 
 def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
-    """The default constructor supplies ``BatchExtractor`` a callable k_fun.
+    """The default constructor supplies ``BatchExtractor`` the selected model.
 
     This pins the DynamicExtractor -> BatchExtractor handoff without running a
     full static extraction solve. The real solve depends on thermodynamic phase
@@ -86,15 +86,16 @@ def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
     captured = {}
 
     class _BatchExtractor:
-        def __init__(self, k_fun=None):
+        def __init__(self, k_fun=None, gamma_method="UNIQUAC"):
             captured["k_fun"] = k_fun
+            captured["gamma_method"] = gamma_method
 
         def solve_unit(self):
             raise _StopAfterConstruction
 
     monkeypatch.setattr(module, "BatchExtractor", _BatchExtractor)
 
-    extractor = module.DynamicExtractor(num_stages=1)
+    extractor = module.DynamicExtractor(num_stages=1, gamma_model="ideal")
     extractor.Liquid_1 = object()
 
     with pytest.raises(_StopAfterConstruction):
@@ -102,3 +103,4 @@ def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
 
     assert captured["k_fun"] is extractor.k_fun
     assert callable(captured["k_fun"])
+    assert captured["gamma_method"] == "ideal"

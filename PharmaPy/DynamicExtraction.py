@@ -21,6 +21,20 @@ from matplotlib.ticker import MaxNLocator, AutoMinorLocator
 
 
 def get_alg_map(states_di, nstages=1):
+    """Build Assimulo algebraic/differential state flags.
+
+    Parameters
+    ----------
+    states_di : dict
+        State metadata dictionaries containing ``dim`` [-] and ``type``.
+    nstages : int, optional
+        Number of dynamic extractor stages [-].
+
+    Returns
+    -------
+    ndarray
+        Algebraic-variable map with one flag per state entry [-].
+    """
     maps = []
     for val in states_di.values():
         if val['type'] == 'diff':
@@ -32,6 +46,20 @@ def get_alg_map(states_di, nstages=1):
 
 
 def complete_molefrac(mole_frac, mapping):
+    """Insert the dependent mole fraction into a reduced composition vector.
+
+    Parameters
+    ----------
+    mole_frac : ndarray
+        Independent mole fractions [-].
+    mapping : ndarray of bool
+        Boolean mask marking independent components [-].
+
+    Returns
+    -------
+    ndarray
+        Complete mole-fraction vector or matrix [-].
+    """
     if mole_frac.ndim == 1:
         out = np.zeros(len(mole_frac) + 1)
         out[mapping] = mole_frac
@@ -278,6 +306,26 @@ class DynamicExtractor:
         return augm_arrays
 
     def unit_model(self, time, states, sdot=None):
+        """Evaluate dynamic extractor DAE residuals.
+
+        Parameters
+        ----------
+        time : float
+            Current integration time [s].
+        states : ndarray
+            Flattened staged states. Mole fractions are [-], internal energy is
+            [J], and temperature is [K].
+        sdot : ndarray, optional
+            Flattened staged state derivatives. Mole-fraction derivatives are
+            [1/s] and internal-energy derivatives are [J/s].
+
+        Returns
+        -------
+        ndarray
+            Flattened material and energy residuals. Entries combine
+            mole-fraction rates [1/s], equilibrium residuals [-],
+            internal-energy rates [J/s], and energy residuals [J].
+        """
 
         # ---------- Unpack variables
         di_states = unpack_discretized(states,
@@ -289,32 +337,12 @@ class DynamicExtractor:
             di_sdot = unpack_discretized(sdot, self.dim_states,
                                          self.name_states)
 
-            # print('\ntime: ', time, end='\n')
-            # fields = ('holdup_light', 'holdup_heavy')
-            # di_print = {key: di_states[key] for key in fields}
-
-            # print(di_print)
-
-            # fields = ('mol_i', )
-            # di_print = {key: {'max': di_sdot[key].max(),
-            #                   'comp': self.name_species[np.argmax(di_sdot[key])]} for key in fields}
-
-            # print(di_print)
-
         inputs = self.get_inputs(time)
 
-        # # Physical properties
-        # rhos = [
-        #     self.Liquid_1.getDensity(mole_frac=di_states['x_i'], basis='mole',
-        #                              temp=di_states['temp']),
-        #     self.Liquid_1.getDensity(mole_frac=di_states['y_i'], basis='mole',
-        #                              temp=di_states['temp'])]
-
         augm_arrays = self.get_augmented_arrays(di_states, inputs)
-                                                # bottom_flows)
 
-        holdup_light = np.ones_like(di_states['temp']) * self.fixed_vals['H_R']
-        holdup_heavy = np.ones_like(di_states['temp']) * self.fixed_vals['H_E']
+        holdup_light = np.ones_like(di_states['temp']) * self.fixed_vals['H_R']  # [mol]
+        holdup_heavy = np.ones_like(di_states['temp']) * self.fixed_vals['H_E']  # [mol]
 
         # ---------- Balances
         material = self.material_balances(time,
@@ -467,9 +495,17 @@ class DynamicExtractor:
         dict
             Initial light/heavy mole fractions [-], stage internal energy [J],
             and temperature [K] for each dynamic extraction stage.
+
+        Notes
+        -----
+        The nested ``BatchExtractor`` receives both the selected ``k_fun`` and
+        ``gamma_model``. The full staged solve still depends on broader
+        stage-wise ``K_i`` support tracked in #123; the handoff itself is
+        covered here without replacing the real thermodynamic callbacks.
         """
         # ---------- Equilibrium calculations
-        extr = BatchExtractor(k_fun=self.k_fun)
+        extr = BatchExtractor(k_fun=self.k_fun,
+                              gamma_method=self.gamma_model)
         extr.Phases = copy.deepcopy(self.Liquid_1)
 
         extr.solve_unit()
@@ -484,8 +520,6 @@ class DynamicExtractor:
         idx_raff = np.argmin(abs(rhos_holdups - rhos_streams['feed']))  # [-]
 
         target_states = {'x_light': 'x_i', 'x_heavy': 'y_i'}
-                         # 'mol_light': 'holdup_light',
-                         # 'mol_heavy': 'holdup_heavy'}
 
         if idx_raff == 0:
             target_states['light_phase'] = 'solvent'
@@ -500,11 +534,6 @@ class DynamicExtractor:
         # Store fixed values
         self.fixed_vals['H_R'] = res.mol_light  # [mol]
         self.fixed_vals['H_E'] = res.mol_heavy  # [mol]
-
-        # inputs = self.get_inputs(0)
-
-        # # self.fixed_vals['R_i'] = inputs[target_states['light_phase']]['Inlet']['mole_flow']
-        # # self.fixed_vals['E_i'] = inputs[target_states['heavy_phase']]['Inlet']['mole_flow']
 
         # ---------- Create dictionary of initial values
         di_init = {}
@@ -531,9 +560,6 @@ class DynamicExtractor:
                                      temp=di_init['temp'])
             for key in keys_frac]  # [mol/L]
 
-        # self.get_stage_dimensions(di_init,
-        #                           [rhos_holdups[0][0], rhos_holdups[1][0]])
-
         # Energy balance calculations
         h_light = self.Liquid_1.getEnthalpy(mole_frac=di_init['x_i'],
                                             temp=di_init['temp'],
@@ -542,9 +568,6 @@ class DynamicExtractor:
         h_heavy = self.Liquid_1.getEnthalpy(mole_frac=di_init['y_i'],
                                             temp=di_init['temp'],
                                             basis='mole')  # [J/mol]
-
-        # u_int = di_init['holdup_light'] * h_light \
-        #     + di_init['holdup_heavy'] * h_heavy
 
         u_int = res.mol_light * h_light + res.mol_heavy * h_heavy  # [J]
 
@@ -582,7 +605,6 @@ class DynamicExtractor:
         args_eq = (di_init['temp'], mol_i, holdups)  # [K], [mol], [mol]
         x0 = np.column_stack((di_init['x_i'], di_init['y_i'])).ravel()  # [-]
 
-        optimopts = {'xtol': 2**(-52)}  # [-]
         frac_result = root(equilibrium_eqns, x0, args=args_eq)
 
         frac_noneq = frac_result.x  # mole fractions [-]
@@ -594,12 +616,28 @@ class DynamicExtractor:
         di_init['x_i'] = x_noneq
         di_init['y_i'] = y_noneq
 
-        # di_init['x_i'] = di_init['x_i'][:, idx_light]
-        # di_init['y_i'] = di_init['y_i'][:, idx_heavy]
-
         return di_init
 
     def solve_unit(self, runtime, sundials_opts=None, verbose=True):
+        """Integrate the dynamic extractor DAE model.
+
+        Parameters
+        ----------
+        runtime : float
+            Simulation duration [s].
+        sundials_opts : dict, optional
+            Solver option names and values forwarded to IDA.
+        verbose : bool, optional
+            If False, suppress solver output [-].
+
+        Returns
+        -------
+        time : ndarray
+            Simulated time points [s].
+        states : ndarray
+            Flattened state history. Mole fractions are [-], internal energy is
+            [J], and temperature is [K].
+        """
 
         di_init = self.initialize_model()
         di_init = {key: di_init[key] for key in self.name_states}
@@ -635,6 +673,22 @@ class DynamicExtractor:
         return time, states
 
     def retrieve_results(self, time, states):
+        """Store dynamic extractor profiles and outlet streams.
+
+        Parameters
+        ----------
+        time : array_like
+            Simulated time points [s].
+        states : ndarray
+            Flattened state history. Mole fractions are [-], internal energy is
+            [J], and temperature is [K].
+
+        Returns
+        -------
+        None
+            The method updates ``result``, ``outputs``, ``Outlet``, and
+            ``profiles_runs`` in place.
+        """
         time = np.asarray(time)
 
         indexes = {key: self.states_di[key].get('index', None)
@@ -691,6 +745,26 @@ class DynamicExtractor:
 
     def plot_profiles(self, times=None, stages=None, pick_comp=None,
                       **fig_kwargs):
+        """Plot dynamic extractor state profiles.
+
+        Parameters
+        ----------
+        times : array_like, optional
+            Time points to plot [s].
+        stages : array_like, optional
+            Stage positions to plot [-].
+        pick_comp : sequence, optional
+            Component indices or names to include [-].
+        **fig_kwargs
+            Matplotlib figure keyword arguments.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Created figure.
+        axis : ndarray
+            Axes containing mole-fraction [-] and temperature [K] profiles.
+        """
 
         if pick_comp is None:
             states_plot = ('x_i', 'y_i', 'temp')
