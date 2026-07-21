@@ -77,6 +77,7 @@ def _import_drying_model(monkeypatch):
 
 
 def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
+    """Darcy velocity uses the clipped relative permeability factor [-]."""
     drying_model = _import_drying_model(monkeypatch)
     dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
     dryer.idx_volatiles = np.array([0, 2])  # component indices [-]
@@ -152,7 +153,7 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
             [0.1, 0.02, 0.96, 0.02, 0.25, 0.75, 301.0, 298.0],
             [1.2, 0.02, 0.96, 0.02, 0.25, 0.75, 302.0, 297.0],
         ]
-    )
+    )  # columns: saturation [-], y_gas [-], x_liq [-], temp_gas/temp_cond [K]
 
     dryer.unit_model(0.0, states.ravel())
 
@@ -162,6 +163,7 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
 
 
 def test_material_balance_uses_single_gas_holdup_factor_for_transfer(monkeypatch):
+    """Gas transfer divides by the gas holdup exactly once."""
     drying_model = _import_drying_model(monkeypatch)
     dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
     dryer.idx_volatiles = np.array([0, 2])  # component indices [-]
@@ -228,7 +230,7 @@ def test_solve_unit_single_node_initial_state_includes_condensed_temperature(
 
     dryer = drying_model.Drying(number_nodes=1, supercrit_names=["nitrogen"])
     dryer.names_states_in = ["temp", "mass_frac"]
-    dryer.idx_supercrit = np.array([1])
+    dryer.idx_supercrit = np.array([1])  # component indices [-]
     dryer.cake_height = 1.0  # [m]
     dryer.Liquid_1 = SimpleNamespace(
         num_species=3,
@@ -253,7 +255,7 @@ def test_solve_unit_single_node_initial_state_includes_condensed_temperature(
         temp=300.0,  # [K]
     )
     dryer.CakePhase = SimpleNamespace(
-        Liquid_1=SimpleNamespace(mass_frac=np.array([0.20, 0.10, 0.70])),
+        Liquid_1=SimpleNamespace(mass_frac=np.array([0.20, 0.10, 0.70])),  # [-]
         Solid_1=solid,
         saturation=np.array([0.55]),  # [-]
         z_external=np.array([0.0, 1.0]),  # [m]
