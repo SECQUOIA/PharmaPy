@@ -652,3 +652,7 @@ class Cake:
         enthalpy = np.dot(frac_mass, [hLiq, hSol])
 
         return enthalpy
+
+
+class MixedPhase:
+    pass
