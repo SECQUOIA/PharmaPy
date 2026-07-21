@@ -213,48 +213,113 @@ class _BaseDistillation:
         return x_dist, x_bot, dist_flow, bot_flow
 
     def calc_num_min(self, x_dist, x_bot):
-        LK_index = self.LK_index
+        """Calculate the Fenske minimum number of equilibrium stages.
+
+        Parameters
+        ----------
+        x_dist : ndarray
+            Distillate mole fractions [-].
+        x_bot : ndarray
+            Bottoms mole fractions [-].
+
+        Returns
+        -------
+        float
+            Minimum number of equilibrium stages [-].
+
+        Notes
+        -----
+        The relative volatility used in the Fenske expression is the geometric
+        mean of the light-key relative volatility at the distillate and bottoms
+        compositions [-].
+        """
+        LK_index = self.LK_index  # [-]
 
         # Fenske equation
-        alpha_top = self.get_alpha(self.pres, x_dist)
-        alpha_bottom = self.get_alpha(self.pres, x_bot)
-        alpha_fenske = (alpha_top[LK_index] * alpha_bottom[LK_index])**0.5
+        alpha_top = self.get_alpha(self.pres, x_dist)  # [-]
+        alpha_bottom = self.get_alpha(self.pres, x_bot)  # [-]
+        alpha_fenske = (alpha_top[LK_index] * alpha_bottom[LK_index])**0.5  # [-]
 
         num_min = np.log(
             self.frac_LK / (1 - self.frac_LK) * (1 - self.frac_HK) / self.frac_HK) / \
-            np.log(alpha_fenske)
+            np.log(alpha_fenske)  # [-]
 
         return num_min
 
     def molokanov_equation(self, reflux, min_reflux, num_min):
-        x_val = (reflux - min_reflux) / (reflux + 1)
+        """Estimate actual stage count with the Gilliland-Molokanov form.
+
+        Parameters
+        ----------
+        reflux : float
+            Actual reflux ratio [-].
+        min_reflux : float
+            Minimum reflux ratio from Underwood's equations [-].
+        num_min : float
+            Minimum number of equilibrium stages [-].
+
+        Returns
+        -------
+        float
+            Estimated actual number of equilibrium stages [-].
+
+        Notes
+        -----
+        The constants ``54.4``, ``117.2``, and ``11`` are dimensionless [-]
+        coefficients from the Gilliland-Molokanov correlation.
+        """
+        x_val = (reflux - min_reflux) / (reflux + 1)  # [-]
 
         y_val = 1 - np.exp((1 + 54.4*x_val) / (11 + 117.2*x_val) *
-                           (x_val - 1)/np.sqrt(x_val))
+                           (x_val - 1)/np.sqrt(x_val))  # [-]
 
-        num_stages = (y_val + num_min) / (1 - y_val)
+        num_stages = (y_val + num_min) / (1 - y_val)  # [-]
 
         return num_stages
 
     def kirkbride_correlation(self, material_bce, num_plates, z_feed=None):
+        """Estimate rectifying and stripping stage counts.
+
+        Parameters
+        ----------
+        material_bce : dict
+            Shortcut material-balance outputs. Mole fractions are [-] and
+            distillate/bottoms flows are [mol/s].
+        num_plates : float
+            Total equilibrium-stage count [-].
+        z_feed : ndarray, optional
+            Feed mole fractions [-]. If omitted, ``self.z_feed`` is used.
+
+        Returns
+        -------
+        num_rect : float
+            Rectifying-section stage count [-].
+        num_strip : float
+            Stripping-section stage count [-].
+
+        Notes
+        -----
+        The exponent ``0.206`` is the dimensionless [-] Kirkbride correlation
+        exponent.
+        """
         if z_feed is None:
-            z_feed = self.z_feed
+            z_feed = self.z_feed  # [-]
 
-        z_lk = z_feed[self.LK_index]
-        z_hk = z_feed[self.HK_index]
+        z_lk = z_feed[self.LK_index]  # [-]
+        z_hk = z_feed[self.HK_index]  # [-]
 
-        x_dist = material_bce['x_dist']
-        x_bot = material_bce['x_bottom']
+        x_dist = material_bce['x_dist']  # [-]
+        x_bot = material_bce['x_bottom']  # [-]
 
-        bot_flow = material_bce['bottom_flow']
-        dist_flow = material_bce['dist_flow']
+        bot_flow = material_bce['bottom_flow']  # [mol/s]
+        dist_flow = material_bce['dist_flow']  # [mol/s]
 
         num_ratio = ((z_hk / z_lk) *
                      (x_bot[self.LK_index] / x_dist[self.HK_index])**2 *
-                     (bot_flow / dist_flow))**0.206
+                     (bot_flow / dist_flow))**0.206  # [-]
 
-        num_strip = num_plates / (num_ratio + 1)
-        num_rect = num_plates - num_strip
+        num_strip = num_plates / (num_ratio + 1)  # [-]
+        num_rect = num_plates - num_strip  # [-]
 
         return np.round(num_rect), np.round(num_strip)
 
@@ -284,6 +349,10 @@ class _BaseDistillation:
         Notes
         -----
         ``self.q_feed`` is the feed liquid fraction on a molar basis [-].
+        The first Underwood equation is
+        ``sum(alpha_i*z_i/(alpha_i - phi)) = 1 - q`` [-]. The relative
+        volatilities are evaluated at the feed composition and bubble point,
+        then normalized to the heavy key.
         This method solves the Underwood equations only; the separate
         ``reflux_to_minimum_ratio`` shortcut-design default chooses an actual
         operating reflux above this minimum.
@@ -380,7 +449,7 @@ class _BaseDistillation:
         num_min = self.calc_num_min(x_dist, x_bot)  # [-]
 
         mat_bce = {'x_dist': x_dist, 'x_bottom': x_bot,
-                   'dist_flow': dist_flowrate, 'bottom_flow': bot_flowrate}  # [-], [mol/s]
+                   'dist_flow': dist_flowrate, 'bottom_flow': bot_flowrate}  # mole fractions [-], flows [mol/s]
 
         # Actual reflux
         if self.reflux is None or self.reflux == 0:
@@ -436,7 +505,7 @@ class _BaseDistillation:
         out = {'material_balances': mat_bce,
                'min_reflux': min_reflux, 'num_min': num_min,
                'reflux': reflux, 'num_plates': num_plates,
-               'num_feed': num_feed}  # [-], [mol/s]
+               'num_feed': num_feed}  # ratios/counts [-]; flows nested as [mol/s]
 
         return out
 
@@ -803,7 +872,45 @@ class DynamicDistillation(_BaseDistillation):
 
         self.nomenclature()
 
-    def column_startup(self, time_shortcut_design):
+    def column_startup(self, time_shortcut_design=None, **kwargs):
+        """Initialize dynamic-column shortcut design values.
+
+        Parameters
+        ----------
+        time_shortcut_design : float, optional
+            Time used to evaluate inlet composition for shortcut design [s].
+        **kwargs
+            Deprecated compatibility keyword ``time_heuristics`` [s].
+
+        Returns
+        -------
+        None
+            The method stores shortcut-design values on the column instance.
+
+        Warns
+        -----
+        DeprecationWarning
+            If the deprecated ``time_heuristics`` keyword is used.
+        """
+        if 'time_heuristics' in kwargs:
+            if time_shortcut_design is not None:
+                raise TypeError(
+                    "Provide only one of 'time_shortcut_design' or "
+                    "'time_heuristics'")
+            warnings.warn(
+                "time_heuristics is deprecated; use time_shortcut_design "
+                "instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            time_shortcut_design = kwargs.pop('time_heuristics')  # [s]
+
+        if kwargs:
+            unexpected = next(iter(kwargs))
+            raise TypeError(
+                "column_startup() got an unexpected keyword argument %r" %
+                unexpected)
+
         result = self.calculate_shortcut_design(time_shortcut_design)
 
         global_mbce = result['material_balances']
