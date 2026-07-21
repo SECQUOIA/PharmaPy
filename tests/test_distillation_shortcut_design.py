@@ -163,8 +163,38 @@ def test_backward_compatible_shortcut_aliases(monkeypatch):
 
 
 def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
+    """Underwood minimum reflux includes feed quality in the root target."""
     module = _import_distillation_module(monkeypatch)
-    column = module.DistillationColumn(
+    alpha = np.array([4.0, 1.0])  # [-], relative volatility to HK
+    z_feed = np.array([0.40, 0.60])  # [-], feed mole fractions
+    x_dist = np.array([0.90, 0.10])  # [-], distillate mole fractions
+    x_bottom = np.array([0.05, 0.95])  # [-], bottoms mole fractions
+    dist_flowrate = 10.0  # [mol/s]
+    bot_flowrate = 15.0  # [mol/s]
+
+    class UnderwoodColumn(module.DistillationColumn):
+        """Underwood numeric double with deterministic relative volatility."""
+
+        def get_alpha(self, pres, x_frac):
+            """Return the fixture relative-volatility vector.
+
+            Parameters
+            ----------
+            pres : float
+                Column pressure [Pa].
+            x_frac : ndarray
+                Feed mole fractions [-].
+
+            Returns
+            -------
+            ndarray
+                Relative volatilities referenced to the heavy key [-].
+            """
+            np.testing.assert_allclose(pres, 101325.0)
+            np.testing.assert_allclose(x_frac, z_feed)
+            return alpha
+
+    column = UnderwoodColumn(
         pres=101325.0,  # [Pa]
         q_feed=0.8,  # [-], molar liquid fraction in the feed
         LK="light",
@@ -174,20 +204,6 @@ def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
     )
     column.LK_index = 0
     column.HK_index = 1
-
-    alpha = np.array([4.0, 1.0])  # [-], relative volatility to HK
-    z_feed = np.array([0.40, 0.60])  # [-], feed mole fractions
-    x_dist = np.array([0.90, 0.10])  # [-], distillate mole fractions
-    x_bottom = np.array([0.05, 0.95])  # [-], bottoms mole fractions
-    dist_flowrate = 10.0  # [mol/s]
-    bot_flowrate = 15.0  # [mol/s]
-
-    def fake_get_alpha(pres, x_frac):
-        assert pres == pytest.approx(101325.0)
-        np.testing.assert_allclose(x_frac, z_feed)
-        return alpha
-
-    monkeypatch.setattr(column, "get_alpha", fake_get_alpha)
 
     min_reflux = column.calc_underwood_min_reflux(
         x_dist=x_dist,
