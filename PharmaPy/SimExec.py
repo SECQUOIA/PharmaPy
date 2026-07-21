@@ -473,7 +473,7 @@ class SimulationExec:
         num_workers = has_solids * (2 + is_batch) + ~has_solids * (1 + is_batch)
 
         hr_week = 40
-        labor_cost = 1.20 * num_workers * 5 * (hr_week * num_weeks) * wage  # USD/yr
+        labor_cost = 1.20 * num_workers * 5 * (hr_week * num_weeks) * wage  # [USD/yr]
 
         labor_array = np.column_stack(
             (has_solids, is_batch, num_workers, labor_cost))
@@ -491,16 +491,40 @@ class SimulationExec:
 
         out = {}
         for phase in phases:
-            di = {}
+            phase_data = {}
             for field in fields:
-                di[field] = getattr(phase, field)
+                phase_data[field] = getattr(phase, field)
 
             name_phase = get_name_object(phase)
-            out[name_phase] = di
+            out[name_phase] = phase_data
 
         return out
 
     def get_raw_inlets(self, uo, basis='mass'):
+        """Collect raw inlet data for a unit operation.
+
+        Parameters
+        ----------
+        uo : object
+            Unit operation whose upstream-free inlet streams are treated as raw
+            materials.
+        basis : {'mass', 'mole'}, optional
+            Accounting basis. Mass totals are reported in [kg] and mass-flow
+            rates in [kg/s]; molar totals are reported in [mol] and molar-flow
+            rates in [mol/s].
+
+        Returns
+        -------
+        dict
+            Raw inlet records keyed first by inlet name and then by stream or
+            phase name. Records include totals, composition fractions [-],
+            temperature [K], pressure [Pa], and volume [m**3].
+
+        Raises
+        ------
+        ValueError
+            If ``basis`` is not ``'mass'`` or ``'mole'``.
+        """
         if basis not in ('mass', 'mole'):
             raise ValueError("basis must be either 'mass' or 'mole'")
 
@@ -531,24 +555,24 @@ class SimulationExec:
             else:
                 streams = [inlet]
 
-            di = {}
+            stream_data = {}
             for stream in streams:
                 fields = ['temp', 'pres']
 
                 name_stream = get_name_object(stream)
 
-                di[name_stream] = {}
+                stream_data[name_stream] = {}
 
                 dens = stream.getDensity(basis=basis)
 
                 if uo.oper_mode == 'Batch':
                     if basis == 'mass':
                         total = stream.mass
-                        di[name_stream] = {'mass': total}
+                        stream_data[name_stream] = {'mass': total}
                         fields += ['mass_frac']
                     elif basis == 'mole':
                         total = stream.moles
-                        di[name_stream] = {'moles': total}
+                        stream_data[name_stream] = {'moles': total}
                         fields += ['mole_frac']
                 elif inlet.DynamicInlet is None:
                     time = uo.result.time[-1] - uo.result.time[0]
@@ -556,14 +580,14 @@ class SimulationExec:
                         flow = stream.mass_flow
                         total = flow*time
 
-                        di[name_stream] = {'mass': total}
+                        stream_data[name_stream] = {'mass': total}
                         fields += ['mass_frac', 'mass_flow', 'vol_flow']
 
                     else:
                         flow = stream.mole_flow
                         total = flow*time
 
-                        di[name_stream] = {'moles': total}
+                        stream_data[name_stream] = {'moles': total}
                         fields += ['mole_frac', 'mole_flow', 'vol_flow']
 
                 else:
@@ -578,7 +602,7 @@ class SimulationExec:
 
                         total = trapezoidal_rule(time, flow)
 
-                        di[name_stream] = {'mass': total}
+                        stream_data[name_stream] = {'mass': total}
 
                         fields += ['mass_frac']
 
@@ -590,21 +614,21 @@ class SimulationExec:
 
                         total = trapezoidal_rule(time, flow)
 
-                        di[name_stream] = {'moles': total}
+                        stream_data[name_stream] = {'moles': total}
                         fields += ['mole_frac']
 
                 vol = total / dens
                 if basis == 'mole':
                     vol *= 1/1000
 
-                di[name_stream]['vol'] = vol
+                stream_data[name_stream]['vol'] = vol
 
             from_inlet = self.get_from_phases(inlet, fields)
 
             for key in from_inlet:
-                di[key].update(from_inlet[key])
+                stream_data[key].update(from_inlet[key])
 
-            out[name] = di
+            out[name] = stream_data
 
         return out
 
@@ -800,7 +824,7 @@ class SimulationExec:
         cost_raw = np.asarray(cost_raw)
 
         # ---------- Heat duties
-        # Energy cost (USD/GJ)
+        # Energy cost [USD/GJ].
         heat_exchange_cost = [14.12, 8.49, 4.77,  # refrigeration
                               0.378,  # water
                               4.54, 4.77, 5.66]  # steam

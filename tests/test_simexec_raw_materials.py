@@ -22,20 +22,20 @@ class _RawPhase:
             density_mass=1000.0, density_mole=40.0):
         self.y_upstream = None
         self.DynamicInlet = None
-        self.mass_flow = mass_flow  # kg/s
-        self.mole_flow = mole_flow  # mol/s
-        self.mass = mass  # kg
-        self.moles = moles  # mol
+        self.mass_flow = mass_flow  # [kg/s]
+        self.mole_flow = mole_flow  # [mol/s]
+        self.mass = mass  # [kg]
+        self.moles = moles  # [mol]
         self.mass_frac = np.asarray(mass_frac, dtype=float)  # [-]
         self.mole_frac = np.asarray(mole_frac, dtype=float)  # [-]
-        self.vol_flow = mass_flow / density_mass  # m**3/s
-        self.vol = mass / density_mass if density_mass else 0.0  # m**3
-        self.temp = 300.0  # K
-        self.pres = 101325.0  # Pa
-        self.mw_av = 50.0  # g/mol
+        self.vol_flow = mass_flow / density_mass  # [m**3/s]
+        self.vol = mass / density_mass if density_mass else 0.0  # [m**3]
+        self.temp = 300.0  # [K]
+        self.pres = 101325.0  # [Pa]
+        self.mw_av = 50.0  # [g/mol]
         self.transferred_from_uo = False
-        self._density_mass = density_mass  # kg/m**3
-        self._density_mole = density_mole  # mol/L
+        self._density_mass = density_mass  # [kg/m**3]
+        self._density_mole = density_mole  # [mol/L]
 
     def getDensity(self, basis="mass", **kwargs):
         if basis == "mass":
@@ -50,14 +50,14 @@ class _MixedRawInlet:
         self.Phases = list(phases)
         self.y_upstream = None
         self.DynamicInlet = None
-        self.mass_flow = sum(phase.mass_flow for phase in phases)  # kg/s
-        self.mole_flow = sum(phase.mole_flow for phase in phases)  # mol/s
+        self.mass_flow = sum(phase.mass_flow for phase in phases)  # [kg/s]
+        self.mole_flow = sum(phase.mole_flow for phase in phases)  # [mol/s]
         self.mass_frac = np.array([0.5, 0.5], dtype=float)  # [-]
         self.mole_frac = np.array([0.5, 0.5], dtype=float)  # [-]
-        self.vol_flow = sum(phase.vol_flow for phase in phases)  # m**3/s
-        self.temp = 300.0  # K
-        self.pres = 101325.0  # Pa
-        self.mw_av = 50.0  # g/mol
+        self.vol_flow = sum(phase.vol_flow for phase in phases)  # [m**3/s]
+        self.temp = 300.0  # [K]
+        self.pres = 101325.0  # [Pa]
+        self.mw_av = 50.0  # [g/mol]
         self.transferred_from_uo = False
 
     def getDensity(self, basis="mass", **kwargs):
@@ -71,7 +71,7 @@ class _UnitOperation:
         self.Inlet = inlet
         self.oper_mode = "Continuous"
         self.result = _Result(time)
-        self.heat_duty = np.array([0.0, 0.0])  # J
+        self.heat_duty = np.array([0.0, 0.0])  # [J]
         self.duty_type = np.array([0, 0], dtype=int)
         self.outputs = {}
 
