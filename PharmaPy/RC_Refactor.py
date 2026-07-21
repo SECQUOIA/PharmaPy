@@ -32,21 +32,25 @@ import string
 import numpy as np
 import os
 from dataclasses import dataclass, field
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Any
+from types import MethodType
 from collections import OrderedDict
+from collections.abc import Callable
 
 
 eps = np.finfo(float).eps
 # gas_ct = 8.314  # J/mol/K
 class TransferMechanism:
-    def add_state_variables(self,collection):
+    def add_state_variables(self,collection,overwrite=False):
         pass
-    def add_output_state_variables(self, outputs):
+    def add_output_state_variables(self, outputs,overwrite=False):
         pass
     def transfer(self,mass_j):
         return mass_j
 class DirectTransfer(TransferMechanism):
     pass
+
+## helpers
 def build_transfer_vectors(paths):
 
     vectors = []
@@ -59,21 +63,53 @@ def build_transfer_vectors(paths):
         vectors.append(vec)
 
     return vectors
+
+def get_phase_from_ref(
+        phases,
+        phase_ref
+    ):
+
+    candidates = []
+
+    for phase in phases:
+
+        phase_type = (
+            phase.__class__.__name__
+            .replace("Phase", "")
+            .lower()
+        )
+
+        if phase_type == phase_ref.phase_type:
+            candidates.append(phase)
+
+    return candidates[phase_ref.index]
+
+## Dataclasses
 @dataclass(frozen=True)
 class PhaseRef:
     phase_type: str
     index: int
+    def __post_init__(self):
+        object.__setattr__(self, "phase_type", str(self.phase_type).lower())
+    def __eq__(self,otherPhaseRef):
+        return self.phase_type==otherPhaseRef.phase_type and self.index==otherPhaseRef.index
 
 @dataclass
 class PhaseConnection:
     #TODO move this to connections when done
-    #active_condition checks the mass_j and temp of the source_phase and must return a boolean
+    #active_condition checks the source sink and temp and must return a boolean
     source_phase: PhaseRef
     sink_phase: PhaseRef
     kinetics:pk.CrystKinetics|pk.RxnKinetics
     species_weights: np.ndarray | None = None
-    active_condition: callable=lambda mass_j,temp:True
-    mechanism:TransferMechanism|callable=DirectTransfer()
+    active_condition: callable=lambda source_phase,sink_phase:True
+    mechanism:TransferMechanism|None=DirectTransfer()
+
+
+@dataclass
+class InletConnection:
+    source_phase: PhaseRef
+    sink_phase: PhaseRef
 
 @dataclass
 class ReactionRegion:
@@ -85,12 +121,37 @@ class StateVariable:
     name: str
     dim: int
     units: str
-    state_type: str = "diff"
+    state_type: str = "post_calc"
     index: Optional[Sequence] = None
     depends_on: tuple = ("time",)
-    stream:str|None=None
-    phase: PhaseRef | None = None
+    stream:Optional[str]=None
+    phase: Optional[PhaseRef] = None
+    compute_history:Callable[[Any,np.ndarray, dict, Any], np.ndarray] | None = None 
+    """
+    Parameters
+    ----------
+    name
+        Name of the state variable.
+    dim
+        Number of dimensions.
+    units
+        Physical units.
+    compute_history : callable, optional
 
+        Function with signature
+
+            compute_history(state_var,
+                            time,
+                            solver_history,
+                            context=None)
+
+        returning the complete history of the state.
+    """
+    def __post_init__(self):
+        if self.compute_history is None:
+            self.compute_history = self.default_history
+        else:
+            self.compute_history = MethodType(self.compute_history, self)
     def as_dict(self):
         """Backward compatibility."""
         out = {
@@ -104,15 +165,60 @@ class StateVariable:
             out["index"] = self.index
 
         return out
+    def update_variable(self,variable_name,new_value):
+        setattr(self,variable_name,new_value)
+
+    def default_history(self,time,solver_history,context=None):
+        try:
+            return solver_history[self.name]
+        except KeyError:
+            raise KeyError(f"'{self.name}' is not present in the solver history.")
+    
 
 @dataclass
 class StateCollection:
     states: dict[str, StateVariable] = field(default_factory=dict)
 
-    def add(self, state: StateVariable):
-        if state.name in self.states:
-            raise ValueError(f"State {state.name} already exists")
-        self.states[state.name] = state
+    def _same_phase(self, existing, new):
+
+        if existing.phase is None and new.phase is None:
+            return True
+
+        if existing.phase is None:
+            return True
+
+        if new.phase is None:
+            return True
+
+        return existing.phase == new.phase
+    def add(self, state: StateVariable,overwrite=False,error_on_conflict=False):
+
+        existing = self.states.get(state.name)
+
+        if existing is None:
+            self.states[state.name] = state
+            return
+
+        same_phase = self._same_phase(existing,state)
+
+        if not same_phase:
+            self.states[state.name] = state
+            return
+
+        same = state == existing
+
+        if same:
+            return
+
+        if overwrite:
+            self.states[state.name] = state
+            return
+
+        if error_on_conflict:
+            raise ValueError(
+                f"State {state.name} already exists "
+                f"for phase {state.phase} and overwrite was False"
+            )
 
     def names(self):
         return list(self.states.keys())
@@ -122,6 +228,42 @@ class StateCollection:
 
     def __contains__(self, name):
         return name in self.states
+    
+    def unpack(self, y):
+
+        states = {}
+
+        start = 0
+
+        for state in self.states.values():
+
+            end = start + state.dim
+
+            value = y[start:end]
+
+            if state.dim == 1:
+                value = value[0]
+
+            states[state.name] = value
+
+            start = end
+
+        return states
+    def pack(self, state_dict):
+
+        values = []
+
+        for state in self.states.values():
+
+            value = np.asarray(
+                state_dict[state.name]
+            ).flatten()
+
+            values.extend(value)
+
+        return np.asarray(values)
+    
+        
 
 @dataclass
 class PhaseStateVariable:
@@ -130,27 +272,27 @@ class PhaseStateVariable:
 
 @dataclass
 class PhaseStateCollection:
-    states: dict[PhaseRef, StateCollection] = field(default_factory=dict)
+    phasestates: dict[PhaseRef, StateCollection] = field(default_factory=dict)
 
     def add(self, phase: PhaseRef, state: StateVariable):
-        if phase not in self.states:
-            self.states[phase] = StateCollection()
+        if phase not in self.phasestates:
+            self.phasestates[phase] = StateCollection()
 
-        self.states[phase].add(state)
+        self.phasestates[phase].add(state)
 
     def __getitem__(self, phase):
-        return self.states[phase]
+        return self.phasestates[phase]
     def __iter__(self):
-        for phase, collection in self.states.items():
+        for phase, collection in self.phasestates.items():
             for state in collection.states.values():
                 yield PhaseStateVariable(phase, state)
 
 class MultiPhaseVessel():
     def __init__(self,target_comp, temp_ref,
-     isothermal, reset_states, controls, h_conv, ht_mode,
+     isothermal, reset_states, controls, h_conv, 
       state_events,population_balance_method,scale,
       adiabatic,jac_type,
-      basis='mass_j'):
+      basis='mass_j',ht_mode="jacket",diam=0,area_base=0):
         """ Construct a Reactive Crystallizer Object
 
     Parameters
@@ -227,12 +369,13 @@ class MultiPhaseVessel():
         self.sensit = None # TODO ZZ may not need a default since plotting removed
         self.jac_states_vals = None # TODO ZZ may not need a default since plotting removed
         self.oper_mode = None
-        self._initialize_states(reset_states)
+        
         
         # Phase init
         self._Phases = None
         self.Slurry = None
-        self.phase_connections = []
+        self._phase_connections = []
+
 
         # Parameters for optimization
         self.params_iter = None
@@ -246,6 +389,8 @@ class MultiPhaseVessel():
         self._Utility = None
         self.ht_mode = ht_mode
         self.h_conv = h_conv
+        self.diam = diam
+        self.area_base = area_base
 
         #Reaction
         self.temp_ref = temp_ref
@@ -257,19 +402,24 @@ class MultiPhaseVessel():
             state_events = []
         self.state_event_list = state_events
 
+        #state initialization, all types
+        self._initialize_states(reset_states)
+        self._Inlet = None
+        # self._balances = []
+
 
     @property
     def Phases(self):
         return self._Phases
     
     @Phases.setter
-    def Phases(self, phases):
+    def Phases(self, phases):#TODO turn into mixedphase
         self._normalize_phases(phases)
         self.__original_phase_dict__ = [copy.deepcopy(phase.__dict__) for phase in self._Phases]
         self._post_set_phases()
         
     def _normalize_phases(self,phases):
-        if isinstance(phases, (list, tuple)): #TODO ZZ _phases should now always be
+        if isinstance(phases, (list, tuple)): 
             self._Phases = phases
         elif isinstance(phases, Slurry):
             self._Phases = phases.Phases
@@ -297,8 +447,7 @@ class MultiPhaseVessel():
             self.vol_phase = self.vol_slurry[0]
         else:
             self.vol_phase = self.vol_slurry
-    # def _post_set_phases(self):
-        # pass
+
     def _basis_units(self):
 
         units = {
@@ -309,13 +458,15 @@ class MultiPhaseVessel():
         }
 
         return units[self.basis]
-    def _material_state_definition(self):
+    
+    def _material_state_definition(self)->StateVariable:
 
         return StateVariable(
             name=self.basis,
             dim=self.num_species,
             units=self._basis_units(),
-            index=self.name_species
+            index=self.name_species,
+            
         )
 
     def _post_set_phases(self):
@@ -328,15 +479,15 @@ class MultiPhaseVessel():
             for tc in self.target_comp:
                 name_bool = [name == tc for name in self.name_species] #TODO check that it selects correctly
                 self.target_ind.append(np.where(name_bool)[0][0])
-        self._initialize_phase_states()
         # # Input defaults TODO delete this if not necessary
         # self.input_defaults = {
         #     'distrib': np.zeros_like(self.Solid_1.distrib)}
         # Species
         self.define_material_states()
+        self.default_diff_states_from_phases()
         self.nomenclature() 
 
-    def _initialize_phase_states(self):
+    def _initialize_state_collections(self):
 
         self.phase_states = PhaseStateCollection()
 
@@ -349,7 +500,91 @@ class MultiPhaseVessel():
         # States exposed as outputs
         self.output_state_collection = StateCollection()
 
+    @property
+    def Inlet(self):
+        return self._Inlet
+
+
+    @Inlet.setter
+    def Inlet(self, inlet):
+
+        self._Inlet = inlet if isinstance(inlet,list) else [inlet]
+
+        self._create_default_inlet_connections()
+    
+    @property
+    def inlet_connections(self):
+        return self._inlet_connections
+
+
+    @inlet_connections.setter
+    def inlet_connections(self, connections):
+
+        if not isinstance(connections, list):
+            raise TypeError(
+                "inlet_connections should be a list"
+            )
+
+        if not all(
+            isinstance(c, InletConnection)
+            for c in connections
+        ):
+            raise TypeError(
+                "inlet_connections must contain "
+                "InletConnection objects"
+            )
+
+        self._inlet_connections = connections
+    def _create_default_inlet_connections(self):
+
+        self._inlet_connections = []
+
+        inlet = getattr(self, "_Inlet", None)
+
+        if inlet is None:
+            return
+
+        inlet_phases = (
+            inlet.Phases
+            if hasattr(inlet, "Phases")
+            else [inlet]
+        )
+
+        type_counter = {}
+
+        for phase in inlet_phases:
+
+            phase_type = (
+                phase.__class__.__name__
+                .replace("Phase", "")
+                .lower()
+            )
+
+            idx = type_counter.get(
+                phase_type,
+                0
+            )
+
+            type_counter[phase_type] = idx + 1
+
+            source_ref = PhaseRef(
+                phase_type,
+                idx
+            )
+
+            sink_ref = PhaseRef(
+                phase_type,
+                idx
+            )
+
+            self._inlet_connections.append(
+                InletConnection(
+                    source_phase=source_ref,
+                    sink_phase=sink_ref
+                )
+            )
     def define_material_states(self):
+
 
         material_state = self._material_state_definition()
 
@@ -364,6 +599,14 @@ class MultiPhaseVessel():
                 phase_ref,
                 copy.deepcopy(material_state)
             )
+    def default_diff_states_from_phases(self):
+        """These are which states from the base phases should be in the solver
+        Either override this function for different defaults for children, or modify phase_states directly after phase defintion for complex behavior"""
+        for phase in self.phase_states:
+            if phase.phase==PhaseRef('liquid',0) and phase.state.name==self.basis:
+                phase.state.update_variable('state_type','diff')
+
+
     def define_stream_states(self):
 
         self.stream_states.add(
@@ -472,6 +715,7 @@ class MultiPhaseVessel():
         if not isinstance(connections,list):
             raise TypeError("phase_connections is expected to be a list")
         self._phase_connections = connections
+        self.nomenclature(overwrite=True)
 
     def _create_default_phase_connections(self):
         ''' Assumes everything occurs between the first liquid and the first solid phases
@@ -493,7 +737,7 @@ class MultiPhaseVessel():
                                              sink_phase=PhaseRef('solid',0),
                                              kinetics=ck,
                                              species_weights=weights,
-                                             active_condition=lambda mass_j,temp:True,
+                                             active_condition=lambda source,sink:True,
                                              mechanism=self.Solid_1.transfer_mechanism
                                              )
                 connections.append(connection)
@@ -503,7 +747,7 @@ class MultiPhaseVessel():
                                              sink_phase=PhaseRef('liquid',0),
                                              kinetics=ck,
                                              species_weights=weights,
-                                             active_condition=lambda mass_j,temp:True,
+                                             active_condition=lambda source,sink:True,
                                              mechanism=DirectTransfer()
 
                                              )
@@ -514,46 +758,25 @@ class MultiPhaseVessel():
     def reaction_regions(self):
         return self._reaction_regions
     @reaction_regions.setter
-    def reaction_regions(self,regions):
-        if not all([isinstance(r,ReactionRegion) for r in regions]):
-            raise TypeError("reaction_regions should all be ReactionRegion objects")
-        if not isinstance(regions,list):
-            raise TypeError("reaction_regions is expected to be a list")
-        self._reaction_regions = regions
-        if len(self.reaction_regions) == 0:
-            self.mask_species = np.ones(
-                self.num_species,
-                dtype=bool
+    def reaction_regions(self, regions):
+
+        if not isinstance(regions, list):
+            raise TypeError(
+                "reaction_regions is expected to be a list"
             )
-            return
 
-        participating_species = set()
+        if not all(
+            isinstance(r, ReactionRegion)
+            for r in regions
+        ):
+            raise TypeError(
+                "reaction_regions should all be "
+                "ReactionRegion objects"
+            )
 
-        for region in self.reaction_regions:
+        self._reaction_regions = regions
 
-            rk = region.kinetics
-
-            if hasattr(rk, "partic_species"):
-                participating_species.update(
-                    rk.partic_species
-                )
-
-        self.mask_species = np.array(
-            [
-                species in participating_species
-                for species in self.name_species
-            ]
-        )
-
-        self.conc_inert = np.zeros(self.num_species)
-
-        for i, active in enumerate(self.mask_species):
-            if not active:
-                self.conc_inert[i] = getattr(
-                    self.Phases[0],
-                    self.basis
-                )[i]
-        
+        self.nomenclature(overwrite=True)
     @property
     def RxnKinetics(self):
         raise AttributeError(
@@ -600,7 +823,41 @@ class MultiPhaseVessel():
     def Utility(self, utility):
         self.u_ht = 1 / (1 / self.h_conv + 1 / utility.h_conv)
         self._Utility = utility
+    
+    
+    def complete_state(self, state, time):
 
+        completed = state.copy()
+
+        required_states = (
+            list(self.solver_state_collection.states.values())
+            + list(self.output_state_collection.states.values())
+        )
+
+        for variable in required_states:
+
+            name = variable.name
+
+            if name in completed:
+                continue
+
+            if name in self.controls:
+                control = self.controls[name]
+
+                completed[name] = control["fun"](
+                    time,
+                    *control["args"],
+                    **control["kwargs"]
+                )
+
+                continue
+
+            default = getattr(self, name, None)
+
+            if default is not None:
+                completed[name] = default
+
+        return completed
     def __getattr__(self, name):
         if name.startswith("Liquid_"):
             idx = int(name.split("_")[1]) - 1
@@ -626,11 +883,12 @@ class MultiPhaseVessel():
 
         self.output_states = StateCollection()
 
-        self.solver_states = []
-
         self.elapsed_time = 0
 
         self.outputs = None
+        self._initialize_state_collections()
+
+        
         #TODO add what's needed to solver_states (temp etc.) based on nomenclature logic here
         
     def reset(self):
@@ -656,13 +914,20 @@ class MultiPhaseVessel():
         # Heat transfer area ##r
         heat_transf = self.u_ht * self.area_ht * (temp - temp_ht)
         return heat_transf
-    def define_solver_states(self):
+    
+    def define_solver_states(self,overwrite=False):
 
         
         for phase_state in self.phase_states:
-
+            if phase_state.state.state_type!='diff': continue
+            state_copy = copy.deepcopy(
+                phase_state.state
+            )
+            state_copy.phase = (
+                phase_state.phase
+            )
             self.solver_state_collection.add(
-                copy.deepcopy(phase_state.state)
+               state_copy,overwrite
             )
         
         if self.adiabatic:
@@ -671,8 +936,9 @@ class MultiPhaseVessel():
                 StateVariable(
                     name="temp",
                     dim=1,
-                    units="K"
-                )
+                    units="K",
+                    state_type='diff'
+                ),overwrite
             )
             
         elif "temp" not in self.controls:
@@ -681,25 +947,35 @@ class MultiPhaseVessel():
                 StateVariable(
                     name="temp",
                     dim=1,
-                    units="K"
-                )
+                    units="K",
+                    state_type='diff'
+                ),overwrite
             )
             self.solver_state_collection.add(
                 StateVariable(
                     name="temp_ht",
                     dim=1,
-                    units="K"
-                )
+                    units="K",
+                    state_type='diff'
+                ),overwrite
             )
-    def define_output_states(self):
+        for connection in self.phase_connections:
+
+            if connection.mechanism is not None:
+                connection.mechanism.add_solver_state_variables(
+                    self.solver_state_collection,overwrite
+                )
+
+    def define_output_states(self,overwrite=False):
 
         self.output_state_collection.add(
             StateVariable(
                 name="q_rxn",
                 dim=1,
                 units="W",
-                state_type="alg"
-            )
+                state_type="alg",
+                compute_history=self.compute_qrxn_history
+            ),overwrite
         )
 
         self.output_state_collection.add(
@@ -707,8 +983,9 @@ class MultiPhaseVessel():
                 name="q_ht",
                 dim=1,
                 units="W",
-                state_type="alg"
-            )
+                state_type="alg",
+                compute_history=self.compute_qht_history
+            ),overwrite
         )
 
         self.output_state_collection.add(
@@ -716,43 +993,33 @@ class MultiPhaseVessel():
                 name="m_flow",
                 dim=1,
                 units="kg/s",
-                state_type="alg"
-            )
+                state_type="alg",
+                compute_history=self.compute_outlet_massflow_history
+            ),overwrite
         )
 
-        self.output_state_collection.add(
-            StateVariable(
-                name="tot_mass_cryst",
-                dim=1,
-                units="kg",
-                state_type="alg"
+        for region in self.reaction_regions:
+
+            region.kinetics.add_output_state_variables(
+                self.output_state_collection,
+                reaction_region=region,
+                overwrite=overwrite
             )
-        )
+
+        
 
         for conn in self.phase_connections:
 
             if conn.mechanism is not None:
                 conn.mechanism.add_output_state_variables(
-                    self.output_state_collection
+                    self.output_state_collection,overwrite
                 )
-    def nomenclature(self):
 
-        self.solver_state_collection = StateCollection()
-        self.output_state_collection = StateCollection()
-        self.define_solver_states()
-        self.define_output_states()
+    def nomenclature(self,overwrite=False):
+
+        self.define_solver_states(overwrite)
+        self.define_output_states(overwrite)
         self.define_stream_states()
-        # ------------------------------
-        # mechanism states
-        # ------------------------------
-
-        for connection in self.phase_connections:
-
-            if connection.mechanism is not None:
-                connection.mechanism.add_solver_state_variables(
-                    self.solver_state_collection
-                )
-
         self.build_states_in_dict()
         self.name_states = self.solver_state_collection.names()
         self.dim_states = self.solver_state_collection.dims()
@@ -777,42 +1044,25 @@ class MultiPhaseVessel():
 
         return inputs
     
-    def get_inputs(self, time,solvent_pass=False):
+    def get_current_inlet(self, time):
 
-        inlet = getattr(self, "Inlet", None)
+        inlet = copy.deepcopy(self.Inlet)
 
-        if inlet is None:
-            return {}
+        for state in self.stream_states.states.values():
 
-        inputs = {}
+            if not hasattr(inlet, state.name):
+                continue
 
-        if hasattr(inlet, "add_stream_state_variables"):
+            value = getattr(inlet, state.name)
 
-            temp_collection = StateCollection()
+            if callable(value):
+                value = value(time)
 
-            inlet.add_stream_state_variables(
-                temp_collection
-            )
+            setattr(inlet, state.name, value)
 
-            for state in temp_collection.states.values():
-
-                value = getattr(inlet, state.name)
-
-                if callable(value):
-                    value = value(time)
-
-                inputs[state.name] = np.asarray(value)
-
-        inputs.update(
-            get_inputs_new(
-                time,
-                inlet,
-                self.states_in_dict,
-                solvent_pass=solvent_pass
-                )
-            )
-        return inputs
-        
+        return inlet
+    def get_phase(self,phase_ref:PhaseRef):
+        return get_phase_from_ref(self.Phases,phase_ref)
     def build_states_in_dict(self):
         #exists for backwards compatiblity
         self.states_in_dict = {}
@@ -848,267 +1098,107 @@ class MultiPhaseVessel():
             self.states_in_dict[stream_name][
                 state.name
             ] = state.dim
-    def method_of_moments(self, mu, conc, temp, params, rho_cry, vol=1):
-        kv = self.Solid_1.kv # shape factor
+    def update_phases_from_state(self, completed_state):
 
-        # Kinetics
-        if self.basis == 'mass_frac':
-            rho_liq = self.Liquid_1.getDensity()
-            comp_kin = conc / rho_liq
-        else:
-            comp_kin = conc
+        for phase_ref, collection in self.phase_states.phasestates.items():
 
-        # Kinetic terms
-        mu_susp = mu*(1e-6)**np.arange(self.num_distr) / vol  # m**n/m**3_susp
-        nucl, growth, dissol = self.CrystKinetics.get_kinetics(comp_kin, temp, kv,
-                                                          mu_susp)
+            phase = self.get_phase(phase_ref)
 
-        growth = growth * self.CrystKinetics.alpha_fn(conc)
+            updates = {}
 
-        ind_mom = np.arange(1, len(mu))
+            for variable in collection.states.values():
 
-        # Model
-        dmu_zero_dt = np.atleast_1d(nucl * vol)
-        dmu_1on_dt = ind_mom * (growth + dissol) * mu[:-1] + \
-            nucl * self.rad**ind_mom
-        dmu_dt = np.concatenate((dmu_zero_dt, dmu_1on_dt))
+                if variable.name in completed_state:
+                    updates[variable.name] = completed_state[variable.name]
 
-        # Material balance in kg_API/s --> G in um, u_2 in um**2 (or m**2/m**3)
-        mass_transf = np.atleast_1d(rho_cry * kv * (
-            3*(growth + dissol)*mu[2] + nucl*self.rad**3)) * (1e-6)**3
+            if updates:
+                phase.updatePhase(**updates)
 
-        return dmu_dt, mass_transf
 
-    def fvm_method(self, csd, moms, conc, temp, params, rho_cry,
-                   output='dstates', vol=1):
+        for connection in self.phase_connections:
 
-        mu_2 = moms[2]
-        #assumes solid1 is target
-        kv_cry = self.Solid_1.kv # volumetric shape factor
+            mechanism = connection.mechanism
 
-        # Kinetic terms
-        if self.basis == 'mass_frac':
-            rho_liq = self.Liquid_1.getDensity()
-            comp_kin = conc / rho_liq
-        else:
-            comp_kin = conc
+            if mechanism is None:
+                continue
 
-        nucl, growth, dissol = self.CrystKinetics.get_kinetics(comp_kin, temp,
-                                                          kv_cry, moms)
+            mechanism.update_state(
+                completed_state
+            )
+    def pack_state_rates(
+            self,
+            material_rates=None,
+            global_rates=None
+        ):
 
-        nucl = nucl * self.scale * vol 
+        if material_rates is None:
+            material_rates = {}
 
-        impurity_factor = self.CrystKinetics.alpha_fn(conc)
-        growth = growth * impurity_factor  # um/s 
-        gparams = self.CrystKinetics.params['growth']
-        
+        if global_rates is None:
+            global_rates = {}
 
-        # dissol = dissol  # um/s
-        boundary_cond = nucl / np.maximum(growth, eps) # num/um or num/um/m**3 initial
-        f_aug = np.concatenate(([boundary_cond]*2, csd, [csd[-1]])) # TODO adjust for reaction or handled by concentration? 
+        packed = []
 
-        # Flux source terms
-        f_diff = np.diff(f_aug)
-        
-        # f_diff[f_diff == 0] = eps  # avoid division by zero for theta
+        for state in self.solver_state_collection.states.values():
 
-        if growth > 0:
-            theta = f_diff[:-1] / (f_diff[1:] + eps*10)
-            # theta = f_diff[:-1] / (f_diff[1:] + eps)
-            # theta = f_diff[:-1] / f_diff[1:]
-        else:
-            theta = f_diff[1:] / (f_diff[:-1] + eps*10)
-            # theta = f_diff[:-1] / (f_diff[1:] + eps)
-            # theta = f_diff[:-1] / f_diff[1:]
-        # Van-Leer limiter
-        limiter = np.zeros_like(f_diff)
-        limiter[:-1] = (np.abs(theta) + theta) / (1 + np.abs(theta))
-        if len(gparams)==3:
-        
-            growth_term = growth * (f_aug[1:-1] + 0.5 * f_diff[1:] * limiter[:-1])
-            dissol_term = dissol * (f_aug[2:] - 0.5 * f_diff[1:] * limiter[1:])
-        else:
-            growth_dependent = growth * (1 + self.x_grid * gparams[4])**gparams[3]
-            dissol_dependent = dissol * (1 + self.x_grid * 0) # TODO add size-dependent dissol params
-            growth_pad = np.append(growth_dependent,growth_dependent[-1])
-            dissol_pad = np.append(dissol_dependent, dissol_dependent[-1])
-            growth_term = growth_pad * (f_aug[1:-1] + 0.5 * f_diff[1:] * limiter[:-1])
-            dissol_term = dissol_pad * (f_aug[2:] - 0.5 * f_diff[1:] * limiter[1:])
-        flux = growth_term + dissol_term
+            if state.state_type != "diff":
+                continue
 
-         
-        if output == 'flux':
-            return flux  # TODO: isn't it necessary to divide by dx?
-        elif output=='dstates':
-            dcsd_dt = -np.diff(flux) / self.dx
+            if state.phase is not None:
 
-            # Material bce in kg_API/s --> G in um, mu_2 in m**2 (or m**2/m**3)
-            # AKA R_v (rho_c*kv*d_mu3_d_t)
-            # Handle stoich in material balance
-            if len(gparams)==3:
-                mass_transfer = rho_cry * kv_cry * (
-                    3*(growth + dissol)*mu_2 + nucl*self.rad**3) * (1e-6)
+                if state.phase not in material_rates:
+                    continue
+
+                packed.extend(np.asarray(material_rates[state.phase]).flatten())
+
             else:
-                r_m = self.x_grid
-                mass_transfer_growth = np.trapezoid(growth_dependent*csd*r_m**2,r_m)
-                mass_transfer_dissol = np.trapezoid(dissol_dependent*csd*r_m**2,r_m)
-                mass_transfer_nucl = nucl*self.rad**3
-                mass_transfer = rho_cry*kv_cry*3*(mass_transfer_dissol+mass_transfer_growth+mass_transfer_nucl)*1e-18
-            return dcsd_dt, np.array(mass_transfer)
-        
+
+                if state.name not in global_rates:
+                    continue
+
+                packed.extend(np.asarray(global_rates[state.name]).flatten())
+
+        return np.asarray(packed)
+    
     def unit_model(self, time, states, params=None, sw=None,
                     mat_bce=False, enrgy_bce=False):
-        # TODO reconcile with RC
-        di_states = unpack_states(states, self.dim_states, self.name_states)
-        if self.basis!='mass_j':
-            di_states['mole_conc'] = di_states['mass_conc']/self.Liquid_1.mw 
-            di_states = complete_dict_states(time, di_states,
-                                            ('temp', 'temp_ht', 'vol'),
-                                            self.Slurry, self.controls) # this is used to update when there are controls
-                # ---------- Physical properties
-            # self.Liquid_1.updatePhase(vol=di_states['vol'])
-            self.Liquid_1.updatePhase(mass_conc=di_states['mass_conc'],vol=di_states['vol'], solvent_pass=True)
-            self.Liquid_1.temp = di_states['temp']
-            self.Solid_1.temp = di_states['temp']
-
-            rhos_susp = self.Slurry.getDensity(temp=di_states['temp'])
-            rhos_susp[0] = sum(di_states['mass_conc'])
-        else:
-            di_states = complete_dict_states(time, di_states,
-                                            ('temp', 'temp_ht'),
-                                            self.Slurry, self.controls) # this is used to update when there are controls
-            # ---------- Physical properties
-            # self.Liquid_1.updatePhase(vol=di_states['vol'])
-            tot_mass = sum(di_states['mass_j'])
-            mass_frac = di_states['mass_j']/tot_mass
-            self.Liquid_1.updatePhase(mass_frac=mass_frac,mass=tot_mass, solvent_pass=True)
-            self.Liquid_1.temp = di_states['temp']
-            self.Solid_1.temp = di_states['temp']
-            # di_states['mole_conc']
-
-            rhos_susp = self.Slurry.getDensity(temp=di_states['temp'])
-            # rhos_susp[0] = sum(di_states['mass_conc'])
-        # Inputs
-        u_input = self.get_inputs(time,solvent_pass=True)
-
-
+        unpacked_state = self.solver_state_collection.unpack(states)
+        completed_state = self.complete_state(unpacked_state,time)
+        self.update_phases_from_state(completed_state)
         
-        name_unit = self.__class__.__name__
-
-        if self.population_balance_method == 'moments':
-            di_states['distrib'] = di_states['mu_n']
-            moms = di_states['mu_n'] * \
-                (1e-6)**np.arange(self.states_di['mu_n']['dim']) ###units
-
-        else:
-            moms = self.Solid_1.getMoments(
-                distrib=di_states['distrib']/self.scale)  # m**n
-
-        di_states['mu_n'] = moms
-        batched = ('batch' in name_unit.lower() and 'semi' not in name_unit.lower())
-        try:
-            self._zero_flow = True if u_input['Inlet']['vol_flow'] == 0 else False
-        except KeyError:
-            self._zero_flow = True if u_input['Inlet']['mass_flow'] == 0 else False
-        if batched: 
-            rhos = rhos_susp
-            h_in = None
-            phis_in = None
-        elif 'semi' in name_unit.lower() and self._zero_flow:
-            rhos = [rhos_susp, np.zeros_like(self.Inlet.getDensity(temp=di_states['temp']))]
-            mom_in = np.zeros(1)
-            phi_in = 1- self.Inlet.Solid_1.kv * mom_in
-            phis_in = np.concatenate([phi_in, 1 - phi_in]) # TODO assumes only two pahses
-
-            h_in = 0
-        elif 'semi' in name_unit.lower() or 'msmpr' in name_unit.lower():
-            inlet_temp = u_input['Inlet']['temp']
-
-            if self.Inlet.__module__ == 'PharmaPy.MixedPhases':
-                rhos_in = self.Inlet.getDensity(temp=di_states['temp'])
-
-                if 'distrib' in u_input['Inlet']:
-
-                    inlet_distr = u_input['Inlet']['distrib']
-
-                    mom_in = self.Inlet.Solid_1.getMoments(distrib=inlet_distr,
-                                                            mom_num=3)
-                elif 'mu_n' in u_input['Inlet']:
-
-                    mom_in = np.array([u_input['Inlet']['mu_n'][3]])
-
-
-                phi_in = 1 - self.Inlet.Solid_1.kv * mom_in
-                phis_in = np.concatenate([phi_in, 1 - phi_in]) # TODO assumes only two pahses
-
-                h_in = self.Inlet.getEnthalpy(inlet_temp, phis_in, rhos_in)
-            else:
-                rho_liq_in = self.Inlet.getDensity(temp=inlet_temp)
-                rho_sol_in = None
-
-                rhos_in = np.array([rho_liq_in, rho_sol_in])
-                h_in = self.Inlet.getEnthalpy(temp=inlet_temp)
-
-                phis_in = [1, 0]
-
-            rhos = [rhos_susp, rhos_in]
+        u_input = self.get_current_inlet(time)
 
         # Balances
-        material_bces, cryst_rate = self.material_balances(
-            time, params, u_input, rhos, **di_states, phi_in=phis_in)
+        material_rates, material_contributions = self.material_balances(
+            time,completed_state, params, u_input)
         
 
         if mat_bce:
-            return material_bces
-        elif enrgy_bce:
-            energy_bce = self.energy_balances(
-                time, params, cryst_rate, u_input, rhos, **di_states,
-                h_in=h_in, heat_prof=True)
+            return self.pack_state_rates(material_rates)
+        global_rates = {}
+        energy_rates = self.energy_balances(
+                time,completed_state, params, u_input, material_contributions)
+        global_rates.update(energy_rates)
+        if "temp_ht" in self.solver_state_collection:
+            utility_rates = self.utility_energy_balance(time,completed_state,params,u_input)
 
-            return energy_bce
-        #equal here with ~R386
-        else:
+        global_rates.update(utility_rates)
+        if enrgy_bce:
+            return self.pack_state_rates(global_rates=global_rates)
 
-            if 'temp' in self.name_states:
-                energy_bce = self.energy_balances(
-                    time, params, cryst_rate, u_input, rhos, **di_states,
-                    h_in=h_in)
+        balances = self.pack_state_rates(material_rates=material_rates,
+                                         global_rates=global_rates)
 
-                balances = np.append(material_bces, energy_bce)
-            else:
-                balances = material_bces
+        self.derivatives = balances
+        return balances
 
-            self.derivatives = balances
-
-            
-            return balances
-        # TODO jsut fix multiple states if needed else good
     
 
-    def unit_jacobians(self, time, states, sens, params, fy, v_vector):
-        if sens is not None:
-            jac_states = self.jac_states_fun(time, states, params)
-            jac_params = self.jac_params_fun(time, states, params)
-
-            dsens_dt = np.dot(jac_states, sens) + jac_params
-
-            if not isinstance(dsens_dt, np.ndarray):
-                dsens_dt = dsens_dt._value
-
-            return dsens_dt
-        elif v_vector is not None:
-            _, jac_v = self.jac_states_fun(time, states, params)(v_vector)
-
-            return jac_v
-        else:
-            jac_states = self.jac_states_fun(time, states, params)
-
-            if not isinstance(jac_states, np.ndarray):
-                jac_states = jac_states._value
-
-            return jac_states
+    def unit_jacobian(self, t, y):
+        return self.jac_states_fun(t, y)
 
     def jac_states_numerical(self, time, states, params, return_only=True):
+        #TODO check if necessary
         if return_only:
             return self.jac_states_vals
         else:
@@ -1123,6 +1213,7 @@ class MultiPhaseVessel():
             return jac_states
 
     def jac_params_numerical(self, time, states, params):
+        #TODO check if necessary
         def wrap_params(theta): return self.unit_model(time, states, theta)
 
         abstol = self.sundials_opt['atol']
@@ -1159,8 +1250,9 @@ class MultiPhaseVessel():
         self._compiled=True
         self._compiled_val_sens= eval_sens
         self._compiled_jac_v_prod = jac_v_prod
-        states_init, merged_params = self._build_initial_state_and_params()
-
+        self.reset()
+        states_init = self.solver_state_collection.pack(self.complete_state({}, 0))#TODO check that it is correct
+        merged_params = None
         problem = self.set_ode_problem(
             eval_sens,
             states_init,
@@ -1209,270 +1301,52 @@ class MultiPhaseVessel():
 
     def set_ode_problem(self, eval_sens, states_init, params_mergd,
                         jacv_prod):
-        if eval_sens:
-            problem = Explicit_Problem(self.unit_model, states_init,
-                                       t0=self.elapsed_time,
-                                       p0=params_mergd)
+        #eval_sens is populated by sim_exec and so must be accepted in order, but is no longer useful to this model
+        if self.state_event_list is None:
+            def model(time, states, params=params_mergd):
+                return self.unit_model(time, states, params)
 
-            if self.jac_type == 'finite_diff':
-                self.jac_states_fn = self.jac_states_numerical
-                self.jac_params_fn = self.jac_params_numerical
-
-                problem.jac = self.jac_states_fn
-                problem.rhs_sens = self.rhs_sensitivity
-
-            elif self.jac_type == 'AD':
-                self.jac_states_fn = self.jac_states_ad
-                self.jac_params_fn = self.jac_params_ad
-
-                problem.jac = self.jac_states_fn
-                problem.rhs_sens = self.rhs_sensitivity
-
-            elif self.jac_type == 'analytical':
-                self.jac_states_fn = self.jac_states
-                self.jac_params_fn = self.jac_params
-
-                problem.jac = self.jac_states_fn
-                problem.rhs_sens = self.rhs_sensitivity
-
-            elif self.jac_type is None:
-                pass
-            else:
-                raise NameError("Bad string value for the 'jac_type' argument")
-
+            problem = Explicit_Problem(model, states_init,
+                                        t0=self.elapsed_time)
         else:
-            if self.state_event_list is None:
-                def model(time, states, params=params_mergd):
-                    return self.unit_model(time, states, params)
+            sw0 = [True] * len(self.state_event_list) #switches, currently unused in unit_model
+            def model(time, states, sw=None):#equivalent to fobj in reactor
+                return self.unit_model(time, states, params_mergd, sw)
 
-                problem = Explicit_Problem(model, states_init,
-                                           t0=self.elapsed_time)
-            else:
-                sw0 = [True] * len(self.state_event_list) #switches, currently unused in unit_model
-                def model(time, states, sw=None):#equivalent to fobj in reactor
-                    return self.unit_model(time, states, params_mergd, sw)
+            problem = Explicit_Problem(model, states_init,
+                                        t0=self.elapsed_time, sw0=sw0)
 
-                problem = Explicit_Problem(model, states_init,
-                                           t0=self.elapsed_time, sw0=sw0)
+        # ----- Jacobian callables
+        if self.population_balance_method == 'moments':
+            # w.r.t. states
+            # problem.jac = lambda time, states: \
+            #     self.unit_jacobians(time, states, None, params_mergd,
+            #                         None, None)
 
-            # ----- Jacobian callables
-            if self.population_balance_method == 'moments':
-                # w.r.t. states
-                # problem.jac = lambda time, states: \
-                #     self.unit_jacobians(time, states, None, params_mergd,
-                #                         None, None)
+            pass
 
-                pass
-
-            elif self.population_balance_method == 'fvm':
-                # J*v product (AD, slower than the one used by SUNDIALS)
-                if jacv_prod:
-                    problem.jacv = lambda time, states, fy, v: \
-                        self.unit_jacobians(time, states, None, params_mergd,
-                                            fy, v)
+        elif self.population_balance_method == 'fvm':
+            # J*v product (AD, slower than the one used by SUNDIALS)
+            if jacv_prod:
+                problem.jacv = lambda time, states, fy, v: \
+                    self.unit_jacobians(time, states, None, params_mergd,
+                                        fy, v)
 
         return problem
     
     def _build_initial_state_and_params(self):
-        self.set_names()
-
-        if self.population_balance_method == 'moments':
-            pass  # TODO: MSMPR MoM should be addressed?
-        else:
-            x_distr = getattr(self.Solid_1, 'x_distrib', [])
-            self.states_in_dict['Inlet']['distrib'] = len(x_distr)
-
-        self.CrystKinetics.target_idx = self.target_ind
-
-        # ---------- Solid phase states
-        if 'vol' in self.solver_states or 'mass_j' in self.solver_states:
-            if self.population_balance_method == 'moments':
-                init_solid = self.Solid_1.moments
-                # exp = np.arange(0, self.Solid_1.num_mom) # TODO: problematic line for seeded crystallization.
-                # init_solid = init_solid * (1e6)**exp
-
-            elif self.population_balance_method == '1D-FVM':
-                x_grid = self.Solid_1.x_distrib
-                init_solid = self.Solid_1.distrib * self.scale
-
-        else:
-            if self.population_balance_method == 'moments':
-                init_solid = self.Slurry.moments
-                # exp = np.arange(0, self.Solid_1.num_mom) # TODO
-                # init_solid = init_solid * (1e6)**exp
-
-            elif self.population_balance_method == '1D-FVM':
-                x_grid = self.Slurry.x_distrib
-                init_solid = self.Slurry.distrib * self.scale
-
-        self.dx = self.Slurry.dx
-        self.x_grid = self.Slurry.x_distrib
-
-        # ---------- Liquid phase states
-        init_liquid = self.Liquid_1.mass_conc.copy()
-        if self.basis == 'mass_j':
-            init_liquid*= self.Liquid_1.vol
-
-        self.num_species = len(init_liquid)
-
-        self.len_states = [self.num_distr, self.num_species]  # TODO: not neces
-
-        if 'vol' in self.solver_states:  # Batch or semibatch
-            vol_init = self.Slurry.getTotalVol()
-            init_susp = np.append(init_liquid, vol_init)
-
-            self.len_states.append(1)
-        else:
-            init_susp = init_liquid
-
-        if self.reset_states:
-            self.reset()
-
-        # ---------- Read time
-        # if runtime is not None:
-        #     final_time = runtime + self.elapsed_time
-
-        # if time_grid is not None:
-        #     final_time = time_grid[-1]
-
-        
-
-        states_init = np.append(init_solid, init_susp) # solid=fvm bins/moments susp = liquid concentrations/volume balance
-
-        # if self.vol_tank is None:
-        #     if isinstance(self, ReactiveSemibatchCrystallizer):
-        #         time_vec = np.linspace(self.elapsed_time, final_time)
-        #         vol_flow = self.get_inputs(time_vec)['Inlet']['vol_flow']
-
-        #         self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
-
-        #     else:
-        #         self.vol_tank = self.Slurry.vol
-
-        self.diam_tank = (4/np.pi * self.vol_tank)**(1/3) # TODO ensure redefinition is fine Z
-        self.area_base = np.pi/4 * self.diam_tank**2
-        self.vol_tank *= 1 / self.vol_offset
-
-        if 'temp_ht' in self.solver_states:
-
-            if len(self.profiles_runs) == 0:
-                temp_ht = self.Utility.evaluate_inputs(0)['temp_in']
-            else:
-                temp_ht = self.profiles_runs[-1]['temp_ht'][-1]
-
-            states_init = np.concatenate(
-                (states_init, [self.Liquid_1.temp, temp_ht]))
-
-            self.len_states += [1, 1]
-        elif 'temp' in self.solver_states:
-            states_init = np.append(states_init, self.Liquid_1.temp)
-            self.len_states += [1]
-
-        merged_params = self.CrystKinetics.concat_params()[self.mask_params_cryst]
-        return states_init, merged_params
+        self.reset()
+        return self.solver_state_collection.pack(
+            self.complete_state({}, 0)
+        )
     
-    def _rebase_initial(self, state_vec):
-        """
-        Rebase all internal phase objects to match a provided state vector.
-        This allows restarting simulations consistently from saved states.
-        """
-
-        idx = 0
-
-        # --------------------------------------------------
-        # 1) Solid distribution / moments
-        # --------------------------------------------------
-        nd = self.num_distr
-        solid_part = state_vec[idx:idx + nd]
-        idx += nd
-
-        if self.population_balance_method == 'moments':
-            # Directly update moments
-            if 'vol' in self.solver_states or 'mass_j' in self.solver_states:
-                self.Solid_1.moments = solid_part.copy()
-            else:
-                self.Slurry.moments = solid_part.copy()
-
-        elif self.population_balance_method == '1D-FVM':
-            # Unscale if needed
-            solid_part = solid_part / self.scale
-
-            if 'vol' in self.solver_states or 'mass_j' in self.solver_states:
-                self.Solid_1.distrib = solid_part.copy()
-            else:
-                self.Slurry.distrib = solid_part.copy()
-
-        # --------------------------------------------------
-        # 2) Liquid species
-        # --------------------------------------------------
-        ns = self.num_species
-        liquid_part = state_vec[idx:idx + ns]
-        idx += ns
-
-        if self.basis == 'mass_j':
-            # state contains total mass of each species
-            total_mass = liquid_part.sum()
-            mass_frac = liquid_part / total_mass
-
-            self.Liquid_1.updatePhase(
-                mass_frac=mass_frac,
-                mass=total_mass,
-                solvent_pass=True
-            )
-        else:
-            # state contains concentration
-            self.Liquid_1.mass_conc = liquid_part.copy()
-
-        # --------------------------------------------------
-        # 3) Volume state (if dynamic)
-        # --------------------------------------------------
-        if 'vol' in self.solver_states:
-            vol_state = state_vec[idx]
-            idx += 1
-
-            self.vol_tank = vol_state * self.vol_offset
-            self.Liquid_1.vol = vol_state
-
-            # Update geometry
-            self.diam_tank = (4 / np.pi * self.vol_tank)**(1/3)
-            self.area_base = np.pi / 4 * self.diam_tank**2
-
-        # --------------------------------------------------
-        # 4) Temperature states
-        # --------------------------------------------------
-        if 'temp_ht' in self.solver_states:
-            temp_liq = state_vec[idx]
-            temp_ht = state_vec[idx + 1]
-            idx += 2
-
-            self.Liquid_1.temp = temp_liq
-            # do NOT overwrite Utility internals permanently
-            # only store current value
-            self._temp_ht_current = temp_ht
-
-        elif 'temp' in self.solver_states:
-            temp_liq = state_vec[idx]
-            idx += 1
-            self.Liquid_1.temp = temp_liq
-
-        # --------------------------------------------------
-        # 5) Ensure slurry references are consistent
-        # --------------------------------------------------
-        self.dx = self.Slurry.dx
-        self.x_grid = self.Slurry.x_distrib
-
-
     def _fast_solve(self, runtime, time_grid,
-                eval_sens, jac_v_prod,
-                verbose, test,
-                sundials_opts, any_event):
+                  verbose=True, test=False,
+                   sundials_opts=None, any_event=True):
 
         
-        
-        states_init, merged_params = self._build_initial_state_and_params()
-
-        if self._compiled_val_sens:
-            self._problem.p = merged_params
+        self.reset()
+        states_init= self.solver_state_collection.pack(self.complete_state({}, 0))
 
         # update time
         if runtime is not None:
@@ -1526,7 +1400,6 @@ class MultiPhaseVessel():
             if jac_v_prod != self._compiled_jac_v_prod:
                 raise RuntimeError("Must recompile integrator when jac_v_prod changes")
             return self._fast_solve(runtime, time_grid,
-                                    eval_sens, jac_v_prod,
                                     verbose, test,
                                     sundials_opts, any_event)
         # merged_params = np.append(merged_params,self.RxnKinetics.concat_params()[self.mask_params_rxn])
@@ -1540,56 +1413,748 @@ class MultiPhaseVessel():
         self.derivatives = self._problem.rhs(self.elapsed_time, states_init,
                                        merged_params)
 
-        if self.vol_tank is None:
-            self.vol_tank = self.Slurry.vol      
-
-        if self.vol_tank is None:
-            if isinstance(self, ReactiveSemibatchCrystallizer):
-                time_vec = np.linspace(self.elapsed_time, final_time)
-                vol_flow = self.get_inputs(time_vec)['Inlet']['vol_flow']
-
-                self.vol_tank = trapezoidal_rule(time_vec, vol_flow)
-
-            else:
-                self.vol_tank = self.Slurry.vol
-
         self.sundials_opt = self._solver.get_options()
         if runtime is not None:
             final_time = runtime + self.elapsed_time
         if time_grid is not None:
             final_time = time_grid[-1]
-        
-
-
        
         time, states= self._solver.simulate(final_time, ncp_list=time_grid)
         
         self.retrieve_results(time, states)
 
-        # ---------- Organize sensitivity
-        if eval_sens:
-            sensit = []
-            for elem in self._solver.p_sol:
-                sens = np.array(elem)
-                sens[0] = 0  # correct NaN's at t = 0 for sensitivities
-                sensit.append(sens)
-
-            self.sensit = sensit
-
-            return time, states, sensit
-        else:
-            return time, states
+        return time, states
 
     def flatten_states(self):
         out = flatten_states(self.profiles_runs)
 
         return out
+    def initialize_phase_rate_dictionary(self):
+        material_rates = {}
+
+        for phase_ref, phase_states in self.phase_states.phasestates.items():
+
+            material_state = next(
+                s for s in phase_states.states.values()
+                if s.name == self.basis
+            )
+
+            material_rates[phase_ref] = np.zeros(material_state.dim)
+        return material_rates
     
+    def material_balances(self,time,completed_state, params, u_input):
+
         
+        contributions, aux = self.limit_material_rates(
+            time,
+            completed_state,
+            params,
+            u_input
+        )
 
+        rates = self.sum_material_contributions(
+            contributions
+        )
+
+        return rates, aux
+
+    def check_negative_inventory(
+            self,
+            rates,
+            completed_state):
+
+        violations = {}
+
+        for phase_ref, rate in rates.items():
+
+            phase = self.get_phase(
+                phase_ref
+            )
+
+            inventory = getattr(
+                phase,
+                self.basis
+            )
+
+            mask = (inventory + rate < -eps)
+
+            if np.any(mask):
+
+                violations[phase_ref] = mask
+
+        return violations
+    def calculate_scale(
+            self,
+            violations,
+            contributions):
+
+        scales = {}
+
+        scalable_terms = (
+            "reaction",
+            "transfer"
+        )
+
+        for phase_ref, mask in violations.items():
+
+            phase = self.get_phase(
+                phase_ref
+            )
+
+            inventory = getattr(
+                phase,
+                self.basis
+            )
+
+            total_consumption = np.zeros_like(
+                inventory
+            )
+
+            for term in scalable_terms:
+
+                total_consumption += np.minimum(
+                    contributions[term][phase_ref],
+                    0
+                )
+
+            scale = np.ones_like(
+                inventory
+            )
+
+            violating_species = np.where(mask)[0]
+
+            for ind in violating_species:
+
+                consumed = -total_consumption[ind]
+
+                if consumed <= 0:
+                    continue
+
+                scale[ind] = min(
+                    1.0,
+                    inventory[ind] / (consumed+eps)
+                )
+
+            scales[phase_ref] = scale
+
+        return scales
+    def scale_phase_inventory(
+            self,
+            scales):
+
+        for phase_ref, scale_vector in scales.items():
+
+            phase = self.get_phase(
+                phase_ref
+            )
+
+            new_mass = (
+                phase.mass_j
+                * scale_vector
+            )
+
+            phase.updatePhase(
+                mass_j=new_mass
+            )
+                
     
+    
+    def limit_material_rates(
+            self,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+        """Soft constraint to ensure mass conservation is not violated between the generation and phase transference. If violation is detected, the  
+        mass movement is scaled back by scaling the effective mass available until no violations are detected. The original mass is then restored from completed_state"""
+        
+        for iteration in range(5):
+            contributions,aux= self.calculate_material_contributions(time,completed_state, params, u_input)
 
-class ReactiveMSMPR(_BaseReactiveCryst):
+            rates = self.sum_material_contributions(contributions)
+
+            violations = self.check_negative_inventory(rates,completed_state)
+
+            if len(violations) == 0:
+                self.update_phases_from_state(completed_state)
+                return contributions, aux
+            scales = self.calculate_scale(violations,contributions)
+
+            self.scale_phase_inventory(scales)
+        self.update_phases_from_state(completed_state)
+        raise RuntimeError(
+            "Material balance limiter failed "
+            "to converge after 5 iterations."
+        )
+
+    def sum_material_contributions(
+        self,
+        contributions):
+
+        rates = self.initialize_phase_rate_dictionary()
+
+        for contribution in contributions.values():
+
+            for phase_ref, rate in contribution.items():
+
+                rates[phase_ref] += rate
+
+        return rates
+    def calculate_material_contributions(self,time,completed_state, params, u_input):
+
+        contributions = {
+            "inlet": self.initialize_phase_rate_dictionary(),
+            "reaction": self.initialize_phase_rate_dictionary(),
+            "transfer": self.initialize_phase_rate_dictionary(),
+            "outlet": self.initialize_phase_rate_dictionary()
+        }
+        aux = {
+            "inlet": [],
+            "reaction": [],
+            "transfer": [],
+            "outlet": []
+        }
+
+        self.add_inlet_terms(
+            contributions["inlet"],
+            aux['inlet'],
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        self.add_reaction_terms(
+            contributions["reaction"],
+            aux['reaction'],
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        self.add_transfer_terms(
+            contributions["transfer"],
+            aux['transfer'],
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        self.add_outlet_terms(
+            contributions["outlet"],
+            aux['outlet'],
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        return contributions, aux
+    
+    def add_inlet_terms(
+            self,
+            rates:dict,
+            aux:list,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+
+        if u_input is None:
+            return
+
+        inlet_phases = (
+            u_input.Phases
+            if hasattr(u_input, "Phases")
+            else [u_input]
+        )
+
+        for connection in self.inlet_connections:
+            inlet_phase =get_phase_from_ref(
+                inlet_phases,
+                connection.source_phase
+            )
+            rates[connection.sink_phase] += inlet_phase.material_flow(self.basis)
+            aux.append({
+                "connection": connection,
+                "phase": inlet_phase,
+                "flow": inlet_phase.material_flow(self.basis),
+                'note':'flow is in basis units'
+                })
+
+    def add_outlet_terms(
+            self,
+            rates,
+            aux:list,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+
+        if not hasattr(self,"Outlet") or self.Outlet is None:
+            return
+
+        for phase_ref in rates:
+
+            phase = self.get_phase(phase_ref)
+
+            rates[phase_ref] -= (phase.material_flow(self.basis))
+            aux.append({
+                "phase_ref": phase_ref,
+                "phase": phase,
+                "flow": phase.material_flow(self.basis),
+                'note':'flow is in basis units'
+                })
+
+    def add_reaction_terms(
+            self,
+            rates,
+            aux,
+            time,
+            completed_state,
+            params,
+            u_input,
+            molarity_molPerLiter=True
+        ):
+
+        # temp = completed_state["temp"]
+        mole_adjust = 1000 if molarity_molPerLiter else 1
+
+        for region in self.reaction_regions:
+
+            phase = self.get_phase(
+                region.phase
+            )
+            temp = phase.temp
+
+            rk = region.kinetics
+
+            mask = np.array([
+                species in rk.partic_species
+                for species in self.name_species
+            ])
+
+            conc = phase.mole_conc
+            if rk.keq_params is not None:
+
+                deltah_rxn = phase.getHeatOfRxn((
+                        rk.stoich_matrix,
+                        temp,
+                        mask,
+                        rk.delta_hrxn,
+                        rk.tref_hrxn
+                    ))
+
+            else:
+
+                deltah_rxn = None
+            #if deltaH_rxn is NOne, then the get_rxn_rates does not evaluate Keq. 
+            # Because that determines how much material changes, 
+            # this is a material question rather than an energy balance question 
+            # even though deltaH is normally an energy balance concern
+            reaction_rates = rk.get_rxn_rates(
+                conc,
+                temp,
+                overall_rates=False,
+                delta_hrxn=deltah_rxn
+            )
+            
+
+            species_rates = rk.get_rxn_rates(
+                conc[mask],
+                temp,
+                overall_rates=True
+            )
+
+            species_massPerVol_rates = np.zeros(self.num_species)
+            species_massPerVol_rates[mask] = species_rates
+            species_massPerVol_rates *= phase.mw
+            species_mass_rates = species_massPerVol_rates* phase.vol*mole_adjust
+
+            aux.append({
+                "region": region,
+                "phase": phase,
+                "rxn_rates": reaction_rates,
+                'species_molar_rates':species_rates,
+                "species_massPerVol_rates":species_massPerVol_rates,
+                "species_mass_rates":species_mass_rates
+                }) 
+
+            rates[region.phase] += species_mass_rates
+
+    def add_transfer_terms(
+            self,
+            rates,
+            aux:list,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+
+        # temp = completed_state["temp"]
+
+        for connection in self.phase_connections:
+
+            source = self.get_phase(connection.source_phase)
+
+            sink = self.get_phase(connection.sink_phase)
+
+            if not connection.active_condition(source,sink):
+                continue
+
+            transfer_rate = connection.mechanism.get_transfer_rate(
+                source_phase=source,
+                sink_phase=sink,
+                connection=connection,
+                completed_state=completed_state,
+                time=time,
+                params=params
+            )
+
+            if connection.species_weights is None:
+
+                species_rate = (transfer_rate* source.mass_frac)
+
+            else:
+
+                species_rate = (transfer_rate* np.asarray(connection.species_weights))
+
+            rates[connection.source_phase] -= species_rate
+
+            rates[connection.sink_phase] += species_rate
+            aux.append({
+                "connection": connection,
+                "source": source,
+                "sink": sink,
+                "transfer_rate": transfer_rate,
+                "species_rate": species_rate,
+                'note':'rates are in mass'
+            })
+    
+    def energy_balances(
+            self,
+            time,
+            completed_state,
+            params,
+            u_input,
+            aux
+        ):
+
+        contributions = {
+            "inlet": 0,
+            "reaction": 0,
+            "transfer": 0,
+            "outlet": 0,
+            "utility": 0
+        }
+
+        self.add_inlet_energy_terms(
+            contributions,
+            aux["inlet"],
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        self.add_reaction_energy_terms(
+            contributions,
+            aux["reaction"],
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        self.add_transfer_energy_terms(
+            contributions,
+            aux["transfer"],
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        self.add_outlet_energy_terms(
+            contributions,
+            aux["outlet"],
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        self.add_utility_energy_terms(
+            contributions,
+            time,
+            completed_state,
+            params,
+            u_input
+        )
+
+        qdot = sum(
+            contributions.values()
+        )
+
+        heat_capacity = (
+            self.Phases.getCP()
+        )
+        dtemp_dt = qdot / heat_capacity
+        return {"temp": dtemp_dt}
+
+    def add_inlet_energy_terms(
+            self,
+            contributions,
+            aux,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+
+        for inlet in aux:
+
+            phase = inlet["phase"]
+
+            h_in = phase.getEnthalpy(
+                phase.temp,
+                temp_ref=self.temp_ref,
+                total_h=True,
+                basis='mass'
+            )  # J/kg mixture
+
+            contributions["inlet"] += (
+                inlet["flow"] * h_in
+            )
+    def add_transfer_energy_terms(
+            contributions,
+            aux,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+        
+        for transfer in aux:
+            connection = transfer['connection']
+            contributions['transfer'] += connection.mechanism.get_heat_generation(transfer_rate=transfer['transfer_rate'],
+                                                             source=transfer['source'],
+                                                             sink=transfer['sink'],
+                                                             connection=connection,
+                                                             completed_state=completed_state,
+                                                             time=time)
+    def add_reaction_energy_terms(self,
+                                  contributions,
+                                  aux,
+                                  time,
+                                  completed_state,
+                                  params,
+                                  u_input,
+                                  molarity_molPerLiter=True
+                                ):
+        mole_adjust = 1000 if molarity_molPerLiter else 1
+        for rxn in aux:
+            phase = rxn['phase']
+            temp = phase.temp
+            rk = rxn['region'].kinetics
+            mask = np.array([
+                species in rk.partic_species
+                for species in self.name_species
+            ])
+
+            deltah_rxn = (
+                phase.getHeatOfRxn(
+                    rk.stoich_matrix,
+                    temp,
+                    mask,
+                    rk.delta_hrxn,
+                    rk.tref_hrxn
+                ))
+            contributions["reaction"] += -(deltah_rxn * rxn["rxn_rates"]).sum()* phase.vol *mole_adjust # molarity here is mol/L, but J/kg is expected for internal consistency
+
+    def add_outlet_energy_terms(
+            self,
+            contributions,
+            aux,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+
+        for outlet in aux:
+
+            phase = outlet["phase"]
+            temp= phase.temp
+            h_out = phase.getEnthalpy(
+                temp,
+                temp_ref=self.temp_ref,
+                mass_frac=phase.mass_frac,
+                total_h=True,
+                basis='mass'
+            )
+
+            contributions["outlet"] -= (
+                outlet["flow"] * h_out
+            )
+    def get_heat_transfer_temperature(self):
+        """The temperature to use to determine heat transfer from the vessel. The default assumption is to use the temperature of the first liquid phase"""
+        return self.get_phase(PhaseRef("liquid", 0)).temp
+    
+    def add_utility_energy_terms(
+            self,
+            contributions,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+
+        if self.Utility is None or self.isothermal:
+            return
+
+        temp = self.get_heat_transfer_temperature()
+        temp_ht = completed_state["temp_ht"]
+
+        qdot = self.get_heat_transfer_rate(
+            temp,
+            temp_ht
+        )
+
+        contributions["utility"] -= qdot
+    def get_heat_transfer_rate(
+            self,
+            temp,
+            temp_ht
+        ):
+
+        if self.ht_mode == "coil":
+            raise NotImplementedError
+
+        area = self.get_heat_transfer_area()
+
+        return (
+            self.u_ht
+            * area
+            * (temp - temp_ht)
+        )
+    def get_heat_transfer_area(self):
+
+        liquid = self.get_phase(
+            PhaseRef("liquid",0)
+        )
+
+        return (
+            4 * liquid.vol / self.diam
+            + self.area_base
+        )
+    def utility_energy_balance(
+            self,
+            time,
+            completed_state,
+            params,
+            u_input
+        ):
+
+        if (self.Utility is None
+            or "temp_ht" not in completed_state):
+            return {}
+
+        temp = self.get_heat_transfer_temperature()
+        temp_ht = completed_state["temp_ht"]
+
+        ht_controls = self.Utility.get_inputs(time)
+
+        flow_ht = ht_controls["vol_flow"]
+        temp_in = ht_controls["temp_in"]
+
+        cp = self.Utility.cp
+        rho = self.Utility.rho
+
+        if "vol" in completed_state:
+            vol_ht = self.vol_ht
+        else:
+            liquid = self.get_phase(PhaseRef("liquid",0))
+            vol_ht = liquid.vol * 0.15
+
+        qdot = self.get_heat_transfer_rate(temp,temp_ht)
+        dtemp_ht_dt = (flow_ht / vol_ht
+            * (temp_in - temp_ht)+
+            qdot/(rho * cp * vol_ht))
+        return {"temp_ht":dtemp_ht_dt}
+    def build_outlet_stream(self, time):
+        #TODO when multiple outlets needed, do for outlet in self.Outlets
+        if self.Outlet is None:
+            return
+
+        outlet = copy.deepcopy(self.Outlet)
+
+        outlet.Phases = tuple(
+            copy.deepcopy(p)
+            for p in self.Phases
+        )
+
+        self.Outlet = outlet
+    def build_output_history(
+            self,
+            time,
+            solver_history
+        ):
+
+        history = {}
+
+        for state in self.output_state_collection.states.values():
+
+            history[state.name] = state.compute_history(
+                time,
+                solver_history,
+                self
+            )
+
+        return history
+    def build_solver_history(
+            self,
+            time,
+            solver_states
+        ):
+
+        history = self.solver_state_collection.unpack_history(
+            solver_states
+        )
+
+        history["time"] = np.asarray(time)
+
+        return history
+    def update_final_state(self, solver_history):
+
+        final_state = {
+            key: value[-1]
+            for key, value in solver_history.items()
+            if key != "time"
+        }
+
+        self.update_phases_from_state(final_state)
+    def retrieve_results(self, time, solver_states):
+
+        solver_history = self.build_solver_history(time,solver_states)
+
+        output_history = self.build_output_history(time,solver_history)
+
+        self.outputs = DynamicResult(**solver_history,**output_history)
+
+        self.update_final_state(solver_history)
+
+        self.elapsed_time = time[-1]
+
+        return self.outputs
+
+class ReactiveMSMPR(MultiPhaseVessel):
     """
     Assumes:
         constant volume
@@ -2005,6 +2570,8 @@ class ReactiveMSMPR(_BaseReactiveCryst):
         self.heat_duty = np.array([0, trapezoidal_rule(time, q_ht)])
         self.duty_type = [0, -2]
 
+    
+
 class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
     """
         Assumes:
@@ -2199,3 +2766,12 @@ class ReactiveSemibatchCrystallizer(ReactiveMSMPR):
                 self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
 
             return dtemp_dt, dtht_dt
+        
+
+if __name__=='__main__':
+    a = MultiPhaseVessel('C',300,False,True,{},0,True,{},TransferMechanism,1,False,'AD')
+    dpath = r"C:\Users\zhillma\OneDrivePZH\Documents\Documents\_Grad_School\mypharmadev\PharmaPy\tests\Flowsheet\data\compound_database.json"
+    liquid1 = LiquidPhase(dpath,mass=1,mass_frac=[.3,.7,0,0,0])
+    solid1 = SolidPhase(dpath,mass=0,mass_frac=[0,0,1,0,0])
+    a.Phases = [liquid1,solid1]
+    a.phase_connections
