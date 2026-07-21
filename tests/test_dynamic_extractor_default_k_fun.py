@@ -1,36 +1,33 @@
 """Regression tests for DynamicExtractor default equilibrium routing."""
 
-import importlib
-import sys
-import types
-
 import numpy as np
 import pytest
+
+from assimulo_helpers import import_module_with_assimulo_stub
 
 
 pytestmark = pytest.mark.unit
 
 
 def _load_dynamic_extraction(monkeypatch):
-    """Import DynamicExtraction with a minimal solver stub for unit tests."""
-    assimulo = types.ModuleType("assimulo")
-    problem = types.ModuleType("assimulo.problem")
-    solvers = types.ModuleType("assimulo.solvers")
+    """Import DynamicExtraction while stubbing only optional Assimulo symbols.
 
-    class _UnavailableSolver:
-        def __init__(self, *args, **kwargs):
-            raise RuntimeError("solver stub is not executable")
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest cleanup fixture used by the shared optional-import helper.
 
-    problem.Implicit_Problem = object
-    solvers.IDA = _UnavailableSolver
-    solvers.Radau5DAE = _UnavailableSolver
-
-    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
-    monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
-    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
-    monkeypatch.delitem(sys.modules, "PharmaPy.DynamicExtraction", raising=False)
-
-    return importlib.import_module("PharmaPy.DynamicExtraction")
+    Returns
+    -------
+    module
+        Imported ``PharmaPy.DynamicExtraction`` module.
+    """
+    return import_module_with_assimulo_stub(
+        monkeypatch,
+        "PharmaPy.DynamicExtraction",
+        solvers={"IDA": object, "Radau5DAE": object},
+        problem={"Implicit_Problem": object},
+    )
 
 
 class _ActivityPhase:
@@ -54,7 +51,7 @@ def test_default_k_fun_uses_selected_activity_model(monkeypatch):
 
     x_light = np.array([[0.2, 0.8], [0.4, 0.6]])  # [-]
     x_heavy = np.array([[0.5, 0.5], [0.1, 0.9]])  # [-]
-    temp = np.array([298.15, 301.15])  # K
+    temp = np.array([298.15, 301.15])  # [K]
 
     k_i = extractor.k_fun(x_light, x_heavy, temp)  # K_i [-]
 

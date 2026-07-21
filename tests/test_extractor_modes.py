@@ -15,10 +15,10 @@ pytestmark = pytest.mark.unit
 
 class _Inlet:
     name_species = ["solute", "solvent"]
-    mole_flow = 8.0  # mol/s
-    moles = 3.0  # mol
-    temp = 298.15  # K
-    pres = 101325.0  # Pa
+    mole_flow = 8.0  # [mol/s]
+    moles = 3.0  # [mol]
+    temp = 298.15  # [K]
+    pres = 101325.0  # [Pa]
     mole_frac = np.array([0.25, 0.75])  # [-]
     path_data = "dummy-path"
 
@@ -27,13 +27,13 @@ class _DummyOutlet:
     def __init__(self, path, mole_frac, temp, pres, **amount):
         self.path = path
         self.mole_frac = mole_frac  # [-]
-        self.temp = temp  # K
-        self.pres = pres  # Pa
+        self.temp = temp  # [K]
+        self.pres = pres  # [Pa]
         self.amount = amount  # mole_flow [mol/s] or moles [mol]
 
     def getDensity(self, basis):
         assert basis == "mole"
-        return 1000.0  # arbitrary molar density [mol/m^3]
+        return 1000.0  # [mol/m**3]
 
 
 class _DummyStream(_DummyOutlet):
@@ -45,7 +45,7 @@ class _DummyPhase(_DummyOutlet):
 
 
 def test_continuous_extractor_uses_mole_flow_and_stream_outlets(monkeypatch):
-    """Continuous extractor routes inlet and outlet quantities as mol/s."""
+    """Continuous extractor routes inlet and outlet quantities as [mol/s]."""
     created = {"stream": [], "phase": []}
 
     def stream_factory(*args, **kwargs):
@@ -87,7 +87,7 @@ def test_continuous_extractor_uses_mole_flow_and_stream_outlets(monkeypatch):
 
 
 def test_batch_extractor_keeps_batch_amount_semantics():
-    """Batch extractor keeps inlet amount semantics as mol."""
+    """Batch extractor keeps inlet amount semantics as [mol]."""
     extractor = BatchExtractor()
     extractor.Phases = _Inlet()
 

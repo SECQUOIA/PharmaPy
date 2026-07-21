@@ -90,33 +90,60 @@ class DynamicExtractor:
         self.default_output = 'feed'
 
     def _default_k_fun(self, x_light, x_heavy, temp):
-        """Return liquid-liquid distribution coefficients ``K_i`` [-].
+        """Return liquid-liquid distribution coefficients.
 
-        ``x_light`` and ``x_heavy`` are liquid mole fractions [-], and
-        ``temp`` is temperature [K]. Activity coefficients are dimensionless,
-        so their ratio is the dimensionless extraction equilibrium constant.
+        Parameters
+        ----------
+        x_light : ndarray
+            Light-phase liquid mole fractions [-].
+        x_heavy : ndarray
+            Heavy-phase liquid mole fractions [-].
+        temp : ndarray
+            Liquid temperature [K].
+
+        Returns
+        -------
+        ndarray
+            Distribution coefficients ``K_i = gamma_light/gamma_heavy`` [-].
+
+        Notes
+        -----
+        Activity coefficients are dimensionless, so their ratio is the
+        dimensionless extraction equilibrium constant.
         """
         gamma_light = self.Liquid_1.getActivityCoeff(
-            method=self.gamma_model, mole_frac=x_light, temp=temp)  # [-]
+            method=self.gamma_model, mole_frac=x_light, temp=temp)
 
         gamma_heavy = self.Liquid_1.getActivityCoeff(
-            method=self.gamma_model, mole_frac=x_heavy, temp=temp)  # [-]
+            method=self.gamma_model, mole_frac=x_heavy, temp=temp)
 
         return gamma_light / gamma_heavy  # K_i [-]
 
     def nomenclature(self):
+        """Create dynamic extractor state metadata.
+
+        Returns
+        -------
+        None
+            The method populates ``states_di``, ``name_states``,
+            ``dim_states``, ``states_in_dict``, ``alg_map``, ``fstates_di``,
+            and ``names_states_out`` on the instance.
+
+        Notes
+        -----
+        The current dynamic-extractor state vector contains light and heavy
+        liquid mole fractions [-], internal energy [J], and temperature [K].
+        It keeps the existing dictionary-based metadata structure used by the
+        result and plotting helpers; replacing that structure is outside this
+        #56 fix.
+        """
         num_comp = self.num_comp
         name_species = self.name_species
         self.states_di = {
-            # 'mol_i': {'dim': num_comp, 'units': 'mole', 'type': 'diff',
-            #           'index': name_species},
             'x_i': {'dim': num_comp, 'type': 'alg', 'index': name_species},
             'y_i': {'dim': num_comp, 'type': 'alg', 'index': name_species},
-            # 'holdup_light': {'dim': 1, 'type': 'alg', 'units': 'mole'},
-            # 'holdup_heavy': {'dim': 1, 'type': 'alg', 'units': 'mole'},
-            # 'top_flows': {'dim': 1, 'type': 'alg', 'units': 'mole/s'},
-            'u_int': {'dim': 1, 'type': 'diff', 'units': 'J'},
-            'temp': {'dim': 1, 'type': 'alg', 'units': 'K'}
+            'u_int': {'dim': 1, 'type': 'diff', 'units': '[J]'},
+            'temp': {'dim': 1, 'type': 'alg', 'units': '[K]'}
             }
 
         self.name_states = list(self.states_di.keys())
@@ -177,7 +204,7 @@ class DynamicExtractor:
         vol = di_states['holdup_heavy'][0] / rhos[0] + \
             di_states['holdup_light'][0] / rhos[1]
 
-        self.vol = vol / 1000  # m**3
+        self.vol = vol / 1000  # [m**3]
 
     def get_inputs(self, time):
         inputs = {key: get_inputs_new(time, inlet, self.states_in_dict) for
