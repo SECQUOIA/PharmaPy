@@ -442,21 +442,7 @@ class SimulationExec:
             return cost_equip
 
     def GetLabor(self, wage=35, num_weeks=48):
-        """Estimate yearly labor cost by unit-operation class.
-
-        Parameters
-        ----------
-        wage : float, optional
-            Operator wage [USD/h].
-        num_weeks : int, optional
-            Operating weeks per year [week/yr].
-
-        Returns
-        -------
-        pandas.DataFrame
-            Labor classification columns [-] and labor cost [USD/yr].
-        """
-        # TODO: per/hour (per/shift) cost?
+        # TODO: clarify whether labor cost is hourly [1/h] or per shift [1/shift].
         has_solids = []
         is_batch = []
         uo_names = []
