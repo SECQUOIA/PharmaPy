@@ -27,10 +27,48 @@ DEFAULT_REFLUX_TO_MINIMUM_RATIO = 1.5  # [-]
 
 
 class _BaseDistillation:
+    """Shared shortcut-design utilities for steady and dynamic columns."""
+
     def __init__(self, pres, q_feed, LK, HK,
                  perc_LK, perc_HK, reflux=None, num_plates=None,
                  gamma_model='ideal', num_feed=None,
                  reflux_to_minimum_ratio=DEFAULT_REFLUX_TO_MINIMUM_RATIO):
+        """Create shared distillation shortcut-design state.
+
+        Parameters
+        ----------
+        pres : float
+            Column pressure [Pa].
+        q_feed : float
+            Liquid fraction of the feed on a molar basis [-].
+        LK : str
+            Light-key component name.
+        HK : str
+            Heavy-key component name.
+        perc_LK : float
+            Light-key recovery to the distillate [%].
+        perc_HK : float
+            Heavy-key recovery to the distillate [%].
+        reflux : float, optional
+            Operating reflux ratio ``L/D`` [-]. If None, zero, or below the
+            calculated minimum reflux, shortcut design uses
+            ``reflux_to_minimum_ratio * Rmin`` [-]. If negative, its absolute
+            value multiplies ``Rmin``.
+        num_plates : int, optional
+            Equilibrium-stage count [-]. If None, shortcut design estimates it.
+            If negative, its absolute value multiplies the minimum stage count.
+        gamma_model : str, optional
+            Activity-coefficient model name.
+        num_feed : int, optional
+            Feed tray number counted from the top [-].
+        reflux_to_minimum_ratio : float, optional
+            Shortcut-design multiplier for operating reflux above ``Rmin`` [-].
+
+        Returns
+        -------
+        None
+            The constructor stores the shared configuration on the instance.
+        """
 
         self.num_plates = num_plates  # [-]
         self.reflux = reflux  # [-]
@@ -54,10 +92,25 @@ class _BaseDistillation:
 
     @property
     def Inlet(self):
+        """Return the feed stream assigned to the column."""
         return self._Inlet
 
     @Inlet.setter
     def Inlet(self, inlet):
+        """Set the feed stream and derive feed composition metadata.
+
+        Parameters
+        ----------
+        inlet : LiquidStream
+            Feed stream with molar flow [mol/s], mole fractions [-], and
+            pressure set to the column pressure [Pa].
+
+        Returns
+        -------
+        None
+            The setter stores feed-flow, composition, and component-index
+            metadata on the column.
+        """
         self._Inlet = inlet
         self._Inlet.pres = self.pres
         self.feed_flowrate = inlet.mole_flow  # [mol/s]
@@ -106,6 +159,19 @@ class _BaseDistillation:
             }
 
     def get_inputs(self, time):
+        """Evaluate inlet profiles at a simulation time.
+
+        Parameters
+        ----------
+        time : float
+            Simulation time [s].
+
+        Returns
+        -------
+        dict
+            Inlet values keyed by unit-operation inlet name. Mole fractions are
+            [-], molar flows are [mol/s], and temperatures are [K] when present.
+        """
         inputs = get_inputs_new(time, self.Inlet, self.states_in_dict)
 
         return inputs
@@ -368,6 +434,19 @@ class _BaseDistillation:
         underwood_target = 1 - self.q_feed  # [-], q_feed is liquid fraction.
 
         def f(phi):
+            """Evaluate the squared residual of the first Underwood equation.
+
+            Parameters
+            ----------
+            phi : ndarray
+                Candidate Underwood root [-].
+
+            Returns
+            -------
+            float
+                Squared residual of
+                ``sum(alpha_i*z_i/(alpha_i - phi)) = 1 - q`` [-].
+            """
             # First Underwood equation; all terms are dimensionless.
             underwood_sum = np.sum(
                 alpha * z_feed / (alpha - phi + np.finfo(float).eps))  # [-]
@@ -449,7 +528,7 @@ class _BaseDistillation:
         num_min = self.calc_num_min(x_dist, x_bot)  # [-]
 
         mat_bce = {'x_dist': x_dist, 'x_bottom': x_bot,
-                   'dist_flow': dist_flowrate, 'bottom_flow': bot_flowrate}  # mole fractions [-], flows [mol/s]
+                   'dist_flow': dist_flowrate, 'bottom_flow': bot_flowrate}
 
         # Actual reflux
         if self.reflux is None or self.reflux == 0:
@@ -505,7 +584,7 @@ class _BaseDistillation:
         out = {'material_balances': mat_bce,
                'min_reflux': min_reflux, 'num_min': num_min,
                'reflux': reflux, 'num_plates': num_plates,
-               'num_feed': num_feed}  # ratios/counts [-]; flows nested as [mol/s]
+               'num_feed': num_feed}
 
         return out
 
@@ -528,6 +607,8 @@ class _BaseDistillation:
 
 
 class DistillationColumn(_BaseDistillation):
+    """Steady-state distillation column based on shortcut design."""
+
     def __init__(self, pres, q_feed, LK, HK,
                  perc_LK, perc_HK, reflux=None, num_plates=None,
                  gamma_model='ideal', num_feed=None,
@@ -587,131 +668,162 @@ class DistillationColumn(_BaseDistillation):
                          reflux_to_minimum_ratio)
 
     def VLE(self, y_oneplate=None, temp=None, need_x_vap=True):
-        # VLE uses vapor stream, need vapor stream object temporarily.
+        """Evaluate dew-point VLE for one plate composition.
+
+        Parameters
+        ----------
+        y_oneplate : ndarray, optional
+            Vapor mole fractions on one equilibrium stage [-].
+        temp : float, optional
+            Temperature placeholder kept for the VLE interface [K].
+        need_x_vap : bool, optional
+            Whether the liquid composition should be returned with temperature.
+
+        Returns
+        -------
+        tuple
+            Liquid mole fractions [-] and equilibrium temperature [K].
+
+        Notes
+        -----
+        A temporary vapor stream is required because the VLE implementation is
+        exposed through ``VaporStream.getDewPoint``.
+        """
         temporary_vapor = VaporStream(path_thermo=self._Inlet.path_data,
                                       pres=self.pres, mole_flow=self.feed_flowrate, mole_frac=y_oneplate)
         res = temporary_vapor.getDewPoint(pres=self.pres, mass_frac=None,
                                           mole_frac=y_oneplate, thermo_method=self.gamma_model, x_liq=need_x_vap)
-        # Program needs VLE function to return output in x,Temp format
         return res[::-1]
 
 
     def calc_plates(self, x_dist, x_bottom, dist_flow, bottom_flow, reflux, num_plates):
-        LK_index = self.LK_index
-        HK_index = self.HK_index
+        """Calculate plate compositions and retrieve steady-column results.
 
-        # Calculate Vapour and Liquid flows in column
-        # Rectifying section
-        Ln = reflux*dist_flow
-        Vn = Ln + dist_flow
+        Parameters
+        ----------
+        x_dist : ndarray
+            Distillate mole fractions [-].
+        x_bottom : ndarray
+            Bottoms mole fractions [-].
+        dist_flow : float
+            Distillate molar flow rate [mol/s].
+        bottom_flow : float
+            Bottoms molar flow rate [mol/s].
+        reflux : float
+            Operating reflux ratio ``L/D`` [-].
+        num_plates : int or None
+            Equilibrium-stage count [-]. If None, a stage-by-stage estimate is
+            built until the bottoms key-component targets are reached.
 
-        # Stripping section
-        Lm = Ln + self.feed_flowrate + self.feed_flowrate*(self.q_feed-1)
-        Vm = Lm - bottom_flow
+        Returns
+        -------
+        int
+            Number of equilibrium stages used in the retrieved result [-].
+
+        Notes
+        -----
+        Internal liquid and vapor section flows ``Ln``, ``Vn``, ``Lm``, and
+        ``Vm`` are molar flow rates [mol/s].
+        """
+        LK_index = self.LK_index  # [-]
+        HK_index = self.HK_index  # [-]
+
+        Ln = reflux*dist_flow  # [mol/s]
+        Vn = Ln + dist_flow  # [mol/s]
+
+        Lm = Ln + self.feed_flowrate + self.feed_flowrate*(self.q_feed-1)  # [mol/s]
+        Vm = Lm - bottom_flow  # [mol/s]
 
         if num_plates is None:
-            # Calculate number of plates
-            # Composition list
             x = []
             y = []
             T = []
-            counter1 = 1
-            counter2 = 1
-            # more likely to have non LKs and no non HKs
-            # start counting from top of column
-            # First plate
-            y.append(x_dist)
+            counter1 = 1  # [-]
+            counter2 = 1  # [-]
+            y.append(x_dist)  # [-]
             x_new, T_new = self.VLE(y[0])
-            x.append(x_new)
-            T.append(T_new)
+            x.append(x_new)  # [-]
+            T.append(T_new)  # [K]
 
-            y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bottom)
-            y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
+            y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bottom)  # [-]
+            y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)  # [-]
 
             # Rectifying section
             while (y_top_op[LK_index]/y_top_op[HK_index] < y_bot_op[LK_index]/y_bot_op[HK_index]):
-                y.append((np.array(x_new) * Ln/Vn + (1 - Ln/Vn) * x_dist))
+                y.append((np.array(x_new) * Ln/Vn + (1 - Ln/Vn) * x_dist))  # [-]
                 x_new, T_new = self.VLE(y[-1])
-                x.append(x_new)
-                T.append(T_new)
+                x.append(x_new)  # [-]
+                T.append(T_new)  # [K]
 
                 if counter2 > 100:
                     break
-                counter2 += 1
-                y_bot_op = (np.array(x_new) * Lm/Vm - (Lm/Vm - 1) * x_bottom)
-                y_top_op = (np.array(x_new) * Ln/Vn + (1 - Ln/Vn) * x_dist)
+                counter2 += 1  # [-]
+                y_bot_op = (np.array(x_new) * Lm/Vm - (Lm/Vm - 1) * x_bottom)  # [-]
+                y_top_op = (np.array(x_new) * Ln/Vn + (1 - Ln/Vn) * x_dist)  # [-]
 
-            # Feed plate
-            num_feed = counter2
+            num_feed = counter2  # [-]
 
-            # Stripping section
-            # When reflux is specified and num_plates is not calculated x returned contains one extra evaluation, not true for case when num_plates is specified. This is why fudge factors are added
             while (np.array(x[-1][HK_index]) < 0.98*x_bottom[HK_index] or np.array(x[-1][LK_index]) > 1.2*x_bottom[LK_index]):
-                y.append((np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bottom))
+                y.append((np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bottom))  # [-]
                 x_new, T_new = self.VLE(y[-1])
-                x.append(x_new)
-                T.append(T_new)
+                x.append(x_new)  # [-]
+                T.append(T_new)  # [K]
                 if counter1 > 100:
                     break
-                counter1 += 1
+                counter1 += 1  # [-]
 
             num_plates = len(y) - 1  # Remove distillate stream, reboiler
 
-        else:  # Num plates specified
+        else:
 
-            # Calculate compositions
-            x = np.zeros((num_plates + 1, self.num_species))
-            y = np.zeros((num_plates + 1, self.num_species))
-            T = np.zeros(num_plates + 1)
+            x = np.zeros((num_plates + 1, self.num_species))  # [-]
+            y = np.zeros((num_plates + 1, self.num_species))  # [-]
+            T = np.zeros(num_plates + 1)  # [K]
 
-            y[0] = x_dist
+            y[0] = x_dist  # [-]
             x_new, T_new = self.VLE(y[0])
-            x[0] = x_new
-            T[0] = T_new
+            x[0] = x_new  # [-]
+            T[0] = T_new  # [K]
 
-            if self.num_feed is None:  # Feed plate not specified
-                y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bottom)
-                y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)
-                flag_rect_section_present = 0
+            if self.num_feed is None:
+                y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm-1)*x_bottom)  # [-]
+                y_top_op = (np.array(x_new)*Ln/Vn + (1-Ln/Vn)*x_dist)  # [-]
+                flag_rect_section_present = 0  # [-]
 
                 for i in range(1, num_plates+1):
-                    # Rectifying section
                     if (y_top_op[LK_index]/y_top_op[HK_index] < y_bot_op[LK_index]/y_bot_op[HK_index]):
 
-                        y[i] = (np.array(x_new)*Ln/Vn + (1 - Ln/Vn)*x_dist)
+                        y[i] = (np.array(x_new)*Ln/Vn + (1 - Ln/Vn)*x_dist)  # [-]
                         x_new, T_new = self.VLE(y[i])
-                        x[i] = x_new
-                        T[i] = T_new
+                        x[i] = x_new  # [-]
+                        T[i] = T_new  # [K]
 
-                        y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm - 1)*x_bottom)
-                        y_top_op = (np.array(x_new)*Ln/Vn + (1 - Ln/Vn)*x_dist)
+                        y_bot_op = (np.array(x_new)*Lm/Vm - (Lm/Vm - 1)*x_bottom)  # [-]
+                        y_top_op = (np.array(x_new)*Ln/Vn + (1 - Ln/Vn)*x_dist)  # [-]
                         num_feed = i  # To get feed plate, only last value used, cant write outside if cause elif structure will be violated
-                        flag_rect_section_present = 1
+                        flag_rect_section_present = 1  # [-]
 
-                    # Stripping section
                     elif (np.array(x[-1][HK_index]) < 0.98*x_bottom[HK_index] or np.array(x[-1][LK_index]) > 1.2*x_bottom[LK_index]):
-                        y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm - 1)*x_bottom)
+                        y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm - 1)*x_bottom)  # [-]
                         x_new, T_new = self.VLE(y[i])
-                        x[i] = x_new
-                        T[i] = T_new
+                        x[i] = x_new  # [-]
+                        T[i] = T_new  # [K]
                         if not(flag_rect_section_present):
-                            num_feed = num_plates
-            else:  # Feed plate specified
-                num_feed = self.num_feed
+                            num_feed = num_plates  # [-]
+            else:
+                num_feed = self.num_feed  # [-]
                 for i in range(1, num_plates + 1):
-                    # Rectifying section
                     if i < self.num_feed:
-                        y[i] = (np.array(x_new)*Ln/Vn + (1 - Ln/Vn)*x_dist)
+                        y[i] = (np.array(x_new)*Ln/Vn + (1 - Ln/Vn)*x_dist)  # [-]
                         x_new, T_new = self.VLE(y[i])
-                        x[i] = x_new
-                        T[i] = T_new
-                        num_feed = self.num_feed
-                    # Stripping section
+                        x[i] = x_new  # [-]
+                        T[i] = T_new  # [K]
+                        num_feed = self.num_feed  # [-]
                     else:
-                        y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm - 1)*x_bottom)
+                        y[i] = (np.array(x_new)*Lm/Vm - (Lm/Vm - 1)*x_bottom)  # [-]
                         x_new, T_new = self.VLE(y[i])
-                        x[i] = x_new
-                        T[i] = T_new
+                        x[i] = x_new  # [-]
+                        T[i] = T_new  # [K]
 
         self.num_feed = num_feed
 
@@ -721,16 +833,29 @@ class DistillationColumn(_BaseDistillation):
         return num_plates
 
     def solve_unit(self, runtime=None, t0=0, solve_ss=True):
+        """Run steady-column shortcut design and optional plate calculation.
+
+        Parameters
+        ----------
+        runtime : float, optional
+            Runtime placeholder kept for the unit-operation interface [s].
+        t0 : float, optional
+            Initial time placeholder kept for the unit-operation interface [s].
+        solve_ss : bool, optional
+            If true, calculate plate profiles after shortcut design [-].
+
+        Returns
+        -------
+        dict
+            Shortcut-design result. Mole fractions are [-], molar flows are
+            [mol/s], reflux values are [-], and stage counts are [-].
+        """
         result = self.calculate_shortcut_design()
 
         self.min_reflux = result['min_reflux']
         self.num_min = result['num_min']
         self.reflux = result['reflux']
         self.num_plates = result['num_plates']
-
-        # out = {'material_balances': mat_bce,
-        #        'min_reflux': min_reflux, 'num_min': num_min,
-        #        'reflux': reflux, 'num_plates': num_plates}
 
         if solve_ss:
             self.calc_plates(**result['material_balances'],
@@ -742,6 +867,40 @@ class DistillationColumn(_BaseDistillation):
     def retrieve_results(self, num_plates, x, y, T,
                          bot_flowrate, dist_flowrate, reflux, num_feed,
                          x_dist, x_bot, min_reflux, N_min):
+        """Store steady-column results and outlet streams.
+
+        Parameters
+        ----------
+        num_plates : int
+            Number of equilibrium stages [-].
+        x : array_like
+            Liquid mole-fraction profile by plate and component [-].
+        y : array_like
+            Vapor mole-fraction profile by plate and component [-].
+        T : array_like
+            Plate temperature profile [K].
+        bot_flowrate : float
+            Bottoms molar flow rate [mol/s].
+        dist_flowrate : float
+            Distillate molar flow rate [mol/s].
+        reflux : float
+            Operating reflux ratio [-].
+        num_feed : int
+            Feed tray number counted from the top [-].
+        x_dist : ndarray
+            Distillate mole fractions [-].
+        x_bot : ndarray
+            Bottoms mole fractions [-].
+        min_reflux : float
+            Minimum reflux ratio [-].
+        N_min : float
+            Minimum number of equilibrium stages [-].
+
+        Returns
+        -------
+        None
+            The method stores ``self.result`` and outlet stream objects.
+        """
 
         if not(isinstance(x, np.ndarray)):
             x = np.array(x)
@@ -766,6 +925,8 @@ class DistillationColumn(_BaseDistillation):
 
 
 class DynamicDistillation(_BaseDistillation):
+    """Dynamic distillation column initialized from shortcut design."""
+
     def __init__(self, pres, q_feed, LK, HK,
                  perc_LK, perc_HK, reflux=None, num_plates=None,
                  gamma_model='ideal', num_feed=None, state_events=None,
@@ -795,8 +956,8 @@ class DynamicDistillation(_BaseDistillation):
             Underwood's equations. If negative,
             reflux = Rmin * abs(reflux). The default is None.
         num_plates : int, optional
-            number of equilibrium stages. If not provided, it will be estimated
-            using the YYY method. The default is None.
+            number of equilibrium stages [-]. If not provided, it will be
+            estimated using shortcut design. The default is None.
         gamma_model : str, optional
             name of the thermodynamic model used for activity coefficient
             calculation. It can be 'UNIQUAC', 'UNIFAC' or 'ideal'.
@@ -804,6 +965,8 @@ class DynamicDistillation(_BaseDistillation):
         num_feed : int, optional
             feed tray (trays are numbered from top to bottom).
             The default is None.
+        state_events : list of dict, optional
+            State-event specifications used by the DAE solver [-].
         reflux_to_minimum_ratio : float, optional
             Multiplier used to choose an actual reflux ratio from Rmin when
             ``reflux`` is None, zero, or below the calculated minimum reflux
@@ -812,7 +975,8 @@ class DynamicDistillation(_BaseDistillation):
 
         Returns
         -------
-        PharmaPy DistillationColumn object.
+        None
+            The constructor stores dynamic-column configuration.
 
         """
 
@@ -823,7 +987,7 @@ class DynamicDistillation(_BaseDistillation):
         self.oper_mode = 'Continuous'
         self.outputs = None
         self.is_continuous = True
-        self.elapsed_time = 0
+        self.elapsed_time = 0  # [s]
 
         if state_events is None:
             state_events = []
@@ -833,27 +997,56 @@ class DynamicDistillation(_BaseDistillation):
         self.state_event_list = state_events
 
     def flatten_states(self):
+        """Placeholder for a future dynamic-state flattening helper.
+
+        Returns
+        -------
+        None
+            Dynamic distillation currently uses direct flattened arrays.
+        """
         pass
 
     def nomenclature(self):
+        """Create dynamic distillation state and inlet metadata.
+
+        Returns
+        -------
+        None
+            The method populates state names, dimensions [-], inlet-state
+            lengths [-], and input dictionaries.
+        """
         super().nomenclature()
 
         self.name_states = list(self.states_di.keys())
         self.names_states_out = ['temp', 'mole_frac', 'mole_flow']
         self.names_states_in = self.names_states_out
 
-        num_comp = len(self.name_species)
-        len_in = [1, num_comp, 1]
+        num_comp = len(self.name_species)  # [-]
+        len_in = [1, num_comp, 1]  # [-]
 
         states_in_dict = dict(zip(self.names_states_in, len_in))
         self.states_in_dict = {'Inlet': states_in_dict}
 
     @property
     def Phases(self):
+        """Return the phases assigned to the dynamic column."""
         return self._Phases
 
     @Phases.setter
     def Phases(self, phases):
+        """Set column phases and derive dynamic composition metadata.
+
+        Parameters
+        ----------
+        phases : object or sequence of object
+            Column phases. Liquid holdup is read as moles [mol].
+
+        Returns
+        -------
+        None
+            The setter stores phase, holdup, component-index, and state
+            metadata on the column.
+        """
         if not isinstance(phases, (list, tuple)):
             phases = [phases]
 
@@ -861,12 +1054,12 @@ class DynamicDistillation(_BaseDistillation):
 
         classify_phases(self)
 
-        self.holdup = self.Liquid_1.moles
+        self.holdup = self.Liquid_1.moles  # [mol]
 
         name_species = self.Liquid_1.name_species
-        self.num_species = len(name_species)
-        self.LK_index = name_species.index(self.LK)
-        self.HK_index = name_species.index(self.HK)
+        self.num_species = len(name_species)  # [-]
+        self.LK_index = name_species.index(self.LK)  # [-]
+        self.HK_index = name_species.index(self.HK)  # [-]
 
         self.name_species = name_species
 
@@ -932,6 +1125,26 @@ class DynamicDistillation(_BaseDistillation):
         self.heuristics = result
 
     def _eval_state_events(self, time, states, sdot, sw):
+        """Evaluate configured dynamic state events.
+
+        Parameters
+        ----------
+        time : float
+            Current integration time [s].
+        states : ndarray
+            Flattened state vector; temperatures are [K] and mole fractions are
+            [-].
+        sdot : ndarray
+            Flattened state derivatives; temperature derivatives are [K/s] and
+            mole-fraction derivatives are [1/s].
+        sw : sequence of bool
+            Assimulo event switches [-].
+
+        Returns
+        -------
+        ndarray
+            Event function values [-].
+        """
         events = eval_state_events(
             time, states, sw, self.dim_states,
             self.states_uo, self.state_event_list, sdot=sdot,
@@ -940,45 +1153,77 @@ class DynamicDistillation(_BaseDistillation):
         return events
 
     def unit_model(self, time, states, d_states, sw=None):
+        """Evaluate the dynamic-column DAE residual.
+
+        Parameters
+        ----------
+        time : float
+            Current integration time [s].
+        states : ndarray
+            Flattened state vector; temperatures are [K] and mole fractions are
+            [-].
+        d_states : ndarray
+            Flattened state derivative vector; temperature derivatives are
+            [K/s] and mole-fraction derivatives are [1/s].
+        sw : sequence of bool, optional
+            Assimulo event switches [-].
+
+        Returns
+        -------
+        ndarray
+            Flattened residual vector. Temperature residuals are [-] and
+            composition residuals are [1/s].
+        """
         di_states = unpack_discretized(states, self.len_out, self.name_states)
 
         material = self.material_balances(time, **di_states)
 
         di_d_states = unpack_discretized(d_states, self.len_out,
                                          self.name_states)
-        # N_plates(N_components), only for compositions
         material[:, 1:] = material[:, 1:] - di_d_states['x_liq']
         balances = material.ravel()
 
-        # print(balances)
         return balances
 
     def material_balances(self, time, temp, x_liq):
+        """Evaluate dynamic material-balance residuals by plate.
+
+        Parameters
+        ----------
+        time : float
+            Current integration time [s].
+        temp : ndarray
+            Plate temperatures [K].
+        x_liq : ndarray
+            Liquid mole fractions by plate and component [-].
+
+        Returns
+        -------
+        ndarray
+            Residuals with temperature algebraic constraints [-] in the first
+            column and mole-fraction derivatives [1/s] in remaining columns.
+        """
         x = x_liq
         inputs = self.get_inputs(time)['Inlet']
-        z_feed = inputs['mole_frac']
-        feed_flow = inputs['mole_flow']
+        z_feed = inputs['mole_frac']  # [-]
+        feed_flow = inputs['mole_flow']  # [mol/s]
 
-        # GET STARTUP CONDITIONS
         (bot_flowrate, dist_flowrate,
          reflux, num_feed, M_const) = (self.bot_flowrate, self.dist_flowrate,
                                        self.reflux, self.num_feed, self.holdup)
 
-        # CALCULATE COLUMN FLOWS
-        # Rectifying section
-        Ln = reflux * dist_flowrate
-        Vn = Ln + dist_flowrate
+        Ln = reflux * dist_flowrate  # [mol/s]
+        Vn = Ln + dist_flowrate  # [mol/s]
 
-        # Stripping section
-        Lm = Ln + self.feed_flowrate * self.q_feed
-        Vm = Lm - bot_flowrate
+        Lm = Ln + self.feed_flowrate * self.q_feed  # [mol/s]
+        Vm = Lm - bot_flowrate  # [mol/s]
 
-        dx_dt = np.zeros_like(x)
+        dx_dt = np.zeros_like(x)  # [1/s]
 
-        k_vals = self._Inlet.getKeqVLE(pres=self.pres, temp=temp, x_liq=x)
+        k_vals = self._Inlet.getKeqVLE(pres=self.pres, temp=temp, x_liq=x)  # [-]
 
-        residuals_temp = (x * (k_vals - 1)).sum(axis=1)
-        y = k_vals * x
+        residuals_temp = (x * (k_vals - 1)).sum(axis=1)  # [-]
+        y = k_vals * x  # [-]
 
         # Reflux tank
         dx_dt[0] = Vn/M_const * (y[1] - x[0])
@@ -1000,16 +1245,58 @@ class DynamicDistillation(_BaseDistillation):
 
         # Reboiler, y_in for reboiler is the same as x_out
         dx_dt[-1] = 1/M_const * (Lm*x[-2] - Vm*y[-1] - bot_flowrate*x[-1])
-        mat_bal = np.column_stack((residuals_temp, dx_dt))
+        mat_bal = np.column_stack((residuals_temp, dx_dt))  # [-], [1/s]
 
         return mat_bal
 
     def energy_balances(self, time, temp, mole_frac):
+        """Placeholder for future dynamic energy-balance equations.
+
+        Parameters
+        ----------
+        time : float
+            Current integration time [s].
+        temp : ndarray
+            Plate temperatures [K].
+        mole_frac : ndarray
+            Plate liquid mole fractions [-].
+
+        Returns
+        -------
+        None
+            Energy balances are not implemented in this dynamic column.
+        """
         pass
         return
 
     def solve_unit(self, runtime=None, time_grid=None,
                    sundials_opts=None, verbose=True, any_event=True):
+        """Integrate the dynamic distillation-column model.
+
+        Parameters
+        ----------
+        runtime : float, optional
+            Duration to simulate from the current elapsed time [s].
+        time_grid : array_like, optional
+            Output time grid for the DAE solver [s].
+        sundials_opts : dict, optional
+            Solver option names and values forwarded to IDA.
+        verbose : bool, optional
+            If False, suppress solver output [-].
+        any_event : bool, optional
+            Whether any configured state event can terminate the solve [-].
+
+        Returns
+        -------
+        time : ndarray
+            Simulated time points [s].
+        states : ndarray
+            Flattened state history; temperatures are [K] and mole fractions
+            are [-].
+        d_states : ndarray
+            Flattened state derivatives; temperature derivatives are [K/s] and
+            mole-fraction derivatives are [1/s].
+        """
 
         check_modeling_objects(self)
 
@@ -1017,10 +1304,10 @@ class DynamicDistillation(_BaseDistillation):
             raise RuntimeError("Both 'runtime' and 'time_grid' were provided. "
                                "Please provide only one of them")
         elif runtime is not None:
-            final_time = runtime + self.elapsed_time
+            final_time = runtime + self.elapsed_time  # [s]
 
         elif time_grid is not None:
-            final_time = time_grid[-1] + self.elapsed_time
+            final_time = time_grid[-1] + self.elapsed_time  # [s]
 
         # Use inputs coming from the upstream UO in the future for shortcut
         # design estimates, i.e. as close to steady-state as possible.
@@ -1028,19 +1315,20 @@ class DynamicDistillation(_BaseDistillation):
 
         self.len_states = len(self.name_species) + 1
 
-        x_init = self.Liquid_1.mole_frac.copy()
+        x_init = self.Liquid_1.mole_frac.copy()  # [-]
         temp_init = self.Liquid_1.getBubblePoint(pres=self.pres,
-                                                 mole_frac=x_init)
+                                                 mole_frac=x_init)  # [K]
 
         init_states = np.tile(np.hstack((temp_init, x_init)),
-                              (self.num_plates + 1, 1))
+                              (self.num_plates + 1, 1))  # [K], [-]
 
         init_derivative = self.material_balances(time=self.elapsed_time,
                                                  x_liq=init_states[:, 1:],
-                                                 temp=init_states[:, 0])
+                                                 temp=init_states[:, 0])  # [-], [1/s]
 
         if len(self.state_event_list) > 0:
             def new_handle(solver, info):
+                """Handle dynamic state events from the IDA solver."""
                 return handle_events(solver, info, self.state_event_list,
                                      any_event=any_event)
 
@@ -1061,8 +1349,8 @@ class DynamicDistillation(_BaseDistillation):
         solver.make_consistent('IDA_YA_YDP_INIT')
         # solver.suppress_alg = True
 
-        alg_map = np.zeros_like(init_states)
-        alg_map[:, 0] = 1
+        alg_map = np.zeros_like(init_states)  # [-]
+        alg_map[:, 0] = 1  # [-]
 
         solver.algvar = alg_map.ravel()
 
@@ -1083,8 +1371,24 @@ class DynamicDistillation(_BaseDistillation):
         return time, states, d_states
 
     def retrieve_results(self, time, states):
+        """Store dynamic distillation results and outlet streams.
+
+        Parameters
+        ----------
+        time : array_like
+            Simulated time points [s].
+        states : ndarray
+            Flattened state history; temperatures are [K] and mole fractions
+            are [-].
+
+        Returns
+        -------
+        None
+            The method stores ``self.result``, ``self.outputs``, and outlet
+            stream objects.
+        """
         time = np.asarray(time)
-        self.elapsed_time = time[-1]
+        self.elapsed_time = time[-1]  # [s]
 
         indexes = {key: self.states_di[key].get('index', None)
                    for key in self.name_states}
@@ -1092,23 +1396,22 @@ class DynamicDistillation(_BaseDistillation):
         dp = unpack_discretized(states, self.len_out, self.name_states,
                                 indexes=indexes, inputs=None)
 
-        dp['time'] = time
-        dp['plate'] = np.arange(self.num_plates + 1)
+        dp['time'] = time  # [s]
+        dp['plate'] = np.arange(self.num_plates + 1)  # [-]
 
-        # y_vap
         y_vap = {key: [] for key in dp['x_liq']}
         for ind, row in enumerate(dp['temp']):
             x_liquid = np.column_stack(
-                [val[ind] for val in dp['x_liq'].values()])
+                [val[ind] for val in dp['x_liq'].values()])  # [-]
 
             k_vals = self.Liquid_1.getKeqVLE(pres=self.pres, temp=row,
-                                             x_liq=x_liquid)
-            y_vals = k_vals * x_liquid
+                                             x_liq=x_liquid)  # [-]
+            y_vals = k_vals * x_liquid  # [-]
 
             for idx, key in enumerate(y_vap):
                 y_vap[key].append(y_vals[:, idx])
 
-        y_vap = {key: np.vstack(val) for key, val in y_vap.items()}
+        y_vap = {key: np.vstack(val) for key, val in y_vap.items()}  # [-]
         dp['y_vap'] = y_vap
 
         self.result = DynamicResult(di_states=self.states_di,
@@ -1120,27 +1423,45 @@ class DynamicDistillation(_BaseDistillation):
         outputs['x_liq'] = np.column_stack(list(outputs['x_liq'].values()))
         outputs['mole_frac'] = outputs.pop('x_liq')
 
-        outputs['mole_flow'] = np.ones_like(outputs['temp']) * self.bot_flowrate
+        outputs['mole_flow'] = np.ones_like(outputs['temp']) * self.bot_flowrate  # [mol/s]
 
         self.outputs = outputs
-        # [component_index, time, plate]
-        x_comp = np.array(list(dp['x_liq'].values()))
+        x_comp = np.array(list(dp['x_liq'].values()))  # [component, time, plate]
 
-        # Outlet stream
         path = self.Inlet.path_data
         self.OutletBottom = LiquidStream(
-            path, temp=dp['temp'][-1][-1],  # [time, plate]
-            mole_frac=x_comp.T[-1][-1],  # [plate, time, component_index]
-            mole_flow=self.bot_flowrate)
+            path, temp=dp['temp'][-1][-1],  # [K]
+            mole_frac=x_comp.T[-1][-1],  # [-]
+            mole_flow=self.bot_flowrate)  # [mol/s]
 
         self.OutletDistillate = LiquidStream(
-            path, temp=dp['temp'][-1][0],  # [time,plate]
-            mole_frac=x_comp.T[0][-1],
-            mole_flow=self.dist_flowrate)
+            path, temp=dp['temp'][-1][0],  # [K]
+            mole_frac=x_comp.T[0][-1],  # [-]
+            mole_flow=self.dist_flowrate)  # [mol/s]
 
         self.Outlet = self.OutletBottom
 
     def plot_profiles(self, times=None, plates=None, pick_comp=None, **fig_kw):
+        """Plot dynamic liquid-composition and temperature profiles.
+
+        Parameters
+        ----------
+        times : array_like, optional
+            Times selected for profile plotting [s].
+        plates : array_like, optional
+            Plate indices selected for trajectory plotting [-].
+        pick_comp : sequence of str, optional
+            Component names to plot.
+        **fig_kw
+            Keyword arguments forwarded to ``plot_distrib``.
+
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+            Plot figure.
+        ax : ndarray
+            Plot axes.
+        """
         states = []
         ylab = ['x_liq', 'T']
 

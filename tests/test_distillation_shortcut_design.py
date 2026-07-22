@@ -33,6 +33,13 @@ def _import_distillation_module(monkeypatch):
 
 def test_positive_reflux_below_minimum_uses_configured_shortcut_ratio(
         monkeypatch):
+    """Specified reflux below ``Rmin`` uses the configured multiplier.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest cleanup fixture used by the optional Assimulo import helper.
+    """
     module = _import_distillation_module(monkeypatch)
     z_feed = np.array([0.40, 0.60])  # [-], feed mole fractions
 
@@ -47,13 +54,52 @@ def test_positive_reflux_below_minimum_uses_configured_shortcut_ratio(
         """Shortcut-design double with deterministic correlations."""
 
         def global_material_bce(self, received_z_feed=None):
+            """Return deterministic shortcut material-balance values.
+
+            Parameters
+            ----------
+            received_z_feed : ndarray, optional
+                Feed mole fractions passed by shortcut design [-].
+
+            Returns
+            -------
+            tuple
+                Distillate and bottoms mole fractions [-], distillate flow
+                [mol/s], and bottoms flow [mol/s].
+            """
             np.testing.assert_allclose(received_z_feed, z_feed)
             return x_dist, x_bottom, dist_flowrate, bot_flowrate
 
         def calc_underwood_min_reflux(self, *args):
+            """Return a deterministic minimum reflux ratio.
+
+            Parameters
+            ----------
+            *args
+                Shortcut-design arguments ignored by this test double.
+
+            Returns
+            -------
+            float
+                Minimum reflux ratio [-].
+            """
             return min_reflux
 
         def calc_num_min(self, received_x_dist, received_x_bottom):
+            """Return a deterministic minimum stage count.
+
+            Parameters
+            ----------
+            received_x_dist : ndarray
+                Distillate mole fractions [-].
+            received_x_bottom : ndarray
+                Bottoms mole fractions [-].
+
+            Returns
+            -------
+            float
+                Minimum equilibrium-stage count [-].
+            """
             np.testing.assert_allclose(received_x_dist, x_dist)
             np.testing.assert_allclose(received_x_bottom, x_bottom)
             return num_min
@@ -79,7 +125,13 @@ def test_positive_reflux_below_minimum_uses_configured_shortcut_ratio(
 
 
 def test_default_shortcut_reflux_ratio_is_pinned(monkeypatch):
-    """The documented default multiplier remains 1.5 [-]."""
+    """The documented default multiplier remains 1.5 [-].
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest cleanup fixture used by the optional Assimulo import helper.
+    """
     module = _import_distillation_module(monkeypatch)
     z_feed = np.array([0.40, 0.60])  # [-], feed mole fractions
     x_dist = np.array([0.90, 0.10])  # [-], distillate mole fractions
@@ -89,15 +141,54 @@ def test_default_shortcut_reflux_ratio_is_pinned(monkeypatch):
         """Shortcut-design double with deterministic minimum reflux."""
 
         def global_material_bce(self, received_z_feed=None):
+            """Return deterministic material-balance values.
+
+            Parameters
+            ----------
+            received_z_feed : ndarray, optional
+                Feed mole fractions passed by shortcut design [-].
+
+            Returns
+            -------
+            tuple
+                Distillate and bottoms mole fractions [-], distillate flow
+                [mol/s], and bottoms flow [mol/s].
+            """
             np.testing.assert_allclose(received_z_feed, z_feed)
             dist_flowrate = 10.0  # [mol/s]
             bot_flowrate = 15.0  # [mol/s]
             return x_dist, x_bottom, dist_flowrate, bot_flowrate
 
         def calc_underwood_min_reflux(self, *args):
+            """Return the pinned default-case minimum reflux ratio.
+
+            Parameters
+            ----------
+            *args
+                Shortcut-design arguments ignored by this test double.
+
+            Returns
+            -------
+            float
+                Minimum reflux ratio [-].
+            """
             return 2.0  # [-]
 
         def calc_num_min(self, received_x_dist, received_x_bottom):
+            """Return the pinned default-case minimum stage count.
+
+            Parameters
+            ----------
+            received_x_dist : ndarray
+                Distillate mole fractions [-].
+            received_x_bottom : ndarray
+                Bottoms mole fractions [-].
+
+            Returns
+            -------
+            float
+                Minimum equilibrium-stage count [-].
+            """
             np.testing.assert_allclose(received_x_dist, x_dist)
             np.testing.assert_allclose(received_x_bottom, x_bottom)
             return 4.0  # [-]
@@ -121,6 +212,13 @@ def test_default_shortcut_reflux_ratio_is_pinned(monkeypatch):
 
 
 def test_backward_compatible_shortcut_aliases(monkeypatch):
+    """Deprecated shortcut-design aliases delegate to canonical methods.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest cleanup fixture used by the optional Assimulo import helper.
+    """
     module = _import_distillation_module(monkeypatch)
     expected = {
         "material_balances": {},  # flows [mol/s], fractions [-]
@@ -135,10 +233,35 @@ def test_backward_compatible_shortcut_aliases(monkeypatch):
         """Shortcut alias double with deterministic delegate methods."""
 
         def calculate_shortcut_design(self, time=None):
+            """Return the expected shortcut-design result.
+
+            Parameters
+            ----------
+            time : float, optional
+                Shortcut-design time [s].
+
+            Returns
+            -------
+            dict
+                Shortcut-design result. Mole fractions are [-], molar flows are
+                [mol/s], reflux is [-], and stage counts are [-].
+            """
             assert time is None
             return expected
 
         def calc_underwood_min_reflux(self, *args):
+            """Return the expected minimum reflux ratio.
+
+            Parameters
+            ----------
+            *args
+                Underwood calculation arguments ignored by this test double.
+
+            Returns
+            -------
+            float
+                Minimum reflux ratio [-].
+            """
             return 0.7  # [-]
 
     column = AliasColumn(
@@ -163,7 +286,13 @@ def test_backward_compatible_shortcut_aliases(monkeypatch):
 
 
 def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
-    """Underwood minimum reflux includes feed quality in the root target."""
+    """Underwood minimum reflux includes feed quality in the root target.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest cleanup fixture used by the optional Assimulo import helper.
+    """
     module = _import_distillation_module(monkeypatch)
     alpha = np.array([4.0, 1.0])  # [-], relative volatility to HK
     z_feed = np.array([0.40, 0.60])  # [-], feed mole fractions
@@ -202,8 +331,8 @@ def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
         perc_LK=95.0,  # [%]
         perc_HK=5.0,  # [%]
     )
-    column.LK_index = 0
-    column.HK_index = 1
+    column.LK_index = 0  # [-]
+    column.HK_index = 1  # [-]
 
     min_reflux = column.calc_underwood_min_reflux(
         x_dist=x_dist,
@@ -219,13 +348,32 @@ def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
 
 
 def test_column_startup_accepts_deprecated_time_heuristics_keyword(monkeypatch):
-    """The old startup keyword remains available with a deprecation warning."""
+    """The old startup keyword remains available with a deprecation warning.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest cleanup fixture used by the optional Assimulo import helper.
+    """
     module = _import_distillation_module(monkeypatch)
 
     class StartupColumn(module.DynamicDistillation):
         """Dynamic column double with deterministic shortcut design."""
 
         def calculate_shortcut_design(self, time=None):
+            """Return deterministic startup shortcut-design values.
+
+            Parameters
+            ----------
+            time : float, optional
+                Shortcut-design time [s].
+
+            Returns
+            -------
+            dict
+                Shortcut-design result. Mole fractions are [-], molar flows are
+                [mol/s], reflux is [-], and stage counts are [-].
+            """
             self.received_time = time  # [s]
             return {
                 "material_balances": {
