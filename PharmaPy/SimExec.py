@@ -532,7 +532,8 @@ class SimulationExec:
         -------
         dict
             Dynamic input profiles. Flow entries are [kg/s], [mol/s], or
-            [m**3/s] according to their key; temperature is [K].
+            [m**3/s] according to their key; temperature is [K] and pressure is
+            [Pa].
 
         Notes
         -----
@@ -749,7 +750,9 @@ class SimulationExec:
             If true, aggregate each raw stream into total and per-species
             columns on the selected basis.
         steady_state : bool, optional
-            Reserved for steady-state raw material accounting.
+            Reserved for future steady-state raw material accounting. It is
+            accepted for API compatibility but currently does not change the
+            returned table.
         include_holdups : bool, optional
             If true, include initial holdups that were not transferred from an
             upstream unit operation.
@@ -761,6 +764,10 @@ class SimulationExec:
             stream or phase name. Total columns are [kg] or [mol], and
             per-species columns use the same selected basis.
 
+        Raises
+        ------
+        ValueError
+            If ``basis`` is not ``'mass'`` or ``'mole'``.
         """
         if basis not in ('mass', 'mole'):
             raise ValueError("basis must be either 'mass' or 'mole'")
@@ -889,7 +896,9 @@ class SimulationExec:
         include_holdups : bool, optional
             If true, raw material accounting includes initial holdups.
         steady_raw : bool, optional
-            Forwarded to ``GetRawMaterials`` for steady-state raw accounting.
+            Forwarded to ``GetRawMaterials``. It is reserved for future
+            steady-state raw accounting and currently does not change the raw
+            material table.
         lumped : bool, optional
             Reserved for lumped OPEX reporting.
         kwargs_items : dict, optional
@@ -903,6 +912,13 @@ class SimulationExec:
         duty_cost, raw_cost, labor_cost : pandas.DataFrame
             ``duty_cost`` [USD] and ``raw_cost`` [USD] are per simulated run.
             ``labor_cost`` is [USD/yr]. Returned when ``lumped`` is false.
+            When ``lumped`` is true, this method currently returns ``None``.
+
+        Raises
+        ------
+        ValueError
+            If ``cost_raw`` has more than one dimension or has a one-dimensional
+            width other than one or the raw-material table width.
 
         """
 
@@ -922,13 +938,13 @@ class SimulationExec:
 
         duties, map_duties = self.GetDuties(full_output=True,
                                             **kwargs_items.get('duties', {}))
-        map_duties += 3
+        map_duties += 3  # [-], shift duty codes to cost-vector indices.
 
-        duty_unit_cost = np.zeros_like(map_duties, dtype=np.float64)
+        duty_unit_cost = np.zeros_like(map_duties, dtype=np.float64)  # [USD/GJ]
         for ind, row in enumerate(map_duties):
             duty_unit_cost[ind] = heat_exchange_cost[row]
 
-        duty_cost = np.abs(duties)*1e-9 * duty_unit_cost
+        duty_cost = np.abs(duties)*1e-9 * duty_unit_cost  # [USD]
 
         # ---------- Raw materials
         raw_kwargs = kwargs_items.get('raw_materials', {}).copy()
@@ -942,7 +958,7 @@ class SimulationExec:
             raise ValueError(
                 "cost_raw must be scalar or have one entry per raw-material "
                 "column")
-        raw_cost = cost_raw * raw_materials
+        raw_cost = cost_raw * raw_materials  # [USD]
 
         # ---------- Labor
         labor_cost = self.GetLabor(**kwargs_items.get('labor', {}))
