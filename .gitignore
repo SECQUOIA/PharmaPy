@@ -1,5 +1,6 @@
 # Sphinx documentation
 docs/_build/
+site/
 
 # PyBuilder
 target/
@@ -73,6 +74,7 @@ ENV/
 # Some output files
 *.pdf
 *.png
+!doc/online_docs/examples/img/pfd_flowsheet.png
 *.wav
 *.jpg
 *.mp4

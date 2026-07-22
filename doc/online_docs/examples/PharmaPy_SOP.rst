@@ -15,7 +15,7 @@ Chemical selection
 
 1.	Specify the chemical properties of the involved compounds in a JSON file. Be sure to define the file path for the program to access the properties. Each entry for the species should be in the following template:
    
-.. code-block:: json
+.. code-block:: text
 
 	{
 	“Species_Name”:
@@ -75,7 +75,7 @@ The variable ‘path_phys’ is the string for the file path for the chemical pr
 
 .. testcode::
 
-	rxns = [‘A + B --> C’, ‘A + C --> D’]
+	rxns = ['A + B --> C', 'A + C --> D']
 
 In the example above, it is noted that chemical A reacts with chemical B to create chemical C. Additionally, chemical A also reacts with chemical C to create chemical D.
 

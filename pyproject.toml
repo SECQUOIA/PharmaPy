@@ -13,6 +13,17 @@ license-files = ["LICENSE.md"]
 authors = [
     {name = "Daniel Casas-Orozco", email = "dcasasor@purdue.edu"},
 ]
+maintainers = [
+    {name = "David Bernal"},
+    {name = "Andres Cabeza"},
+    {name = "Can Li"},
+    {name = "Mazhar331"},
+    {name = "Yirang Park"},
+    {name = "Sergey Gusev"},
+    {name = "ZacharyHillman18"},
+    {name = "Piyush Sharma"},
+    {name = "QHuckaba"},
+]
 keywords = [
     "chemical-engineering",
     "pharmaceutical",
@@ -43,11 +54,19 @@ assimulo = [
 test = [
     "pytest",
 ]
+docs = [
+    "ipykernel>=6",
+    "nbsphinx>=0.9",
+    "sphinx>=7.2,<9",
+    "sphinx-rtd-theme>=2,<4",
+    "sphinxcontrib-bibtex>=2.6",
+]
 
 [project.urls]
-Homepage = "https://github.com/SECQUOIA/PharmaPy"
-Repository = "https://github.com/SECQUOIA/PharmaPy"
-"Bug Tracker" = "https://github.com/SECQUOIA/PharmaPy/issues"
+Homepage = "https://github.com/PharmaPy-org/PharmaPy"
+Documentation = "https://pharmapy.readthedocs.io/en/latest/"
+Repository = "https://github.com/PharmaPy-org/PharmaPy"
+"Bug Tracker" = "https://github.com/PharmaPy-org/PharmaPy/issues"
 
 [tool.setuptools.packages.find]
 include = ["PharmaPy*"]
