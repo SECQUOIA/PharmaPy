@@ -1,10 +1,9 @@
 import pytest
 
-pytest.importorskip("assimulo")
 from PharmaPy.Distillation import DistillationColumn
 
 
-pytestmark = [pytest.mark.assimulo, pytest.mark.unit]
+pytestmark = pytest.mark.unit
 
 
 def test_steady_state_solve_uses_calc_plates_results(monkeypatch):

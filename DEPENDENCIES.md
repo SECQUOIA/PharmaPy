@@ -5,6 +5,10 @@ optional solver dependency because it is difficult to build on common pip-only
 environments, is not published on PyPI above version 3.0, and is only needed for
 the solver-backed unit-operation models. Use the conda-forge environment in
 `environment.yml`, or a local source build of Assimulo, for solver-backed runs.
+Unit-operation modules and their solver-free calculations remain importable
+without Assimulo. Attempting to construct an Assimulo-backed problem or solver
+without that optional dependency raises an installation error at the solver
+boundary.
 
 Current bounds:
 
