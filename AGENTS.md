@@ -29,6 +29,11 @@ Prioritize, in order:
 - Never hide a physical-basis conversion or silently change a model assumption.
 - Treat test data and expected numerical results as scientific evidence; do not
   update them merely to make a failing test pass.
+- Remove dead commented code and stale TODOs from touched areas; use linked
+  issues for actionable deferred work.
+- Preserve existing line endings and keep formatting-only changes separate.
+- Keep PR scope, compatibility notes, and issue references accurate. Use
+  `Closes` only when all relevant acceptance criteria are satisfied.
 - Do not commit generated files, local environments, credentials, or machine-
   specific configuration.
 
@@ -39,7 +44,8 @@ Prioritize, in order:
   its docstring into compliance as part of the change.
 - Include `Parameters`, `Returns` or `Yields`, and `Raises` sections when they
   apply. Include `Notes`, `Warnings`, or `Examples` when assumptions, equations,
-  side effects, or usage would otherwise be unclear.
+  side effects, conditional returns, defaults, option precedence, or usage would
+  otherwise be unclear.
 - Document the units, physical basis, expected shape, and meaning of every
   scientific input and output. For example: `temperature : float` followed by
   `Temperature of the liquid phase [K].`
@@ -53,7 +59,8 @@ Prioritize, in order:
 
 - Every new or modified variable that stores a numeric physical or model
   quantity must have an adjacent unit comment in square brackets at its first
-  definition. Use SI-derived notation where practical:
+  definition. Use project- and Pint-compatible spellings and SI-derived notation
+  where practical:
 
   ```python
   particle_diameter = 2.5e-4  # [m]
@@ -75,7 +82,12 @@ Prioritize, in order:
   `[J/mol]`, `[J/kg]`, `[mol/s]`, or `[kg/s]`. Never mix mass, molar, volume, or
   particle-number bases implicitly.
 - Check dimensional consistency in every equation. Centralize conversions and
-  avoid unexplained numeric conversion factors or magic constants.
+  never assign a unit merely from convention without checking the equation.
+- Correlations, heuristics, constants, conversions, and cost coefficients must
+  state their source or derivation, units, basis, and valid range. Make tunable
+  values documented parameters.
+- Unit comments are source annotations. Inspect consumers before changing
+  user-facing runtime metadata to bracketed notation.
 
 ## Numerical and API conventions
 
@@ -83,9 +95,13 @@ Prioritize, in order:
   conventional short-lived mathematical indices or coordinates.
 - Add type hints to new or modified public APIs and to internal code when they
   clarify array shapes, optional values, or return structure.
-- Preserve scalar-versus-array behavior and document expected NumPy shapes.
+- Preserve scalar-versus-array behavior. Document and test exact NumPy shapes,
+  axis meanings, positional state order, and physical basis; prefer named
+  structures at public boundaries when practical.
 - Validate inputs at public boundaries and raise specific exceptions with
   actionable messages for invalid units, shapes, ranges, or model state.
+- Validate finite-choice options explicitly; never let an unknown value silently
+  select a plausible but unintended model.
 - Use explicit, justified tolerances for floating-point comparisons. Tests
   should use `pytest.approx` or NumPy testing helpers rather than exact equality
   for calculated floating-point values.
@@ -97,10 +113,22 @@ Prioritize, in order:
 ## Testing and verification
 
 - Add or update tests for every behavior change and bug fix. A regression test
-  should fail without the fix and pass with it.
+  must fail without the fix and pass with it; verify this by disabling the fix
+  when practical. Derive expected values independently rather than duplicating
+  the production expression.
+- Exercise the affected public path and caller-to-callee handoff, not only a
+  repaired helper. Assert values, ordering, and basis rather than only shape or
+  absence of exceptions; use unequal dimensions and asymmetric fixtures where
+  they can expose axis or ordering mistakes.
 - Include nominal behavior plus relevant boundary, dimensional, and failure
   cases. Assert units or physical basis indirectly through known balances or
   conversions when practical.
+- Give each test module a concise docstring covering its scope and noteworthy
+  fixtures, backends, or cost. Document individual tests only when their names
+  and bodies are not self-explanatory.
+- Prefer representative real collaborators. Use monkeypatches and stubs only at
+  narrow optional, expensive, or external boundaries, and assert the actual
+  handoff. Link the blocker when stable end-to-end coverage must be deferred.
 - Use the markers defined in `pytest.ini`: `unit`, `integration`, `slow`, and
   `assimulo`. Do not make core tests depend on the optional Assimulo stack.
 - Run the narrowest relevant tests while developing, then run the core suite
@@ -115,6 +143,8 @@ Prioritize, in order:
   exactly which verification was not run and why.
 - Keep `pyproject.toml`, dependency mirrors, and `DEPENDENCIES.md` synchronized
   when changing dependencies.
+- In workflows, use least-privilege permissions and supported actions, and avoid
+  duplicate runs. Avoid `eval`, `exec`, or shell discovery when normal APIs work.
 
 ## Documentation and handoff
 
