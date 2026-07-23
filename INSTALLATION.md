@@ -31,6 +31,9 @@ import PharmaPy
 There is not yet a PharmaPy process-simulation release on PyPI. Until one is
 published, install this project from a source checkout as described below. Do
 not run `pip install pharmapy`: that name belongs to an unrelated project.
+The `pharmapy-sim` name remains unreserved until the first release is uploaded;
+maintainers must recheck its availability immediately before publishing and
+must not advertise the index-install command until that upload succeeds.
 
 ## Core installation with pip
 
@@ -190,10 +193,15 @@ guide was introduced:
 - The Assimulo pixi test lane passed and imported both `PharmaPy` and Assimulo
   3.4.3.
 
-Continuous integration currently exercises the core package through an
-editable pip install and exercises Assimulo through `environment.yml`. It does
-not yet execute the exact pixi installation command. Until a pixi CI lane is
-added, maintainers changing dependencies should run:
+Continuous integration exercises both installation promises:
+
+- The core job installs PharmaPy editably with pip and runs the solver-free
+  tests.
+- The Assimulo job installs both pixi environments from the committed lockfile,
+  reruns the documented `pixi install --all --locked` command, verifies the
+  PharmaPy and Assimulo imports, and runs the solver-backed tests.
+
+Maintainers changing dependencies should also run the same checks locally:
 
 ```bash
 pixi lock --check

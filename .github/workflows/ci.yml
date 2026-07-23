@@ -52,25 +52,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Install system solver libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gfortran liblapack-dev libblas-dev
-
-      - name: Set up conda environment
-        uses: conda-incubator/setup-miniconda@v4
+      - name: Set up locked pixi environments
+        uses: prefix-dev/setup-pixi@v0.10.0
         with:
-          miniforge-version: latest
-          use-mamba: true
-          environment-file: environment.yml
-          activate-environment: pharmapy-assimulo
-          auto-activate: false
-          conda-remove-defaults: true
+          pixi-version: v0.67.1
+          manifest-path: pyproject.toml
+          environments: >-
+            default
+            assimulo
+          locked: true
+          cache: true
+          cache-write: ${{ github.event_name == 'push' && github.ref_name == 'master' }}
 
-      - name: Install PharmaPy without pip solver resolution
-        shell: bash -el {0}
-        run: python -m pip install -e . --no-deps
+      - name: Verify documented locked installation
+        run: pixi install --all --locked
+
+      - name: Verify solver imports
+        run: pixi run -e assimulo python -c "import PharmaPy, assimulo"
 
       - name: Run Assimulo-marked tests
-        shell: bash -el {0}
-        run: python -m pytest tests/ -v -m assimulo
+        run: pixi run -e assimulo test-assimulo
