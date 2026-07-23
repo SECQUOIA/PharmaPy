@@ -8,7 +8,8 @@ Created on Tue Jun 16 15:43:14 2020
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
 from PharmaPy.Commons import trapezoidal_rule
-
+from PharmaPy.ThermoModule import ThermoPhysicalManager
+from collections import defaultdict
 import numpy as np
 from scipy.optimize import newton
 from scipy.interpolate import CubicSpline
@@ -655,4 +656,177 @@ class Cake:
 
 
 class MixedPhase:
-    pass
+    def __init__(self,phases=None):
+        self._Phases =phases if phases is not None else []
+        self.EXTENSIVE_PROPERTIES = {"mass", "vol", "moles"}
+    
+    @property
+    def Phases(self):
+        return self._Phases
+    
+    @Phases.setter
+    def Phases(self,phases):
+
+        phases = phases if isinstance(phases,(list,tuple)) else [phases]
+        if not all([isinstance(p,ThermoPhysicalManager) for p in phases]):
+            raise TypeError("All phases must be PharmaPy Phase Objects")
+        phases = self._normalize_phases(phases)
+        self._Phases = phases
+
+    def _normalize_phases(self,phases):
+        adjusted_phases = []
+
+        for phase in phases:
+
+            if isinstance(phase, (MixedPhase, Slurry)):
+                adjusted_phases.extend(self._normalize_phases(phase.Phases))
+
+            elif isinstance(phase, ThermoPhysicalManager):
+                adjusted_phases.append(phase)
+
+            else:
+                raise TypeError("All phases must be PharmaPy Phase objects")
+        return adjusted_phases
+
+    @property
+    def phases_by_type(self):
+        groups = defaultdict(list)
+        for phase in self.Phases:
+            key=phase.phase_family
+            groups[key].append(phase)
+        return groups
+    def get_phase_from_ref(self,
+            phase_ref
+        ):
+
+        candidates = []
+
+        for phase in self.Phases:
+
+            phase_type = (
+                phase.__class__.__name__
+                .replace("Phase", "")
+                .lower()
+            )
+
+            if phase_type == phase_ref.phase_type:
+                candidates.append(phase)
+
+        return candidates[phase_ref.index]
+    def __iter__(self):
+        return iter(self._Phases)
+    
+    def __len__(self):
+        return len(self._Phases)
+
+    def __getitem__(self, idx):
+        return self._Phases[idx]
+    
+    def __getattr__(self, name:str):
+        """
+        Default bulk-property implementation.
+
+        If a property or method is explicitly implemented on MixedPhase,
+        Python will find it before calling __getattr__. This method therefore
+        only handles attributes that are not otherwise defined.
+        """
+        key =name.removesuffix("s")
+        if key in self.phases_by_type:
+            out = MixedPhase(self.phase_by_type[key])
+            return out
+        masses = np.array([phase.mass for phase in self.Phases], dtype=float)
+
+        total_mass = masses.sum()
+        if total_mass > 0:
+            weights = masses / total_mass
+        else:
+            weights = np.ones(len(self.Phases), dtype=float) / len(self.Phases)
+
+        attrs = [getattr(phase, name, None) for phase in self.Phases]
+
+        # Methods
+        if any(callable(attr) for attr in attrs):
+
+            def wrapper(*args, **kwargs):
+                values = []
+
+                for attr in attrs:
+                    if attr is None:
+                        values.append(0)
+                    else:
+                        values.append(attr(*args, **kwargs))
+
+                values = np.asarray(values)
+
+                return np.dot(weights, values)
+
+            return wrapper
+
+        # Attributes
+        values = np.array([
+            attr if attr is not None else 0
+            for attr in attrs
+        ])
+
+        # Extensive properties
+        if name in self.EXTENSIVE_PROPERTIES:
+            return values.sum()
+        if not np.issubdtype(values.dtype, np.number):
+            raise AttributeError(
+                f"Cannot automatically aggregate attribute '{name}'. "
+                "Implement it explicitly on MixedPhase."
+            )
+        # Everything else defaults to mass-weighted average
+        return np.dot(weights, values)
+class MixedStream(MixedPhase):
+
+    EXTENSIVE_PROPERTIES = {
+        "mass_flow",
+        "vol_flow",
+        "mole_flow",
+    }
+
+    def __init__(self):
+        super().__init__()
+
+    @property
+    def Phases(self):
+        return self._Phases
+
+    @Phases.setter
+    def Phases(self, streams):
+
+        streams = streams if isinstance(streams, (list, tuple)) else [streams]
+        normalized = self._normalize_streams(streams)
+        self._Phases = normalized
+
+    def _normalize_streams(self, streams):
+        """
+        Recursively flatten nested MixedStreams while preserving
+        individual stream objects.
+        """
+        normalized = []
+        for stream in streams:
+
+            if isinstance(stream, MixedStream):
+                normalized.extend(self._normalize_streams(stream.Phases))
+
+            elif isinstance(stream, ThermoPhysicalManager) and hasattr(stream,'mass_flow'):
+                normalized.append(stream)
+
+            else:
+                raise TypeError("All objects assigned to MixedStream must be Stream objects.")
+
+        return normalized
+
+    def evaluate_inputs(self, time):
+        """
+        Evaluate every constituent stream and return the results.
+        """
+        return [stream.evaluate_inputs(time) for stream in self.Phases]
+    @property
+    def name_species(self):
+        return self.Phases[0].name_species
+    @property
+    def num_species(self):
+        return len(self.name_species)

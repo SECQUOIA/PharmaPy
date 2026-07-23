@@ -1,14 +1,37 @@
-
+import numpy as np
 import copy
+    
+class Mechanism:
+    """
+    Base class for all physical mechanisms.
 
-class TransferMechanism:
+    Responsibilities
+    ----------------
+    • Store internal solver/output state variables.
+    • Compute material source terms.
+    • Cache intermediate quantities in aux.
+    • Compute energy source terms from aux.
 
-    transfer_states = ()
+    Contract
+    --------
+    material_rate, aux = get_material_rate(...)
+
+    qdot = get_heat_generation(
+        aux,
+        completed_state,
+        time,
+    )
+
+    The returned aux object is opaque to the vessel and should contain all
+    intermediate quantities required by get_heat_generation().
+    """
+
+    solver_states = ()
     output_states = ()
 
     def update_state(self,state):
 
-        for variable in self.transfer_states:
+        for variable in self.solver_states:
 
             if variable.name in state:
                 setattr(
@@ -23,7 +46,7 @@ class TransferMechanism:
             overwrite=False
         ):
 
-        for state in self.transfer_states:
+        for state in self.solver_states:
 
             state_collection.add(
                 copy.deepcopy(state),
@@ -43,21 +66,133 @@ class TransferMechanism:
                 copy.deepcopy(state),
                 overwrite
             )
+    def get_heat_generation(self,aux:dict,completed_state:dict,time:np.ndarray)->float:
+        raise NotImplementedError
+        return float
+class TransferMechanism(Mechanism):
+    """
+    Computes material exchanged between two phases.
 
+    Returns
+    -------
+    transfer_rate : ndarray
+        Species mass transfer rates.
 
-    def get_transfer_rate(
-            self,
-            source,
-            sink,
+    aux : dict
+        Cached information required by get_heat_generation().
+    """
+    def get_material_transfer_rate(
+            source_phase,
+            sink_phase,
             connection,
             completed_state,
-            time
+            time,
+            params
         ):
 
         raise NotImplementedError
+    
+    
+class ReactionMechanism(Mechanism):
+    """
+    Computes intraphase material generation or consumption.
+
+    Returns
+    -------
+    species_mass_rates : ndarray
+        Species generation/consumption rates.
+
+    aux : dict
+        Cached reaction information required by
+        get_heat_generation().
+    """
+    def __init__(self, kinetics):
+        self.kinetics=kinetics
+    def get_material_rate(
+            self,
+            process,
+            time,
+            completed_state,
+            params,
+            u_input,
+            molarity_molPerLiter=True
+        ):
+        "aux must have process field that stores process"
+        mole_adjust = 1000 if molarity_molPerLiter else 1
+        rk = self.kinetics
+        phase = process.phase
+        
+
+        temp = phase.temp
+
+        mask = np.array([
+            species in rk.partic_species
+            for species in phase.name_species
+        ])
+
+        conc = phase.mole_conc
+
+        deltah_rxn = None
+
+        if rk.keq_params is not None:
+            deltah_rxn = phase.getHeatOfRxn(
+                rk.stoich_matrix,
+                temp,
+                mask,
+                rk.delta_hrxn,
+                rk.tref_hrxn
+            )
+
+        reaction_rates = rk.get_rxn_rates(
+                conc,
+                temp,
+                overall_rates=False,
+                delta_hrxn=deltah_rxn
+            )
+            
+
+        species_rates = rk.get_rxn_rates(
+            conc[mask],
+            temp,
+            overall_rates=True
+        )
+
+        species_massPerVol_rates = np.zeros(self.num_species)
+        species_massPerVol_rates[mask] = species_rates
+        species_massPerVol_rates *= phase.mw
+        species_mass_rates = species_massPerVol_rates* phase.vol*mole_adjust
+
+        aux = {
+                "phase": phase,
+                "rxn_rates": reaction_rates,
+                "process":process
+                }
+
+        return species_mass_rates, aux
+    def get_heat_generation(self, aux, completed_state, time,molarity_molPerLiter=True):
+        mole_adjust = 1000 if molarity_molPerLiter else 1
+        phase = aux['phase']
+        temp = phase.temp
+        rk = self.kinetics
+        mask = np.array([
+            species in rk.partic_species
+            for species in self.name_species
+        ])
+
+        deltah_rxn = (
+            phase.getHeatOfRxn(
+                rk.stoich_matrix,
+                temp,
+                mask,
+                rk.delta_hrxn,
+                rk.tref_hrxn
+            ))
+        q =  -(deltah_rxn * aux["rxn_rates"]).sum()* phase.vol *mole_adjust # molarity here is mol/L, but J/kg is expected for internal consistency
+        return q
+    
 class DirectTransfer(TransferMechanism):
 
-    def get_transfer_rate(
+    def get_material_transfer_rate(
             self,
             source_phase,
             sink_phase,
@@ -69,6 +204,7 @@ class DirectTransfer(TransferMechanism):
             sink_phase,
             **kwargs
         )
+    
 class PopulationBalance(TransferMechanism):
     
     def add_output_state_variables(self,outputs):
@@ -89,6 +225,15 @@ class PopulationBalance(TransferMechanism):
                 state_type="alg"
             )
         )
+    def get_material_transfer_rate(self, source, sink, connection, completed_state, time):
+        # return super().get_material_rate(source, sink, connection, completed_state, time)
+        if connection.species_weights is None:
+
+                species_rate = (transfer_rate* source.mass_frac)
+
+            else:
+
+                species_rate = (transfer_rate* np.asarray(connection.species_weights))
 
 class MomentsPopulationBalance(PopulationBalance):
     
@@ -135,7 +280,7 @@ class FVMPopulationBalance(PopulationBalance):
                 state_type="alg"
             )
         )
-    def get_transfer_rate(self, source, sink, connection, completed_state, time):
+    def get_material_transfer_rate(self, source, sink, connection, completed_state, time):
         transfer_rate = (
             crystal_growth_mass_rate
             + nucleation_mass_rate

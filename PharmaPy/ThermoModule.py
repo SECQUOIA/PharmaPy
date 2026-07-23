@@ -112,7 +112,7 @@ class ThermoPhysicalManager:
         self.num_species = len(self.name_species)
 
         self.path_data = path_data
-
+        self.phase_family=None
         # UNIFAC
         if 'unifac_groups' in props_dict:
             rk, qk, a_mat, b_mat, c_mat = self.get_UNIFACParams()

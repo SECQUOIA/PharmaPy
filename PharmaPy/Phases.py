@@ -102,7 +102,7 @@ class LiquidPhase(ThermoPhysicalManager):
                  name_solv=None, verbose=True, check_input=True):
 
         super().__init__(path_thermo)
-
+        self.phase_family="Liquid"
         self.cp_liq = np.atleast_2d(self.cp_liq)
         self.p_vap = np.atleast_2d(self.p_vap)
 
@@ -519,7 +519,7 @@ class VaporPhase(ThermoPhysicalManager):
         props = LiquidPhase(path_thermo, temp, pres, mass,
                             vol, moles, mass_frac, mole_frac, mole_conc,
                             check_input=check_input, verbose=verbose)
-
+        self.phase_family="Vapor"
         self.mass = props.mass
         self.moles = props.moles
         self.vol = props.vol
@@ -865,6 +865,7 @@ class SolidPhase(ThermoPhysicalManager):
                  mole_conc=None, kv=1):
         
         super().__init__(path_thermo)
+        self.phase_family="Solid"
         self.kv = kv
         self.distrib_type = distrib_type
 
