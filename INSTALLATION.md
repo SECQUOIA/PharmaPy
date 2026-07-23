@@ -197,9 +197,13 @@ Continuous integration exercises both installation promises:
 
 - The core job installs PharmaPy editably with pip and runs the solver-free
   tests.
-- The Assimulo job installs both pixi environments from the committed lockfile,
-  reruns the documented `pixi install --all --locked` command, verifies the
-  PharmaPy and Assimulo imports, and runs the solver-backed tests.
+- The gating locked-environment job installs both pixi environments from the
+  committed lockfile, reruns the documented `pixi install --all --locked`
+  command, and verifies the core and Assimulo imports.
+- A separate advisory job runs the solver-backed tests with
+  `continue-on-error: true`, preserving the project's tolerance for instability
+  in the compiled Assimulo/SUNDIALS integration without weakening the lockfile
+  check.
 
 Maintainers changing dependencies should also run the same checks locally:
 
@@ -210,9 +214,10 @@ pixi run test
 pixi run -e assimulo test-assimulo
 ```
 
-Keeping the pip-based core CI lane alongside a locked pixi Assimulo lane proves
-both promises: PharmaPy remains pip-installable, and the compiled solver
-environment remains reproducible.
+Keeping the pip-based core CI lane alongside a gating locked-pixi job proves
+both installation promises: PharmaPy remains pip-installable, and the compiled
+solver environment remains reproducible. The advisory solver-test job reports
+integration health separately.
 
 ## Manual conda fallback for Assimulo
 

@@ -42,11 +42,10 @@ jobs:
       - name: Run assimulo-free tests
         run: python -m pytest tests/ -m "not assimulo"
 
-  integration-assimulo:
-    name: Assimulo integration tests
+  pixi-lock:
+    name: Locked pixi install
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    continue-on-error: true
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -67,8 +66,31 @@ jobs:
       - name: Verify documented locked installation
         run: pixi install --all --locked
 
-      - name: Verify solver imports
-        run: pixi run -e assimulo python -c "import PharmaPy, assimulo"
+      - name: Verify core and solver imports
+        run: |
+          pixi run python -c "import PharmaPy"
+          pixi run -e assimulo python -c "import PharmaPy, assimulo"
+
+  integration-assimulo:
+    name: Assimulo integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    needs: pixi-lock
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up locked Assimulo environment
+        uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          pixi-version: v0.67.1
+          manifest-path: pyproject.toml
+          environments: assimulo
+          locked: true
+          cache: true
+          cache-write: false
 
       - name: Run Assimulo-marked tests
         run: pixi run -e assimulo test-assimulo
