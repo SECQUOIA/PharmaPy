@@ -1,4 +1,8 @@
-"""Lazy internal constructors for the optional Assimulo solver backend."""
+"""Lazy internal constructors for the optional Assimulo solver backend.
+
+The exported names are factory functions, not Assimulo class aliases, and
+therefore are not suitable for ``isinstance`` checks or subclassing.
+"""
 
 from importlib import import_module
 from typing import Any
