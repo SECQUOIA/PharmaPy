@@ -1,5 +1,8 @@
 # Dependency Policy
 
+For runnable pip, pixi, and conda installation instructions, see
+[`INSTALLATION.md`](INSTALLATION.md).
+
 The default install keeps only the core runtime dependencies. Assimulo is an
 optional solver dependency because it is difficult to build on common pip-only
 environments, is not published on PyPI above version 3.0, and is only needed for
@@ -11,9 +14,10 @@ Assimulo.
 pixi is the recommended developer/CI environment manager: its `[tool.pixi]`
 configuration in `pyproject.toml` provides a `default` (core, Assimulo-free)
 and an `assimulo` (full backend) environment backed by a committed `pixi.lock`,
-which is the only reproducible way to obtain Assimulo since it is conda-forge
-only. `[project]` remains the source of truth for pip users; the pixi
-dependency bounds mirror it and must stay synchronized.
+which is this repository's locked, reproducible way to obtain the conda-forge
+solver stack. `[project]` remains the source of truth for pip users under the
+`pharmapy-sim` distribution name; the Python import remains `PharmaPy`. The pixi
+dependency bounds mirror the core project metadata and must stay synchronized.
 
 Current bounds:
 

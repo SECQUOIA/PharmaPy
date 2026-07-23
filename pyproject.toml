@@ -3,7 +3,7 @@ requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "PharmaPy"
+name = "pharmapy-sim"
 version = "0.0.1"
 description = "A numerical platform for the digital design of pharmaceutical processes"
 readme = "README.md"
@@ -55,11 +55,13 @@ include = ["PharmaPy*"]
 # ---------------------------------------------------------------------------
 # pixi: reproducible conda-forge-backed development environments.
 #
-# `[project]` above remains the authoritative surface for pip users
-# (`pip install PharmaPy`). pixi is the developer/CI environment manager and
-# is the only supported way to obtain the optional Assimulo backend, which is
-# not pip-installable (it wraps the SUNDIALS C library via compiled Cython
-# bindings and ships as conda-forge binaries only).
+# `[project]` above remains the authoritative surface for pip users. Install
+# from a checkout with `python -m pip install .`; after the first release, the
+# distribution command will be `python -m pip install pharmapy-sim`. pixi is
+# the developer/CI environment manager and the recommended way to obtain the
+# optional Assimulo backend, which is not pip-installable at the supported
+# version (it wraps the SUNDIALS C library via compiled Cython bindings and
+# ships as conda-forge binaries).
 #
 # Two environments mirror the pytest lanes in pytest.ini:
 #   * default  -> core, Assimulo-free (matches `-m "not assimulo"`)
@@ -87,7 +89,7 @@ pandas = ">=1.5"
 # Install PharmaPy itself as an editable install so `import PharmaPy` resolves
 # to the working tree in every pixi environment.
 [tool.pixi.pypi-dependencies]
-pharmapy = { path = ".", editable = true }
+pharmapy-sim = { path = ".", editable = true }
 
 # Optional Assimulo backend (conda-forge only). `cython` bound mirrors the
 # `[project.optional-dependencies].assimulo` pin.

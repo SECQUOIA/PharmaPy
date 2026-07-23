@@ -1813,9 +1813,9 @@ packages:
   size: 1222481
   timestamp: 1763655398280
 - pypi: ./
-  name: pharmapy
+  name: pharmapy-sim
   version: 0.0.1
-  sha256: d4e31820e949ccb645ce089d15438549e7f19d56b698c414dd476dd74696c514
+  sha256: 7034ce13901a7868bd04db44f17770d8a9dd39463ce5f4aba13632a65bb1e724
   requires_dist:
   - numpy>=1.22
   - scipy>=1.9
