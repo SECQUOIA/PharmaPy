@@ -59,8 +59,8 @@ Prioritize, in order:
 
 - Every new or modified variable that stores a numeric physical or model
   quantity must have an adjacent unit comment in square brackets at its first
-  definition. Use project- and Pint-compatible spellings and SI-derived notation
-  where practical:
+  definition. Use established project spellings and SI-derived notation where
+  practical:
 
   ```python
   particle_diameter = 2.5e-4  # [m]
