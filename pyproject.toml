@@ -51,3 +51,59 @@ Repository = "https://github.com/SECQUOIA/PharmaPy"
 
 [tool.setuptools.packages.find]
 include = ["PharmaPy*"]
+
+# ---------------------------------------------------------------------------
+# pixi: reproducible conda-forge-backed development environments.
+#
+# `[project]` above remains the authoritative surface for pip users
+# (`pip install PharmaPy`). pixi is the developer/CI environment manager and
+# is the only supported way to obtain the optional Assimulo backend, which is
+# not pip-installable (it wraps the SUNDIALS C library via compiled Cython
+# bindings and ships as conda-forge binaries only).
+#
+# Two environments mirror the pytest lanes in pytest.ini:
+#   * default  -> core, Assimulo-free (matches `-m "not assimulo"`)
+#   * assimulo -> full backend        (matches `-m assimulo`)
+#
+# Only linux-64 is locked here because it is the only platform verified so
+# far. Maintainers on other systems should add their platform to
+# `[tool.pixi.workspace].platforms` and re-run `pixi install` to extend the
+# lock (Assimulo 3.4.3 is available on conda-forge for linux-64, osx-64, and
+# win-64).
+# ---------------------------------------------------------------------------
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+# Core runtime dependencies, resolved from conda-forge. Bounds mirror
+# `[project].dependencies` so the pixi and pip surfaces stay consistent.
+[tool.pixi.dependencies]
+python = "3.11.*"
+numpy = ">=1.22"
+scipy = ">=1.9"
+matplotlib = ">=3.5"
+pandas = ">=1.5"
+
+# Install PharmaPy itself as an editable install so `import PharmaPy` resolves
+# to the working tree in every pixi environment.
+[tool.pixi.pypi-dependencies]
+pharmapy = { path = ".", editable = true }
+
+# Optional Assimulo backend (conda-forge only). `cython` bound mirrors the
+# `[project.optional-dependencies].assimulo` pin.
+[tool.pixi.feature.assimulo.dependencies]
+assimulo = "3.4.3.*"
+cython = ">=0.29,<3"
+
+[tool.pixi.feature.test.dependencies]
+pytest = "*"
+
+[tool.pixi.environments]
+default = { features = ["test"], solve-group = "default" }
+assimulo = { features = ["assimulo", "test"], solve-group = "assimulo" }
+
+# Convenience tasks. `pixi run test` is the core lane; `pixi run -e assimulo
+# test-assimulo` exercises the solver-backed integration tests.
+[tool.pixi.tasks]
+test = "pytest -m 'not assimulo'"
+test-assimulo = "pytest -m assimulo"
