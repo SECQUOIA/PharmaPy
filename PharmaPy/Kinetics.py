@@ -162,13 +162,14 @@ class RxnKinetics:
         stoichiometric matrix for the set of reactions. It must have
         n_rxn rows and n_comp columns, so the element (i, j) represents
         the coefficient of species j in reaction i
-    partic_species : list (or tuple) of str, optional
+    partic_species : list or tuple of str, optional
         names of participating species. It will be assumed that the
-        order of the names in 'partic_species' is that of the columns of
-        'stoichiometric_matrix'. The passed names must match those
+        order of the names in ``partic_species`` is that of the columns of
+        ``stoich_matrix``. The passed names must match those
         in the pure-component json file
-    keq_params : TYPE, optional
-        DESCRIPTION. The default is None.
+    keq_params : array-like, optional
+        equilibrium constant for each reaction at ``tref_hrxn`` [-]. When
+        provided, reverse reaction rates are included. The default is None.
     params_f : numpy array, optional
         parameters for the concentration-dependent term f\ :sub:`2`.
         If no custom model is provided through the 'kinetic_model'

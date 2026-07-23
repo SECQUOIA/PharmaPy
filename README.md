@@ -4,7 +4,7 @@
 
 <!-- BEGIN Status badges -->
 [![CI](https://github.com/PharmaPy-org/PharmaPy/actions/workflows/ci.yml/badge.svg)](https://github.com/PharmaPy-org/PharmaPy/actions/workflows/ci.yml)
-![GitHub all releases](https://img.shields.io/github/downloads/CryPTSys/PharmaPy/total)
+[![Historical CryPTSys release downloads](https://img.shields.io/github/downloads/CryPTSys/PharmaPy/total)](https://github.com/CryPTSys/PharmaPy/releases)
 [![DOI](https://img.shields.io/badge/DOI-10.1016%2Fj.compchemeng.2021.107408-blue)](https://www.sciencedirect.com/science/article/abs/pii/S0098135421001861)
 <!-- END Status badges -->
 
