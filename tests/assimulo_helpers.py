@@ -71,9 +71,9 @@ def import_module_with_assimulo_stub(monkeypatch, module_name, *,
     Notes
     -----
     The temporary monkeypatch is justified because these unit tests exercise
-    constructor and handoff logic that can run without Assimulo, while the full
-    solver suite is only available when the optional Assimulo dependency is
-    installed.
+    shortcut-design behavior and constructor handoff logic that can run
+    without Assimulo, while the full solver suite is only available when the
+    optional Assimulo dependency is installed.
     """
     try:
         return importlib.import_module(module_name)
