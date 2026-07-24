@@ -17,12 +17,18 @@ def test_parameter_estimation_ipopt_result_assembly_uses_base_keyword(
     def linear_model(params, x_data_s):
         return params[0] * x_data_s
 
+    def linear_jacobian(params, x_data_s):
+        # d(y_model)/d(rate) has units [s], so weighted residual derivatives
+        # preserve the expected parameter-estimation covariance dimensions.
+        return x_data_s[np.newaxis, :]
+
     estimator = ParamEstim.ParameterEstimation(
         linear_model,
         param_seed=[1.0],
         x_data=time_s,
         y_data=y_obs_mol_l,
         name_params=["rate_mol_l_s"],
+        jac_fun=linear_jacobian,
     )
 
     def fake_minimize_ipopt(objective, params_var, jac=None, bounds=None,
@@ -33,24 +39,19 @@ def test_parameter_estimation_ipopt_result_assembly_uses_base_keyword(
         objective(optimum, **(kwargs or {}))
         return {"x": optimum}
 
-    def final_gradient(params, out_array=False, set_self=True):
-        # d(y_model)/d(rate) has units [s], so weighted residual derivatives
-        # preserve the expected parameter-estimation covariance dimensions.
-        jacobian = time_s[np.newaxis, :]
-        if out_array:
-            return jacobian
-        return np.zeros(1)
-
+    # cyipopt/IPOPT is an optional external solver stack absent from the core
+    # test lane. Patch only that boundary; objective, gradient, and covariance
+    # assembly stay on the real ParameterEstimation methods.
     monkeypatch.setattr(ParamEstim, "have_cyipopt", True)
     monkeypatch.setattr(ParamEstim, "minimize_ipopt", fake_minimize_ipopt,
                         raising=False)
-    monkeypatch.setattr(estimator, "get_gradient", final_gradient)
 
     opt_par, covar, info = estimator.optimize_fn(method="IPOPT",
                                                  verbose=False)
 
     np.testing.assert_allclose(opt_par, [rate_mol_l_s])
     np.testing.assert_allclose(info["fun"], [-0.10, 0.05, -0.20])
+    np.testing.assert_allclose(info["jac"], [time_s])
     np.testing.assert_allclose(estimator.y_model[0].ravel(),
                                rate_mol_l_s * time_s)
     assert covar.shape == (1, 1)
