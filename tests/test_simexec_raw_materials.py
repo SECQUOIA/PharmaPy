@@ -262,6 +262,32 @@ def test_get_opex_includes_initial_holdup_by_default():
     )
 
 
+def test_get_opex_maps_duty_codes_to_heat_exchange_costs():
+    """OPEX maps duty codes directly to their heat-exchange costs."""
+    duty_types = np.array([[-3, -2], [-1, 0], [1, 2], [3, 0]], dtype=int)
+    units = {}
+    for num, duty_type in enumerate(duty_types):
+        unit = _UnitOperation(_RawPhase())
+        unit.heat_duty = np.array([1e9, 1e9])  # [J]
+        unit.duty_type = duty_type  # [-]
+        units["U%02d" % num] = unit
+
+    sim = object.__new__(SimulationExec)
+    sim.NamesSpecies = ["A", "B"]
+    sim.uos_instances = units
+
+    duty_cost, _, _ = sim.GetOPEX(0.0, include_holdups=False)
+
+    expected_cost = np.array([
+        [14.12, 8.49],
+        [4.77, 0.378],
+        [4.54, 4.77],
+        [5.66, 0.378],
+    ])  # [USD], one GJ per duty entry.
+
+    np.testing.assert_allclose(duty_cost.to_numpy(), expected_cost)
+
+
 def test_mole_basis_totals_use_canonical_singular_basis():
     """Mole-basis totals use the singular ``basis='mole'`` path."""
     inlet = _RawPhase(mole_flow=4.0, mole_frac=(0.25, 0.75))

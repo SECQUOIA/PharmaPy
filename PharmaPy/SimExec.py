@@ -854,7 +854,8 @@ class SimulationExec:
             second column containing refrigeration type, according to the
             following convention:
 
-            refrigeration: -2, -1, 0 (0 corresponding to cooling water)
+            refrigeration: -3, -2, -1
+            cooling water: 0
             heating: 1, 2, 3 (1 corresponding to low pressure steam)
 
         """
@@ -929,20 +930,28 @@ class SimulationExec:
         cost_raw = np.asarray(cost_raw)
 
         # ---------- Heat duties
-        # Energy cost [USD/GJ].
-        heat_exchange_cost = [14.12, 8.49, 4.77,  # refrigeration
-                              0.378,  # water
-                              4.54, 4.77, 5.66]  # steam
+        # Energy cost [USD/GJ], keyed by GetDuties duty type [-].
+        duty_cost_by_type = {
+            -3: 14.12,  # refrigeration
+            -2: 8.49,  # refrigeration
+            -1: 4.77,  # refrigeration
+            0: 0.378,  # cooling water
+            1: 4.54,  # steam
+            2: 4.77,  # steam
+            3: 5.66,  # steam
+        }
 
-        heat_exchange_cost = np.array(heat_exchange_cost)
-
-        duties, map_duties = self.GetDuties(full_output=True,
+        duties, duty_types = self.GetDuties(full_output=True,
                                             **kwargs_items.get('duties', {}))
-        map_duties += 3  # [-], shift duty codes to cost-vector indices.
+        unknown_duty_types = sorted(
+            int(duty_type) for duty_type in np.unique(duty_types)
+            if duty_type not in duty_cost_by_type)
+        if unknown_duty_types:
+            raise ValueError("Unknown duty type(s): %s" % unknown_duty_types)
 
-        duty_unit_cost = np.zeros_like(map_duties, dtype=np.float64)  # [USD/GJ]
-        for ind, row in enumerate(map_duties):
-            duty_unit_cost[ind] = heat_exchange_cost[row]
+        duty_unit_cost = np.zeros_like(duty_types, dtype=np.float64)  # [USD/GJ]
+        for duty_type, unit_cost in duty_cost_by_type.items():
+            duty_unit_cost[duty_types == duty_type] = unit_cost
 
         duty_cost = np.abs(duties)*1e-9 * duty_unit_cost  # [USD]
 
