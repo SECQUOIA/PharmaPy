@@ -67,15 +67,14 @@ include = ["PharmaPy*"]
 #   * default  -> core, Assimulo-free (matches `-m "not assimulo"`)
 #   * assimulo -> full backend        (matches `-m assimulo`)
 #
-# Only linux-64 is locked here because it is the only platform verified so
-# far. Maintainers on other systems should add their platform to
-# `[tool.pixi.workspace].platforms` and re-run `pixi install` to extend the
-# lock (Assimulo 3.4.3 is available on conda-forge for linux-64, osx-64, and
-# win-64).
+# linux-64 and win-64 are locked and tested. Maintainers on other systems
+# should add their platform to `[tool.pixi.workspace].platforms`, regenerate
+# the lock, and verify both test lanes there (Assimulo 3.4.3 is also available
+# on conda-forge for osx-64).
 # ---------------------------------------------------------------------------
 [tool.pixi.workspace]
 channels = ["conda-forge"]
-platforms = ["linux-64"]
+platforms = ["linux-64", "win-64"]
 
 # Core runtime dependencies, resolved from conda-forge. Bounds mirror
 # `[project].dependencies` so the pixi and pip surfaces stay consistent.

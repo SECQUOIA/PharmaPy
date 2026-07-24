@@ -118,9 +118,18 @@ maintenance cost without providing its intended reproducibility benefit.
 
 ## Reproducible installation with pixi
 
-The committed `pixi.lock` currently supports `linux-64`. Install pixi using its
-[official installation instructions](https://pixi.prefix.dev/latest/installation/),
-then clone and enter the repository:
+The committed `pixi.lock` supports `linux-64` and `win-64`. Install pixi using
+its
+[official installation instructions](https://pixi.prefix.dev/latest/installation/).
+The native Windows installer used to verify this guide can be run from
+PowerShell:
+
+```powershell
+powershell -ExecutionPolicy Bypass -c "irm -useb https://pixi.sh/install.ps1 | iex"
+```
+
+Open a new terminal after installation so that `pixi` is available on `PATH`.
+Then clone and enter the repository:
 
 ```bash
 git clone https://github.com/PharmaPy-org/PharmaPy.git
@@ -175,10 +184,9 @@ pixi run -e assimulo python path/to/script.py
 You can also start an activated shell with `pixi shell` or
 `pixi shell -e assimulo`.
 
-macOS and Windows are not currently present in the committed lockfile.
-Maintainers extending platform support must add the platform under
-`[tool.pixi.workspace].platforms`, regenerate `pixi.lock`, and verify both test
-lanes on that platform.
+macOS is not currently present in the committed lockfile. Maintainers extending
+platform support must add the platform under `[tool.pixi.workspace].platforms`,
+regenerate `pixi.lock`, and verify both test lanes on that platform.
 
 ## What is tested
 
@@ -193,13 +201,22 @@ guide was introduced:
 - The Assimulo pixi test lane passed and imported both `PharmaPy` and Assimulo
   3.4.3.
 
+The native `win-64` lock was then generated and verified with pixi 0.67.1 and
+Python 3.11:
+
+- `pixi install --all --locked` installed the core and Assimulo environments.
+- The core lane passed 56 tests, with 4 skipped and 6 deselected.
+- The Assimulo lane imported Assimulo 3.4.3 and passed all 14 selected
+  integration tests.
+
 Continuous integration exercises both installation promises:
 
 - The core job installs PharmaPy editably with pip and runs the solver-free
   tests.
-- The gating locked-environment job installs both pixi environments from the
-  committed lockfile, reruns the documented `pixi install --all --locked`
-  command, and verifies the core and Assimulo imports.
+- The gating locked-environment job runs on Linux and Windows, installs both
+  pixi environments from the committed lockfile, reruns the documented
+  `pixi install --all --locked` command, and verifies the core and Assimulo
+  imports.
 - A separate advisory job runs the solver-backed tests with
   `continue-on-error: true`, preserving the project's tolerance for instability
   in the compiled Assimulo/SUNDIALS integration without weakening the lockfile
