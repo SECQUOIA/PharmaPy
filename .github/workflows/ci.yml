@@ -57,10 +57,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v5
 
+      - name: Reject non-local PyPI lock entries
+        shell: bash
+        run: |
+          if grep -nE -- '- pypi:' pixi.lock | grep -vE -- '- pypi: \./$'; then
+            echo "::error file=pixi.lock::Only the local editable project may be installed from PyPI in pixi environments." >&2
+            exit 1
+          fi
+
       - name: Set up locked pixi environments
         uses: prefix-dev/setup-pixi@v0.10.0
         with:
-          pixi-version: v0.67.1
+          pixi-version: v0.74.0
           manifest-path: pyproject.toml
           environments: >-
             default
@@ -82,7 +90,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     continue-on-error: true
-    needs: pixi-lock
 
     steps:
       - name: Check out repository
@@ -91,7 +98,7 @@ jobs:
       - name: Set up locked Assimulo environment
         uses: prefix-dev/setup-pixi@v0.10.0
         with:
-          pixi-version: v0.67.1
+          pixi-version: v0.74.0
           manifest-path: pyproject.toml
           environments: assimulo
           locked: true

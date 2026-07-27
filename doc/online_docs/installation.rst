@@ -23,7 +23,8 @@ For the core library from an existing source checkout:
    python -m pip install .
    python -c "import PharmaPy; print(PharmaPy.__file__)"
 
-For the locked ``linux-64`` development and Assimulo environments:
+For the locked ``linux-64`` and ``win-64`` development and Assimulo
+environments:
 
 .. code-block:: console
 

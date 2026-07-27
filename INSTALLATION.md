@@ -34,6 +34,27 @@ not run `pip install pharmapy`: that name belongs to an unrelated project.
 The `pharmapy-sim` name remains unreserved until the first release is uploaded;
 maintainers must recheck its availability immediately before publishing and
 must not advertise the index-install command until that upload succeeds.
+Release ownership is tracked in
+[issue #146](https://github.com/PharmaPy-org/PharmaPy/issues/146).
+
+## Upgrading from an earlier PharmaPy install
+
+Earlier source checkouts installed a distribution named `PharmaPy`. pip treats
+that name and the new `pharmapy-sim` distribution name as different projects,
+so both installation records can coexist even though they own the same
+`PharmaPy` import files.
+
+If an environment has ever installed PharmaPy from an earlier checkout,
+uninstall both possible distribution records before installing this tree:
+
+```bash
+python -m pip uninstall -y PharmaPy pharmapy-sim
+python -m pip install .
+```
+
+Run the commands with the same Python interpreter used for PharmaPy. This
+cleanup is required only when reusing an existing environment; a new virtual
+environment does not contain the legacy distribution.
 
 ## Core installation with pip
 
@@ -81,6 +102,7 @@ python -c "import PharmaPy; print(PharmaPy.__file__)"
 For editable development and the core test dependencies, use:
 
 ```bash
+python -m pip uninstall -y PharmaPy pharmapy-sim  # when reusing an environment
 python -m pip install -e ".[test]"
 python -m pytest tests/ -m "not assimulo"
 ```
@@ -201,13 +223,16 @@ guide was introduced:
 - The Assimulo pixi test lane passed and imported both `PharmaPy` and Assimulo
   3.4.3.
 
-The native `win-64` lock was then generated and verified with pixi 0.67.1 and
-Python 3.11:
+The native `win-64` lock is generated with pixi 0.74.0 and Python 3.11. The
+gating CI job verifies that both environments install and import on Windows.
+During the initial native Windows validation:
 
 - `pixi install --all --locked` installed the core and Assimulo environments.
 - The core lane passed 56 tests, with 4 skipped and 6 deselected.
 - The Assimulo lane imported Assimulo 3.4.3 and passed all 14 selected
   integration tests.
+- The lock contains no non-local PyPI artifacts; SciPy remains owned by its
+  conda-forge package in both environments.
 
 Continuous integration exercises both installation promises:
 
@@ -218,9 +243,8 @@ Continuous integration exercises both installation promises:
   `pixi install --all --locked` command, and verifies the core and Assimulo
   imports.
 - A separate advisory job runs the solver-backed tests with
-  `continue-on-error: true`, preserving the project's tolerance for instability
-  in the compiled Assimulo/SUNDIALS integration without weakening the lockfile
-  check.
+  `continue-on-error: true` and no dependency on the two-platform lock matrix,
+  so it reports Linux solver health even if a locked-install job fails.
 
 Maintainers changing dependencies should also run the same checks locally:
 
@@ -243,6 +267,7 @@ integration health separately.
 ```bash
 conda env create -f environment.yml
 conda activate pharmapy-assimulo
+python -m pip uninstall -y PharmaPy pharmapy-sim  # when reusing an environment
 python -m pip install -e . --no-deps
 python -m pytest tests/ -m assimulo
 ```
