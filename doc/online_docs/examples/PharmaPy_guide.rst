@@ -43,7 +43,7 @@ Chemical selection
 
 		“delta_hvap”: enthalpy of vaporization of the species in units of [J/mol],
 
-		“tref_hvap”: enthalpy of vaporization of the species from a reference temperature in units of [J/mol],
+		“tref_hvap”: reference temperature for the enthalpy of vaporization in units of [K],
 
 		“surf_tension”: surface tension value of the species in units of [N/m],
 

@@ -32,8 +32,8 @@ For PharmaPy installation, you must use the source code, which is available in o
         1. conda install --file requirements.txt -c conda-forge
         2. python setup.py develop
 
-.. _Github repository: https://github.com/PharmaPy-org/PharmaPy
-.. _miniconda: https://docs.conda.io/projects/miniconda/en/latest/
+.. _Github repository: https://github.com/CryPTSys/PharmaPy/tree/develop
+.. _miniconda: https://github.com/CryPTSys/PharmaPy/
 
 Once the software is installed, install and/or use your preferred IDE or text editor to construct PharmaPy flowsheets. For instance, on an active conda environment, install the `Spyder IDE`_ by doing :code:`conda -c conda-forge install spyder`, which provides a nice development environment very well suited for scientific computing. 
 

@@ -12,7 +12,7 @@
 #
 import os
 import sys
-from importlib.metadata import PackageNotFoundError, version as distribution_version
+from importlib.metadata import packages_distributions, version as distribution_version
 
 # sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('../../'))
@@ -36,11 +36,15 @@ project = 'PharmaPy'
 copyright = '2023, Purdue University and the PharmaPy contributors'
 author = 'The original PharmaPy developers and PharmaPy-org contributors'
 
-# The full version, including alpha/beta/rc tags
-try:
-    release = distribution_version('PharmaPy')
-except PackageNotFoundError:
-    release = 'development'
+# The full version, including alpha/beta/rc tags. Derive the distribution name
+# from the installed import package so packaging renames do not stale the docs.
+distribution_names = sorted(set(packages_distributions().get(project, [])))
+if len(distribution_names) != 1:
+    raise RuntimeError(
+        f"Expected one installed distribution providing {project!r}, "
+        f"found {distribution_names!r}"
+    )
+release = distribution_version(distribution_names[0])
 
 version = release
 
