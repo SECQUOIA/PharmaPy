@@ -89,6 +89,30 @@ Prioritize, in order:
 - Unit comments are source annotations. Inspect consumers before changing
   user-facing runtime metadata to bracketed notation.
 
+## Constants and modeling assumptions
+
+- Do not introduce unexplained numeric literals ("magic numbers") in model
+  equations, algorithms, defaults, conditionals, tolerances, or tests. A
+  literal may remain inline only when its meaning is unambiguous from the
+  operation or a documented governing equation, such as zero initialization,
+  an identity, an index, or an evident mathematical coefficient; otherwise,
+  use a descriptive named constant or parameter.
+- Justify every such constant where it is defined or used, in an adjacent
+  comment or docstring. State what fixes its value: a cited equation,
+  literature or data source, a shown derivation, an exact unit conversion, a
+  physical or numerical constraint, an established algorithm, or an explicit
+  modeling or design assumption. Include units or `[-]`, basis, and valid range
+  when they apply.
+- Dimensionless ratios, thresholds, empirical factors, initial guesses,
+  tolerances, and defaults are not exempt. Label heuristics and design choices
+  as assumptions, explain why the selected value is appropriate, and make them
+  documented parameters when users or models may reasonably need to change
+  them.
+- Do not invent provenance. If no defensible value or rationale exists, stop
+  and request maintainer or domain guidance rather than silently choosing a
+  plausible number. In tests, identify the physical or modeling case that
+  fixture constants construct and derive expected values independently.
+
 ## Numerical and API conventions
 
 - Use descriptive, domain-relevant names. Avoid one-letter names except for
