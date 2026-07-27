@@ -598,6 +598,36 @@ class ParameterEstimation:
 
     def optimize_fn(self, optim_options=None, simulate=False, verbose=True,
                     store_iter=True, method='LM', bounds=None):
+        """Optimize variable parameters and assemble fit statistics.
+
+        Parameters
+        ----------
+        optim_options : dict, optional
+            Solver options passed to the selected optimization method.
+        simulate : bool, optional
+            If True, evaluate residuals in simulation mode by disabling the
+            optimization residual contribution.
+        verbose : bool, optional
+            If True, request verbose solver output when supported.
+        store_iter : bool, optional
+            If True, store unique parameter/objective iterates.
+        method : {'LM', 'IPOPT'}, optional
+            Optimization method used for fitting.
+        bounds : sequence, optional
+            Parameter bounds passed to IPOPT.
+
+        Returns
+        -------
+        opt_par : numpy.ndarray
+            Optimized variable parameters.
+        covar_params : numpy.ndarray
+            Estimated covariance matrix for the variable parameters.
+        info : dict
+            Solver Jacobian and residual information. For IPOPT,
+            ``info['fun']`` stores weighted residuals, dimensionless [-] after
+            applying ``sigma_inv``.
+
+        """
 
         self.optimize_flag = not simulate
         self.opt_method = method
@@ -638,8 +668,10 @@ class ParameterEstimation:
             # final_sens = np.vstack(self.sens_runs)
             # final_fun = np.concatenate(self.resid_runs)
 
+            # Assemble final weighted residuals without overwriting the
+            # solved-state residuals stored during the IPOPT callbacks.
             resid_multidim = self.get_objective(opt_par, out_array=True,
-                                                update_self=False)
+                                                set_self=False)
             jac_multidim = self.get_gradient(opt_par, out_array=True)
             info = {'jac': jac_multidim, 'fun': resid_multidim}
 
