@@ -1,18 +1,31 @@
 # Testing
 
+See the canonical [installation guide](INSTALLATION.md) for environment setup,
+package-name migration guidance, platform support, and verification details.
+
 Run the core pytest slice without the optional Assimulo solver stack:
 
 ```bash
+python -m pip uninstall -y PharmaPy pharmapy-sim  # when reusing an environment
 python -m pip install -e ".[test]"
 python -m pytest --collect-only
 python -m pytest tests/ -m "not assimulo"
 ```
 
-Run the Assimulo-backed integration tests with conda-forge:
+Run both locked pixi test lanes:
+
+```bash
+pixi install --all --locked
+pixi run test
+pixi run -e assimulo test-assimulo
+```
+
+For the unlocked manual conda-forge fallback, run:
 
 ```bash
 conda env create -f environment.yml
 conda activate pharmapy-assimulo
+python -m pip uninstall -y PharmaPy pharmapy-sim  # when reusing an environment
 python -m pip install -e . --no-deps
 python -m pytest tests/ -v -m assimulo
 ```
@@ -21,6 +34,7 @@ python -m pytest tests/ -v -m assimulo
 helpers for source workflows; it does not install Assimulo itself. Use the
 conda environment above for the supported Assimulo test path.
 
-The GitHub Actions Assimulo job is intentionally informational at first. It
-uses `continue-on-error: true` so failures in the external solver stack do not
-block the core test job while the environment is stabilized.
+GitHub Actions gates the locked pixi install on both Linux and Windows. The
+Assimulo test job is intentionally informational and independent of that
+two-platform matrix, so failures in the external solver stack do not block core
+tests and its Linux signal is still reported if another platform fails.

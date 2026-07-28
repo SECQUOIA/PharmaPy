@@ -24,10 +24,14 @@ celerybeat-schedule
 # dotenv
 .env
 
-# virtualenv
-.venv/
+# virtualenv (.venv may be a directory or a symlink into a pixi env)
+.venv
+.venv.*
 venv/
 ENV/
+
+# pixi
+.pixi/
 
 # Spyder project settings
 .spyderproject
