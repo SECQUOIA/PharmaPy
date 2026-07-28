@@ -1,8 +1,9 @@
 # PharmaPy Agent Guidelines
 
 This file is the canonical project guidance for coding agents. Read it before
-making changes. `CLAUDE.md` and `.github/copilot-instructions.md` load or point
-to this file so that Codex, Claude Code, and GitHub Copilot share one policy.
+making changes. Codex reads `AGENTS.md` natively; `CLAUDE.md` and
+`.github/copilot-instructions.md` are thin adapters so that Codex, Claude Code,
+and GitHub Copilot share one policy. A separate `CODEX.md` is not needed.
 
 ## Project vision
 
@@ -22,6 +23,11 @@ Prioritize, in order:
 ## Working principles
 
 - Read the relevant implementation, tests, and documentation before editing.
+- Review related open issues and coordination notes before editing. If work
+  reveals a defect, dependency, or connection outside the requested scope,
+  record it in an existing issue or, when authorized, open a focused follow-up
+  instead of widening the current change. Cross-link the source, current,
+  follow-up, and owning issues or PRs so the work can be traced before handoff.
 - Make the smallest coherent change that solves the stated problem. Do not
   combine unrelated refactors with a fix or feature.
 - Preserve public APIs and established model behavior unless the task explicitly
@@ -32,6 +38,13 @@ Prioritize, in order:
 - Remove dead commented code and stale TODOs from touched areas; use linked
   issues for actionable deferred work.
 - Preserve existing line endings and keep formatting-only changes separate.
+  After editing a tracked file, inspect `git ls-files --eol <path>` and
+  `git diff --ignore-cr-at-eol -- <path>`. If line-ending churn appears, reapply
+  the edit with the original terminators. Put deliberate normalization in a
+  separate change with an explicit `.gitattributes` policy.
+- When reviewing CRLF files with `git diff --check`, configure
+  `core.whitespace` with `cr-at-eol` so intended carriage returns are not
+  reported as trailing whitespace.
 - Keep PR scope, compatibility notes, and issue references accurate. Use
   `Closes` only when all relevant acceptance criteria are satisfied.
 - Do not commit generated files, local environments, credentials, or machine-
@@ -98,11 +111,13 @@ Prioritize, in order:
   an identity, an index, or an evident mathematical coefficient; otherwise,
   use a descriptive named constant or parameter.
 - Justify every such constant where it is defined or used, in an adjacent
-  comment or docstring. State what fixes its value: a cited equation,
+  comment or docstring. State what fixes its value: a cited equation, primary
   literature or data source, a shown derivation, an exact unit conversion, a
   physical or numerical constraint, an established algorithm, or an explicit
-  modeling or design assumption. Include units or `[-]`, basis, and valid range
-  when they apply.
+  modeling or design assumption. Cite the establishing document and its
+  page, equation, figure, or table when available. Distinguish a
+  dataset-specific observed range from a method's calibrated or validated
+  range. Include units or `[-]`, basis, and valid range when they apply.
 - Dimensionless ratios, thresholds, empirical factors, initial guesses,
   tolerances, and defaults are not exempt. Label heuristics and design choices
   as assumptions, explain why the selected value is appropriate, and make them
@@ -110,8 +125,10 @@ Prioritize, in order:
   them.
 - Do not invent provenance. If no defensible value or rationale exists, stop
   and request maintainer or domain guidance rather than silently choosing a
-  plausible number. In tests, identify the physical or modeling case that
-  fixture constants construct and derive expected values independently.
+  plausible number. Do not commit a numeric artifact labeled "not verified";
+  confirm its source and meaning or remove it. In tests, identify the physical
+  or modeling case that fixture constants construct and derive expected values
+  independently.
 
 ## Numerical and API conventions
 
@@ -126,6 +143,18 @@ Prioritize, in order:
   actionable messages for invalid units, shapes, ranges, or model state.
 - Validate finite-choice options explicitly; never let an unknown value silently
   select a plausible but unintended model.
+- Before changing the spelling or casing of a sentinel, enum-like value, or
+  finite-choice option, search repository-wide for its producers, assignments,
+  consumers, and comparisons. Treat mixed conventions as a latent bug and
+  update distant consumers deliberately.
+- Before adding hard validation, enumerate package, example, notebook, and test
+  call sites for the affected API. A green rejection test alone does not prove
+  that established valid usage remains compatible.
+- When replacing a hard-coded value with a parameter, show that the generalized
+  formulation reduces exactly to the previous formulation at the old assumed
+  value and test that equivalence. Sweep a physically meaningful range and
+  inspect convergence, residuals, and trend direction; repository consumers
+  define the authoritative compatibility surface.
 - Use explicit, justified tolerances for floating-point comparisons. Tests
   should use `pytest.approx` or NumPy testing helpers rather than exact equality
   for calculated floating-point values.
@@ -136,10 +165,20 @@ Prioritize, in order:
 
 ## Testing and verification
 
-- Add or update tests for every behavior change and bug fix. A regression test
-  must fail without the fix and pass with it; verify this by disabling the fix
-  when practical. Derive expected values independently rather than duplicating
-  the production expression.
+- Add or update tests for every behavior change and bug fix. Demonstrate a
+  distinct red/green result for each independent behavior by reverting its
+  implementation hunk when practical. A test merely failing on the base branch
+  is insufficient when an unrelated change could cause that failure. Derive
+  expected values independently rather than duplicating the production
+  expression.
+- Inspect the actual red failure and confirm that it exercises the intended
+  defect. Avoid broad `raises` assertions and stubs that fail for the wrong
+  reason; check a sentinel value or specific exception and guard against
+  vacuous greens such as recomputed expectations, bypassed paths, unentered stub
+  branches, or two empty collections.
+- For aggregate or structural changes, include content-preserving mutations
+  such as reordered fields or columns and assert values and ordering, not only
+  counts or shapes.
 - Exercise the affected public path and caller-to-callee handoff, not only a
   repaired helper. Assert values, ordering, and basis rather than only shape or
   absence of exceptions; use unequal dimensions and asymmetric fixtures where
@@ -153,8 +192,24 @@ Prioritize, in order:
 - Prefer representative real collaborators. Use monkeypatches and stubs only at
   narrow optional, expensive, or external boundaries, and assert the actual
   handoff. Link the blocker when stable end-to-end coverage must be deferred.
+- When expected behavior depends on an unfixed defect elsewhere, identify the
+  blocking issue in the test docstring or adjacent comment, state the
+  provisional expectation and what must change after the fix, and repeat that
+  limitation in the PR body. A stopgap assertion is not the intended contract;
+  update it when the blocker is fixed.
+- Do not make a check green by deleting, skipping, or xfail-marking a relevant
+  test; loosening a tolerance; adding `noqa`; or broadening warning ignores or
+  filters. Resolve the underlying artifact or obtain maintainer direction when
+  the check itself is wrong.
 - Use the markers defined in `pytest.ini`: `unit`, `integration`, `slow`, and
   `assimulo`. Do not make core tests depend on the optional Assimulo stack.
+- Exercise missing-optional-dependency fallbacks explicitly, either by blocking
+  the import in a focused test or in an environment where the dependency is
+  genuinely absent; a green rich environment proves only the installed path.
+  Tests that import an optional-backend module must apply the matching marker
+  and `pytest.importorskip` before that import. Inventory every optional import
+  performed during module loading so the minimal CI lane remains dependency
+  independent.
 - Run the narrowest relevant tests while developing, then run the core suite
   before handoff:
 
