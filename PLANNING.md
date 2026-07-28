@@ -43,9 +43,13 @@ real delivery already flows through continuous PR merges. The model below
 formalizes *that*, and deliberately avoids ceremony (sprints, mandatory
 estimates, blocking committee gates) that a team this size will not sustain.
 
-**This document does not freeze other work.** PRs continue to merge normally
-while this is discussed. The only thing gated on the outcome here is
-*publishing a tag* — see §4 and §7.
+**Finalizing this document is the team's current top priority.** While it is
+under discussion (proposed one-week objection window, §7), please **hold new or
+unrelated pull requests** and do **not** cut the release tag until the model is
+adopted. The in-flight release PRs this milestone already depends on — #106
+(fixes the critical #68), #135, #136, and #131 — should continue to merge, and
+existing in-flight fixes may land at the owner's discretion; freezing the
+release PRs would freeze the plan's own exit criteria (§5). See §4 and §7.
 
 ## 2. Verified snapshot (2026-07-27)
 
