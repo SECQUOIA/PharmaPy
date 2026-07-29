@@ -2,15 +2,27 @@
 
 The exported names are factory functions, not Assimulo class aliases, and
 therefore are not suitable for ``isinstance`` checks or subclassing.
+Module-level lazy attributes were rejected because ``from ... import`` would
+resolve them eagerly at the existing model call sites; factories preserve those
+imports without loading Assimulo.
 """
 
 from importlib import import_module
 from typing import Any
 
+# Source: the supported backend pin documented in DEPENDENCIES.md and
+# environment.yml. Keep all user-facing solver diagnostics synchronized here.
+_SUPPORTED_ASSIMULO_VERSION = "3.4.3"
 _INSTALL_MESSAGE = (
     "Assimulo is required for solver-backed PharmaPy simulations. "
-    "Install Assimulo 3.4.3 from conda-forge using environment.yml or "
+    f"Install Assimulo {_SUPPORTED_ASSIMULO_VERSION} from conda-forge using "
+    "environment.yml or "
     "provide a compatible local installation."
+)
+_BROKEN_INSTALL_MESSAGE = (
+    "Assimulo is installed but could not be imported. Verify that Assimulo "
+    f"{_SUPPORTED_ASSIMULO_VERSION} and its compiled SUNDIALS libraries are "
+    "compatible with this Python environment."
 )
 
 
@@ -38,7 +50,11 @@ def _load_assimulo_symbol(module_name: str, symbol_name: str) -> Any:
     try:
         module = import_module(module_name)
     except ImportError as exc:
-        raise ImportError(_INSTALL_MESSAGE) from exc
+        if isinstance(exc, ModuleNotFoundError) and exc.name == "assimulo":
+            raise ImportError(_INSTALL_MESSAGE) from exc
+        raise ImportError(
+            f"{_BROKEN_INSTALL_MESSAGE} Failed while importing {module_name}."
+        ) from exc
 
     try:
         return getattr(module, symbol_name)

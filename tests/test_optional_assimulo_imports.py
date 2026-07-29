@@ -5,8 +5,11 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
+from types import ModuleType
 
 import pytest
+
+import PharmaPy._assimulo as assimulo_backend
 
 pytestmark = pytest.mark.unit
 
@@ -21,6 +24,12 @@ AFFECTED_MODULES = (
     "PharmaPy.Reactors",
     "PharmaPy.SolidLiquidSep",
     "PharmaPy.ThreePhaseSettler",
+)
+LAZY_CONSTRUCTORS = (
+    "CVode",
+    "IDA",
+    "Explicit_Problem",
+    "Implicit_Problem",
 )
 
 IMPORT_BLOCKER = textwrap.dedent("""
@@ -82,13 +91,14 @@ def test_model_modules_import_without_assimulo(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_solver_construction_reports_missing_assimulo(tmp_path):
+@pytest.mark.parametrize("symbol_name", LAZY_CONSTRUCTORS)
+def test_solver_construction_reports_missing_assimulo(symbol_name, tmp_path):
     """Lazy solver construction gives an actionable dependency error."""
-    script = textwrap.dedent("""
-        from PharmaPy._assimulo import CVode
+    script = textwrap.dedent(f"""
+        from PharmaPy._assimulo import {symbol_name}
 
         try:
-            CVode(object())
+            {symbol_name}(object())
         except ImportError as exc:
             expected = (
                 "Assimulo is required for solver-backed PharmaPy simulations"
@@ -96,8 +106,48 @@ def test_solver_construction_reports_missing_assimulo(tmp_path):
             if expected not in str(exc):
                 raise AssertionError(str(exc)) from exc
         else:
-            raise AssertionError("CVode construction unexpectedly succeeded")
+            raise AssertionError(
+                "{symbol_name} construction unexpectedly succeeded"
+            )
         """)
     result = _run_without_assimulo(script, tmp_path)
 
     assert result.returncode == 0, result.stderr
+
+
+def test_missing_assimulo_symbol_reports_qualified_name(monkeypatch):
+    """An incompatible install identifies the missing constructor."""
+    stub_module = ModuleType("assimulo.solvers")
+
+    def load_stub(module_name):
+        assert module_name == "assimulo.solvers"
+        return stub_module
+
+    monkeypatch.setattr(assimulo_backend, "import_module", load_stub)
+
+    with pytest.raises(
+        ImportError,
+        match=r"assimulo\.solvers\.CVode",
+    ) as exc_info:
+        assimulo_backend.CVode()
+
+    assert isinstance(exc_info.value.__cause__, AttributeError)
+
+
+def test_broken_assimulo_install_has_distinct_error(monkeypatch):
+    """A backend loader failure is not misreported as a missing install."""
+    loader_error = "SUNDIALS shared library could not be loaded"
+
+    def fail_import(module_name):
+        assert module_name == "assimulo.solvers"
+        raise ImportError(loader_error)
+
+    monkeypatch.setattr(assimulo_backend, "import_module", fail_import)
+
+    with pytest.raises(
+        ImportError,
+        match="Assimulo is installed but could not be imported",
+    ) as exc_info:
+        assimulo_backend.CVode()
+
+    assert loader_error in str(exc_info.value.__cause__)

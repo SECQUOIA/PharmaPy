@@ -5,11 +5,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-pytest.importorskip("assimulo")
 import PharmaPy.Drying_Model as drying_module
 from PharmaPy.Drying_Model import Drying
 
-pytestmark = pytest.mark.assimulo
+pytestmark = pytest.mark.unit
 
 
 def test_condensed_energy_uses_single_latent_heat_factor(monkeypatch):
