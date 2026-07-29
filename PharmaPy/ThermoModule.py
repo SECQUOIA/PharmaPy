@@ -925,3 +925,24 @@ class ThermoPhysicalManager:
             return np.squeeze(gamma)
         else:
             return gamma
+    def get_state_dict(self, state_collection):
+        """
+        Export only the variables described by a StateCollection.
+
+        Parameters
+        ----------
+        state_collection : StateCollection
+            Collection describing which variables belong to the phase state.
+
+        Returns
+        -------
+        dict
+            Keyword arguments suitable for updatePhase().
+        """
+
+        updates = {}
+
+        for state in state_collection.states.values():
+            updates[state.name] = getattr(self, state.name)
+
+        return updates

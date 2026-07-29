@@ -1,0 +1,271 @@
+from __future__ import annotations
+import copy
+import string
+import numpy as np
+import os
+from dataclasses import dataclass, field
+from typing import Optional, Sequence, Any
+from types import MethodType
+from collections import OrderedDict
+from collections.abc import Callable
+from PharmaPy.MixedPhases import MixedPhase,MixedStream
+import PharmaPy.Kinetics as pk
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PharmaPy.Mechanisms import Mechanism,TransferMechanism,DirectTransfer
+
+## Dataclasses
+@dataclass(frozen=True)
+class PhaseRef:
+    phase_type: str
+    index: int
+    def __post_init__(self):
+        object.__setattr__(self, "phase_type", str(self.phase_type).lower())
+    def __eq__(self,otherPhaseRef):
+        return self.phase_type==otherPhaseRef.phase_type and self.index==otherPhaseRef.index
+
+@dataclass
+class PhaseConnection:
+    #TODO move this to connections when done
+    #active_condition checks the source sink and temp and must return a boolean
+    source_phase: PhaseRef
+    sink_phase: PhaseRef
+    kinetics:pk.CrystKinetics|pk.RxnKinetics
+    species_weights: np.ndarray | None = None
+    active_condition: callable=lambda source_phase,sink_phase:True
+    mechanism:"TransferMechanism | None" = None
+
+
+
+@dataclass
+class PhaseMapping:
+
+    source_phase: PhaseRef
+
+    sink_phase: PhaseRef
+
+@dataclass
+class StreamConnection:
+
+    stream: MixedStream
+    phase_mappings: list[PhaseMapping]
+    split_fraction: float = 1.0
+    
+@dataclass
+class IntraPhaseProcess:
+    phase:PhaseRef
+    mechanism: "Mechanism"
+
+
+
+@dataclass
+class StateVariable:
+    name: str
+    dim: int
+    units: str
+    state_type: str = "alg"
+    index: Optional[Sequence] = None
+    depends_on: tuple = ("time",)
+    stream:Optional[str]=None
+    phase: Optional[PhaseRef] = None
+    compute_history:Callable[[Any,np.ndarray, dict, Any], np.ndarray] | None = None 
+    """
+    Parameters
+    ----------
+    name
+        Name of the state variable.
+    dim
+        Number of dimensions.
+    units
+        Physical units.
+    compute_history : callable, optional
+
+        Function with signature
+
+            compute_history(state_var,
+                            time,
+                            solver_history,
+                            context=None)
+
+        returning the complete history of the state.
+    """
+    def __post_init__(self):
+        if self.compute_history is None:
+            self.compute_history = self.default_history
+        else:
+            self.compute_history = MethodType(self.compute_history, self)
+    def as_dict(self):
+        """Backward compatibility."""
+        out = {
+            "dim": self.dim,
+            "units": self.units,
+            "type": self.state_type,
+            "depends_on": list(self.depends_on)
+        }
+
+        if self.index is not None:
+            out["index"] = self.index
+
+        return out
+    def update_variable(self,variable_name,new_value):
+        setattr(self,variable_name,new_value)
+
+    def default_history(self,time,solver_history,context=None):
+        try:
+            return solver_history[self.name]
+        except KeyError:
+            raise KeyError(f"'{self.name}' is not present in the solver history.")
+    
+@dataclass(frozen=True)
+class StateKey:
+    name: str
+    phase: PhaseRef | None = None
+
+@dataclass
+class StateCollection:
+    states: dict[StateKey, StateVariable] = field(default_factory=dict)
+
+   
+    def add(self, state: StateVariable,overwrite=False,error_on_conflict=False):
+        key = StateKey(state.name,state.phase)
+        existing = self.states.get(key)
+
+        if existing is None:
+            self.states[key] = state
+            return
+
+        same = state == existing
+
+        if same:
+            return
+
+        if overwrite:
+            self.states[key] = state
+            return
+
+        if error_on_conflict:
+            raise ValueError(
+                f"State {state.name} already exists "
+                f"for phase {state.phase} and overwrite was False"
+            )
+
+    def names(self):
+        return [k.name for k in self.states]
+
+    def dims(self):
+        return [state.dim for state in self.states.values()]
+
+    def __contains__(self, name):
+
+        if isinstance(name, str):
+            return any(k.name == name for k in self.states)
+
+        return name in self.states
+    
+    def unpack(self, y):
+
+        states = {}
+
+        start = 0
+
+        for key,state in self.states.items():
+
+            end = start + state.dim
+
+            value = y[start:end]
+
+            if state.dim == 1:
+                value = value[0]
+
+            states[key] = value
+
+            start = end
+
+        return states
+    def pack(self, state_dict):
+
+        values = []
+
+        for key,state in self.states.items():
+
+            value = np.asarray(
+                state_dict[key]
+            ).flatten()
+
+            values.extend(value)
+
+        return np.asarray(values)
+    def unpack_history(self, y_history):
+        """
+        Parameters
+        ----------
+        y_history : ndarray
+            Shape (num_times, num_solver_states)
+
+        Returns
+        -------
+        dict
+            state_name -> full time history
+        """
+
+        history = {}
+        start = 0
+
+        for key,state in self.states.items():
+
+            end = start + state.dim
+            values = y_history[:, start:end]
+            if state.dim == 1:
+                values = values[:, 0]
+
+            history[key] = values
+            start = end
+
+        return history
+    def flatten(self, state_dict):
+
+        flat = {}
+
+        for key, value in state_dict.items():
+            if isinstance(key,str):
+                flat[key]=value
+                continue
+            
+            flat[self.format_key(key)] = value
+
+        return flat
+    @staticmethod
+    def format_key(key):
+
+        if key.phase is None:
+            return key.name
+
+        return (
+            f"{key.name}_"
+            f"{key.phase.phase_type}"
+            f"{key.phase.index}"
+        )
+        
+
+@dataclass
+class PhaseStateVariable:
+    phase: PhaseRef
+    state: StateVariable
+
+@dataclass
+class PhaseStateCollection:
+    phasestates: dict[PhaseRef, StateCollection] = field(default_factory=dict)
+
+    def add(self, phase: PhaseRef, state: StateVariable):
+        if phase not in self.phasestates:
+            self.phasestates[phase] = StateCollection()
+
+        self.phasestates[phase].add(state)
+
+    def __getitem__(self, phase):
+        return self.phasestates[phase]
+    def __iter__(self):
+        for phase, collection in self.phasestates.items():
+            for state in collection.states.values():
+                yield PhaseStateVariable(phase, state)

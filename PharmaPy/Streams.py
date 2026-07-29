@@ -185,11 +185,29 @@ class LiquidStream(LiquidPhase):
                 y_interpol = interpol(time)
 
         return y_interpol
+    @property
+    def mass_j_flow(self):
+        return self.mass_flow*self.mass_frac
+    
+    @mass_j_flow.setter
+    def mass_j_flow(self, value):
 
+        value = np.asarray(value)
+
+        self.mass_flow = value.sum()
+
+        if self.mass > 0:
+            mass_frac = value / self.mass_flow
+        else:
+            mass_frac = self.mass_frac
+
+        self.updatePhase(mass_flow=self.mass_flow,mass_frac = mass_frac)
     def updatePhase(self, concentr=None, mass_conc=None,
                     mass_frac=None, mole_frac=None,
-                    vol_flow=None, mass_flow=None, mole_flow=None, solvent_pass=False):
-
+                    vol_flow=None, mass_flow=None, mole_flow=None, solvent_pass=False,mass_j=None):
+        if mass_j is not None:
+            self.mass_j_flow = mass_j
+            return
         if vol_flow is None:
             vol_flow = self.vol_flow
 

@@ -210,6 +210,9 @@ class LiquidPhase(ThermoPhysicalManager):
 
         self._name = None
         self.transferred_from_uo = False
+    @property
+    def mass_j(self):
+        return self.mass*self.mass_frac
 
     @property
     def name(self):
@@ -289,8 +292,16 @@ class LiquidPhase(ThermoPhysicalManager):
 
     def updatePhase(self, mole_conc=None, mass_conc=None,
                     mass_frac=None, mole_frac=None,
-                    vol=0, mass=0, moles=0, temp=None, pres=None,solvent_pass=False):
+                    vol=0, mass=0, moles=0, temp=None, pres=None,solvent_pass=False,mass_j=None):
+        if temp is not None:
+            self.temp = temp
 
+        if pres is not None:
+            self.pres = pres
+
+        if mass_j is not None:
+            self.mass_j = mass_j
+            return
         if mole_conc is not None:
             frac_out = self.conc_to_frac(mole_conc,
                                          solvent_ind=self.ind_solv)
@@ -332,11 +343,7 @@ class LiquidPhase(ThermoPhysicalManager):
             mole_conc = self.mole_conc
             mass_conc = self.mass_conc
 
-        if temp is not None:
-            self.temp = temp
-
-        if pres is not None:
-            self.pres = pres
+        
 
         self.__set_amounts(mass, vol, moles, mass_frac, mole_frac,
                            mole_conc, mass_conc,solvent_pass)
@@ -505,6 +512,22 @@ class LiquidPhase(ThermoPhysicalManager):
         surfaceMix = np.dot(mass_frac, surfacePure)
 
         return surfaceMix
+    @property
+    def mass_j(self):
+        return self.mass*self.mass_frac
+    @mass_j.setter
+    def mass_j(self, value):
+
+        value = np.asarray(value)
+
+        self.mass = value.sum()
+
+        if self.mass > 0:
+            mass_frac = value / self.mass
+        else:
+            mass_frac = self.mass_frac
+
+        self.updatePhase(mass=self.mass,mass_frac = mass_frac)
 
 
 class VaporPhase(ThermoPhysicalManager):
@@ -536,7 +559,22 @@ class VaporPhase(ThermoPhysicalManager):
         self._name = None
 
         self.transferred_from_uo = False
+    @property
+    def mass_j(self):
+        return self.mass*self.mass_frac
+    @mass_j.setter
+    def mass_j(self, value):
 
+        value = np.asarray(value)
+
+        self.mass = value.sum()
+
+        if self.mass > 0:
+            mass_frac = value / self.mass
+        else:
+            mass_frac = self.mass_frac
+
+        self.updatePhase(mass=self.mass,mass_frac = mass_frac)
     @property
     def name(self):
         return self._name
@@ -573,8 +611,12 @@ class VaporPhase(ThermoPhysicalManager):
 
     def updatePhase(self, mole_conc=None, mass_conc=None,
                     mass_frac=None, mole_frac=None,
-                    vol=0, mass=0, moles=0):
-
+                    vol=0, mass=0, moles=0,temp=None,mass_j=None):
+        if temp is not None:
+            self.temp = temp
+        if mass_j is not None:
+            self.mass_j = mass_j
+            return
         if mole_conc is not None:
             frac_out = self.conc_to_frac(mole_conc,
                                          solv_ind=self.ind_solv)
@@ -942,6 +984,23 @@ class SolidPhase(ThermoPhysicalManager):
         self.transferred_from_uo = False
 
     @property
+    def mass_j(self):
+        return self.mass*self.mass_frac
+    
+    @mass_j.setter
+    def mass_j(self, value):
+
+        value = np.asarray(value)
+
+        self.mass = value.sum()
+
+        if self.mass > 0:
+            mass_frac = value / self.mass
+        else:
+            mass_frac = self.mass_frac
+
+        self.updatePhase(mass=self.mass,mass_frac = mass_frac)
+    @property
     def name(self):
         return self._name
 
@@ -950,7 +1009,12 @@ class SolidPhase(ThermoPhysicalManager):
         self._name = name
 
     def updatePhase(self, x_distrib=None, distrib=None, mass=None,
-                    moments=None):
+                    moments=None, temp=None,mass_j=None):
+        if temp is not None:
+            self.temp= temp
+        if mass_j is not None:
+            self.mass_j = mass_j
+            return
         if x_distrib is not None:
             self.x_distrib = x_distrib
 

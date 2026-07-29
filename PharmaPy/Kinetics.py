@@ -592,7 +592,7 @@ class RxnKinetics:
             return jac_params
 
     def get_rxn_rates(self, conc, temp=298.15, overall_rates=True, jac=False,
-                      delta_hrxn=None, max_iter=3):
+                      delta_hrxn=None, max_iter=3,return_both=False):
 
         if jac:
             jac_states = self.derivatives(conc, temp)
@@ -608,26 +608,28 @@ class RxnKinetics:
                 f_terms = self.equilibrium_model(conc, temp, delta_hrxn)
 
             rxn_rates = temp_terms * f_terms
-            if overall_rates:  # per species
 
-                count=0
-                rrates = rxn_rates.copy()
-                while count <max_iter:
-                    total_rates = np.dot(rrates, self.normalized_stoich.T)
-                    problem_species = total_rates + conc < -eps
-                    if not any(problem_species):
-                        break # no <0 species
-                    for spec_indx in np.where(problem_species)[0]:
-                        rxns_with_consumption = self.normalized_stoich[spec_indx,:] <0
-                        if not np.any(rxns_with_consumption):continue # it could have been fixed on a previous iteration since problem_species was defined
-                        total_consumed = np.dot(rrates[rxns_with_consumption], self.normalized_stoich[spec_indx,rxns_with_consumption])
-                        scale = min(1.0, -conc[spec_indx]/(total_consumed+eps)) # conc +scale*consumed >=0
-                        rrates[rxns_with_consumption]*=scale
-                    count+=1
+            count=0
+            rrates = rxn_rates.copy()
+            while count <max_iter:
                 total_rates = np.dot(rrates, self.normalized_stoich.T)
+                problem_species = total_rates + conc < -eps*10
+                if not any(problem_species):
+                    break # no <0 species
+                for spec_indx in np.where(problem_species)[0]:
+                    rxns_with_consumption = self.normalized_stoich[spec_indx,:] <0
+                    if not np.any(rxns_with_consumption):continue # it could have been fixed on a previous iteration since problem_species was defined
+                    total_consumed = np.dot(rrates[rxns_with_consumption], self.normalized_stoich[spec_indx,rxns_with_consumption])
+                    scale = min(1.0, -conc[spec_indx]/(total_consumed+eps)) # conc +scale*consumed >=0
+                    rrates[rxns_with_consumption]*=scale
+                count+=1
+            total_rates = np.dot(rrates, self.normalized_stoich.T)
+            if return_both:
+                return rrates,total_rates
+            if overall_rates:  # per species
                 return total_rates
             else:  # per rxn
-                return rxn_rates
+                return rrates
 
 
 class CrystKinetics:

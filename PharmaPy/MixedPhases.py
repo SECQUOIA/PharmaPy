@@ -704,8 +704,7 @@ class MixedPhase:
         for phase in self.Phases:
 
             phase_type = (
-                phase.__class__.__name__
-                .replace("Phase", "")
+                phase.phase_family
                 .lower()
             )
 
@@ -730,19 +729,25 @@ class MixedPhase:
         Python will find it before calling __getattr__. This method therefore
         only handles attributes that are not otherwise defined.
         """
+
+        # Prevent interfering with Python internals
+        if (name.startswith("__") and name.endswith("__")) or name.startswith("_"):
+            raise AttributeError(name)
+
         key =name.removesuffix("s")
         if key in self.phases_by_type:
-            out = MixedPhase(self.phase_by_type[key])
+            out = MixedPhase(self.phases_by_type[key])
             return out
-        masses = np.array([phase.mass for phase in self.Phases], dtype=float)
+        phases = object.__getattribute__(self,"_Phases")
+        masses = np.array([phase.mass for phase in phases], dtype=float) if hasattr(phases[0],'mass') else np.array([phase.mass_flow for phase in phases], dtype=float)
 
         total_mass = masses.sum()
         if total_mass > 0:
             weights = masses / total_mass
         else:
-            weights = np.ones(len(self.Phases), dtype=float) / len(self.Phases)
+            weights = np.ones(len(phases), dtype=float) / len(phases)
 
-        attrs = [getattr(phase, name, None) for phase in self.Phases]
+        attrs = [getattr(phase, name, None) for phase in phases]
 
         # Methods
         if any(callable(attr) for attr in attrs):
@@ -778,6 +783,25 @@ class MixedPhase:
             )
         # Everything else defaults to mass-weighted average
         return np.dot(weights, values)
+    
+    def getCP(self):
+
+        total_cp = 0.0
+
+        for phase in self:
+
+            total_cp += (
+                phase.mass
+                * phase.getCP()
+            )
+
+        return total_cp
+    @property
+    def name_species(self):
+        return self.Phases[0].name_species
+    @property
+    def num_species(self):
+        return len(self.name_species)
 class MixedStream(MixedPhase):
 
     EXTENSIVE_PROPERTIES = {
@@ -786,8 +810,10 @@ class MixedStream(MixedPhase):
         "mole_flow",
     }
 
-    def __init__(self):
+    def __init__(self,Phases=None):
         super().__init__()
+        if Phases is not None:
+            self.Phases=Phases
 
     @property
     def Phases(self):
@@ -824,9 +850,4 @@ class MixedStream(MixedPhase):
         Evaluate every constituent stream and return the results.
         """
         return [stream.evaluate_inputs(time) for stream in self.Phases]
-    @property
-    def name_species(self):
-        return self.Phases[0].name_species
-    @property
-    def num_species(self):
-        return len(self.name_species)
+    

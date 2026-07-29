@@ -1,4 +1,6 @@
 from PharmaPy.MultiPhaseVessel import MultiPhaseVessel
+from PharmaPy.Mechanisms import *
+from PharmaPy.DataClasses import *
 
 class _BaseCrystallizer(MultiPhaseVessel):
     def __init__(self,target_comp):
@@ -72,3 +74,6 @@ class _BaseCrystallizer(MultiPhaseVessel):
     def _post_CrystKinetics_setter(self):
         "Place holder in case future children need special behavior"
         pass
+    def configure_solver(self):
+        #Assimulo option, does nothing if not using assimulo backend
+        self.integrator.solver.linear_solver = "SPGMR"
