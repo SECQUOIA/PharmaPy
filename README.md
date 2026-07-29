@@ -14,8 +14,21 @@ It allows to simulate the dynamics of standalone, drug substance unit operations
 
 <br clear="left"/>
 
-## Getting started
-To install PharmaPy, download and unzip the code from the release section, and then follow the instructions on the `install_instructions.txt` file.
+## Installation
+
+Install the core library from a source checkout with:
+
+```bash
+python -m pip install .
+```
+
+Use the locked pixi environment when you need the optional Assimulo solver
+backend. The planned PyPI distribution name is `pharmapy-sim`; the import name
+will remain `PharmaPy`.
+
+See the [complete installation guide](https://github.com/PharmaPy-org/PharmaPy/blob/master/INSTALLATION.md)
+for virtual-environment setup, editable development, pixi, Assimulo, platform
+support, and verification commands.
 
 Read our [documentation](https://pharmapy.readthedocs.io/en/latest/) or chat with the [PharmaPy Simulation Assistant](https://chatgpt.com/g/g-679bb3b5c5188191b26680b147a4f4a2-pharmapy-simulation-assistant) for more information on how to install and how to use PharmaPy.
 
