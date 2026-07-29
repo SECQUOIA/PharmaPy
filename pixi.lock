@@ -5032,4 +5032,9 @@ packages:
   - pandas>=1.5
   - cython>=0.29,<3 ; extra == 'assimulo'
   - pytest ; extra == 'test'
+  - ipykernel>=6 ; extra == 'docs'
+  - nbsphinx>=0.9 ; extra == 'docs'
+  - sphinx>=7.2,<9 ; extra == 'docs'
+  - sphinx-rtd-theme>=2,<4 ; extra == 'docs'
+  - sphinxcontrib-bibtex>=2.6 ; extra == 'docs'
   requires_python: '>=3.9'
