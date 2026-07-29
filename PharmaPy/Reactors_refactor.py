@@ -67,88 +67,37 @@ class ContinuousReactor(_BaseReactor):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    def configure_default_connections(self):
 
-    def build_outlet_stream(self, time=None):
+        # User already supplied outlets
+        if len(self.outlet_connections) > 0:
+            return
 
-        # ------------------------------------------------------------------
-        # Create default outlet if none exists (old PharmaPy behavior)
-        # ------------------------------------------------------------------
+        stream = MixedStream(copy.deepcopy(self.Phases))
 
-        if len(self.outlet_connections) == 0:
+        mappings = []
 
-            if len(self.inlet_connections) == 0:
-                raise RuntimeError(
-                    "Continuous reactor requires an inlet before "
-                    "an outlet stream can be generated."
+        counts = {}
+
+        for phase in self.Phases:
+
+            phase_type = phase.phase_family.lower()
+
+            idx = counts.get(phase_type, 0)
+            counts[phase_type] = idx + 1
+
+            ref = PhaseRef(phase_type, idx)
+
+            mappings.append(
+                PhaseMapping(
+                    source_phase=ref,
+                    sink_phase=ref,
                 )
-
-            connections = []
-
-            for inlet_connection in self.inlet_connections:
-
-                stream = copy.deepcopy(
-                    inlet_connection.stream
-                )
-
-                connections.append(
-                    StreamConnection(
-                        stream=stream,
-                        phase_mappings=copy.deepcopy(
-                            inlet_connection.phase_mappings
-                        ),
-                        split_fraction=inlet_connection.split_fraction
-                    )
-                )
-
-            self.outlet_connections = connections
-
-        # ------------------------------------------------------------------
-        # Total inlet flow
-        # ------------------------------------------------------------------
-
-        total_inlet_flow = 0.0
-
-        for connection in self.inlet_connections:
-
-            for mapping in connection.phase_mappings:
-
-                phase = connection.stream.get_phase_from_ref(
-                    mapping.source_phase
-                )
-
-                total_inlet_flow += phase.mass_flow
-
-        total_split = sum(
-            connection.split_fraction
-            for connection in self.outlet_connections
-        )
-
-        # ------------------------------------------------------------------
-        # Populate outlet streams
-        # ------------------------------------------------------------------
-
-        for connection in self.outlet_connections:
-
-            outlet_flow = (
-                total_inlet_flow
-                * connection.split_fraction
-                / total_split
             )
 
-            for mapping in connection.phase_mappings:
-
-                vessel_phase = self.Phases.get_phase_from_ref(
-                    mapping.source_phase
-                )
-
-                stream_phase = connection.stream.get_phase_from_ref(
-                    mapping.sink_phase
-                )
-
-                updates = vessel_phase.get_state_dict(
-                    self.phase_states[mapping.source_phase]
-                )
-
-                updates["mass_flow"] = outlet_flow
-
-                stream_phase.updatePhase(**updates)
+        self.outlet_connections = [
+            StreamConnection(
+                stream=stream,
+                phase_mappings=mappings,
+            )
+        ]

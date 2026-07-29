@@ -111,9 +111,14 @@ class MultiPhaseVessel():
 
     def _post_set_phases(self):
         self.define_material_states()
-        self.default_diff_states_from_phases()
+        self.initialize_defualt_states()
+        self.configure_default_connections()
         self.nomenclature() 
-
+    def configure_default_connections(self):
+        """Hook for subclasses to create default outlet connections."""
+        pass
+    def initialize_defualt_states(self):
+        self.default_diff_states_from_phases()
     def _initialize_state_collections(self):
 
         self.phase_states = PhaseStateCollection()
@@ -213,6 +218,16 @@ class MultiPhaseVessel():
     @property
     def Outlet(self):
 
+        if self.outlet_conditions is not None:
+
+            if len(self.outlet_conditions.streams) == 1:
+                return self.outlet_conditions.streams[0].stream
+
+            raise AttributeError(
+                "Multiple outlet streams exist."
+            )
+
+        # Backward compatibility before solve
         if len(self.outlet_connections) == 1:
             return self.outlet_connections[0].stream
 
@@ -929,7 +944,7 @@ class MultiPhaseVessel():
 
         return updates
 
-    def compute_phase_outlet_flow(
+    def compute_requested_phase_outlet_flow(
             self,
             vessel_phase,
             total_outlet_flow,
@@ -957,28 +972,76 @@ class MultiPhaseVessel():
 
         return fraction * total_outlet_flow
     
-    def resolve_outlets(self,completed_state,operating_conditions,total_inlet_vol_flow)->StreamConditions:
+    def compute_actual_phase_outlet_flow(
+        self,
+        vessel_phase,
+        requested_flow,
+    ):
+        """
+        Enforce physical limits on an outlet phase flow.
+
+        Parameters
+        ----------
+        vessel_phase
+            Phase currently in the vessel.
+
+        requested_flow : float
+            Desired outlet volumetric flow for this phase.
+
+        Returns
+        -------
+        float
+            Physically achievable outlet flow.
+        """
+
+        available = max(vessel_phase.vol_flow, 0.0)
+
+        return min(requested_flow, available)
+    
+    def resolve_outlets(
+        self,
+        completed_state,
+        operating_conditions,
+        total_inlet_vol_flow,
+    )->StreamConditions:
+
         resolved = []
-        outlet_flows = self.resolve_outlet_flows(total_inlet_vol_flow,operating_conditions=)
+
+        outlet_flows = self.resolve_outlet_flows(total_inlet_vol_flow, operating_conditions)
 
         for connection_num, connection in enumerate(self.outlet_connections):
+
             outlet_stream = copy.deepcopy(connection.stream)
+
             total_outlet_flow = outlet_flows.get(connection_num)
-            # split outlet flow to mapped phases
-            phase_flows ={}
+
             for mapping in connection.phase_mappings:
-                vessel_phase = self.Phases.get_phase_from_ref(mapping.source_phase)
-                phase_flows[mapping.source_phase] = self.compute_phase_outlet_flow(
-                    vessel_phase,
-                    total_outlet_flow,
-                    connection)
-            for phase_ref, flow in phase_flows.items():
-                outlet_phase = outlet_stream.get_phase_from_ref(phase_ref)
-                updates=self.get_phase_operating_conditions(
+
+                vessel_phase = self.Phases.get_phase_from_ref(
+                    mapping.source_phase
+                )
+
+                phase_key = OperatingKey(
+                    "vol_flow",
+                    connection=connection_num,
+                    phase=mapping.source_phase,
+                )
+
+                if phase_key in operating_conditions:
+                    requested_flow = operating_conditions[phase_key]
+
+                else:
+                    requested_flow = self.compute_requested_phase_outlet_flow(vessel_phase, total_outlet_flow, connection_num)
+
+                actual_flow = self.compute_actual_phase_outlet_flow(vessel_phase,requested_flow)
+                outlet_phase = outlet_stream.get_phase_from_ref(mapping.source_phase)
+
+                updates = self.get_phase_operating_conditions(
                     operating_conditions,
                     connection_num,
-                    phase_ref
+                    mapping.source_phase,
                 )
+                updates["vol_flow"] = actual_flow
                 outlet_phase.updatePhase(**updates)
 
             resolved.append(ResolvedStreamConnection(connection,outlet_stream))
@@ -1437,20 +1500,31 @@ class MultiPhaseVessel():
         }
 
         self.update_phases_from_state(final_state)
+        return final_state
+    
+    def update_final_conditions(self,completed_state,time,solver_history,output_history):
+        completed_state = self.complete_state(completed_state,time[-1])
+        operating_conditions = self.complete_operating_conditions(time[-1],completed_state)
+
+        resolved_inlets = self.resolve_inlets(completed_state,operating_conditions)
+        inlet_flow = self.get_total_inlet_vol_flow(resolved_inlets)
+        resolved_outlets = self.resolve_outlets(completed_state,operating_conditions,inlet_flow)
+
+        self.outlet_conditions =resolved_outlets
+        
+        self.elapsed_time = time[-1]
+
         
     def retrieve_results(self, time, solver_states):
 
         solver_history = self.build_solver_history(time,solver_states)
-
         output_history = self.build_output_history(time,solver_history)
 
-        self.update_final_state(solver_history)
-        
-        self.build_outlet_stream(time[-1])
-        self.outputs = self.build_dynamic_result(time,solver_history,output_history)
-
-        self.elapsed_time = time[-1]
-
+        completed_state = self.update_final_state(solver_history)
+        self.update_final_conditions(completed_state,time,solver_history,output_history)
+        self.outputs = self.build_dynamic_result(time,
+                    solver_history,
+                    output_history)
         return self.outputs
     
 
