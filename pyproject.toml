@@ -17,9 +17,13 @@ maintainers = [
     {name = "David Bernal"},
     {name = "Andres Cabeza"},
     {name = "Can Li"},
+    {name = "Luisdomingo Guzman Julio"},
+    {name = "Mohamed Mazhar Laljee"},
     {name = "Yirang Park"},
     {name = "Sergey Gusev"},
+    {name = "Zachary Hillman"},
     {name = "Piyush Sharma"},
+    {name = "Quinn Huckaba"},
 ]
 keywords = [
     "chemical-engineering",

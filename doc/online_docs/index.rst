@@ -59,12 +59,13 @@ Current developers and maintainers
 * David Bernal (`@bernalde <https://github.com/bernalde>`__)
 * Andres Cabeza (`@andres9403 <https://github.com/andres9403>`__)
 * Can Li (`@CanLi1 <https://github.com/CanLi1>`__)
-* `@Mazhar331 <https://github.com/Mazhar331>`__
+* Luisdomingo Guzman Julio (`@lguzmaj <https://github.com/lguzmaj>`__)
+* Mohamed Mazhar Laljee (`@Mazhar331 <https://github.com/Mazhar331>`__)
 * Yirang Park (`@parkyr <https://github.com/parkyr>`__)
 * Sergey Gusev (`@sergey-gusev94 <https://github.com/sergey-gusev94>`__)
-* `@ZacharyHillman18 <https://github.com/ZacharyHillman18>`__
+* Zachary Hillman (`@ZacharyHillman18 <https://github.com/ZacharyHillman18>`__)
 * Piyush Sharma (`@Piyush1698 <https://github.com/Piyush1698>`__)
-* `@QHuckaba <https://github.com/QHuckaba>`__
+* Quinn Huckaba (`@QHuckaba <https://github.com/QHuckaba>`__)
 
 Purdue University Staff
 +++++++++++++++++++++++
