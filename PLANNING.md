@@ -126,6 +126,22 @@ all of it is neither achievable nor necessary. The rule:
 **Milestone title:** `Org transition: installable, documented, CI-verified`
 **Release version (Git tag / `pyproject`):** `0.1.0a1` *(alpha — proposed, see §7 D1)*
 
+### Version terminology
+
+This repository uses [PEP 440](https://peps.python.org/pep-0440/) terminology.
+The numeric suffix on a pre-release counts successive builds within that phase.
+
+| Term | Meaning in this plan |
+| --- | --- |
+| **Release** | A uniquely versioned snapshot of the project, represented by an immutable Git tag and published distribution. A release can be a pre-release or a final release. |
+| **`0.1.0a1`** | The first **alpha** for the planned `0.1.0` series. It is suitable for early testing while known correctness gaps and planned release work remain. |
+| **`0.1.0rc1`** | The first **release candidate**. Planned scope is complete; only fixes for release-blocking findings should separate it from the final release. |
+| **`0.1.0`** | The **final release** for this series: the same release segment without a pre-release suffix. “Final” records progression through the release process; it does not by itself claim production validation. |
+
+The proposed progression is `0.1.0a1` → later alphas if findings require them →
+`0.1.0rc1` → later release candidates if blockers remain → `0.1.0`. Each later
+pre-release increments the numeric suffix for its phase.
+
 **Goal.** Produce the first `PharmaPy-org`-maintained release: the package
 installs and its core modules import in a clean, supported environment; core CI
 and documentation are reproducible and public; the one critical defect is fixed;
@@ -195,6 +211,14 @@ Put planned **issues** in the milestone. Do **not** add both an issue and its
 linked PR (double-counts progress). Add a PR to the milestone only when the PR
 is itself the tracked deliverable with no corresponding issue.
 
+Assignments also live on the milestone **issues**, not in this file or on their
+linked PRs. Each in-scope issue has one accountable GitHub assignee. The release
+manager (§7 D7) is responsible for assigning unowned work before the milestone
+starts and for ensuring the assignee and Project status stay current. When work
+is handed off, the current assignee or release manager updates the issue before
+the handoff; PR assignees and reviewers describe implementation and review
+roles, not milestone ownership.
+
 ## 6. Project (#1) changes
 
 **Views** (create/keep exactly these; remove the rest):
@@ -248,7 +272,8 @@ makes the call if consensus is unclear.
 - `0.1.0` — honest about the capability step, but reads as a stable feature
   baseline, which 34 open high-severity correctness defects contradict.
 - **`0.1.0a1`** *(proposed)* — signals "this is the target shape; correctness
-  work continues," and allows a1 → … → rc1 → 0.1.0 as the backlog burns down.
+  work continues," and allows the alpha → release-candidate → final progression
+  defined in §5 as the backlog burns down.
 - A non-versioned milestone name is used regardless (above); the *tag* still
   needs a number, so pair it with `0.1.0a1`.
 
@@ -288,6 +313,25 @@ The authority split with PR #132 is deliberate: `PLANNING.md` owns work
 planning, prioritization, and releases; the proposed `AGENTS.md` owns coding and
 verification rules. A future contributor-facing `CONTRIBUTING.md` should
 summarize and point to both rather than duplicate either.
+
+### Maintenance responsibility and refresh triggers
+
+Any maintainer may propose policy changes through a pull request. The named
+release manager owns milestone-specific maintenance: keeping the milestone
+description synchronized with §5 and confirming the release gates before a tag.
+
+Maintenance is event-driven rather than scheduled on a fixed calendar. Refresh
+the dated §2 snapshot and §5 implementation status together:
+
+- before creating or rolling over a milestone;
+- before tagging any pre-release or final release; and
+- when a ratified decision changes scope, the operating model, or a release
+  gate.
+
+Changing an individual work assignment does not require a `PLANNING.md` edit:
+the issue assignee and Project status are the live operational record. A policy
+change to who owns assignments does require review here. Do not advance the
+snapshot timestamp unless every snapshot claim is re-queried in the same pass.
 
 This file stays as the living planning record; the generated artifacts
 (milestone, views, `RELEASING.md`) are downstream of it.
