@@ -210,18 +210,31 @@ Prioritize, in order:
   and `pytest.importorskip` before that import. Inventory every optional import
   performed during module loading so the minimal CI lane remains dependency
   independent.
-- Run the narrowest relevant tests while developing, then run the core suite
-  before handoff:
+- Run the narrowest relevant tests while developing, then run the locked core
+  task before handoff:
+
+  ```bash
+  pixi run test
+  ```
+
+- When pixi is unavailable but the dependencies are already provisioned in an
+  active environment, run the underlying core command:
 
   ```bash
   python -m pytest tests/ -m "not assimulo"
   ```
 
-- For solver-backed changes, also use the conda environment and Assimulo test
-  command documented in `TESTING.md`. If that environment is unavailable, say
-  exactly which verification was not run and why.
-- Keep `pyproject.toml`, dependency mirrors, and `DEPENDENCIES.md` synchronized
-  when changing dependencies.
+- For solver-backed changes, also run the locked Assimulo task:
+
+  ```bash
+  pixi run -e assimulo test-assimulo
+  ```
+
+  `TESTING.md` documents the manual conda fallback. If neither environment is
+  available, say exactly which verification was not run and why.
+- Keep `[project]` and `[tool.pixi]` in `pyproject.toml`, `pixi.lock`,
+  dependency mirrors, and `DEPENDENCIES.md` synchronized when changing
+  dependencies or environment tasks.
 - In workflows, use least-privilege permissions and supported actions, and avoid
   duplicate runs. Avoid `eval`, `exec`, or shell discovery when normal APIs work.
 
