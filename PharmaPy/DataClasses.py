@@ -122,6 +122,34 @@ class StateKey:
     name: str
     phase: PhaseRef | None = None
 
+@dataclass(frozen=True)
+class OperatingKey:
+
+    name: str
+
+    connection: int | None = None
+
+    phase: PhaseRef | None = None
+
+    component: str | None = None
+
+
+
+@dataclass
+class ResolvedStreamConnection:
+    """Updates is a dict of dict, where the secondary dict is the updates that will 
+    be passed directly to the updatePhase method of the corresponding PhaseRef's phase"""
+    
+    connection: StreamConnection
+
+    updates: dict[PhaseRef, dict]
+
+@dataclass
+class StreamConditions:
+
+    outlets: list["ResolvedStreamConnection"]
+
+
 @dataclass
 class StateCollection:
     states: dict[StateKey, StateVariable] = field(default_factory=dict)

@@ -9,6 +9,8 @@ from PharmaPy.Phases import classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
 from PharmaPy.Commons import trapezoidal_rule
 from PharmaPy.ThermoModule import ThermoPhysicalManager
+from PharmaPy.Phases import LiquidPhase,SolidPhase,VaporPhase
+from PharmaPy.Streams import LiquidStream,SolidStream,VaporStream
 from collections import defaultdict
 import numpy as np
 from scipy.optimize import newton
@@ -697,7 +699,7 @@ class MixedPhase:
         return groups
     def get_phase_from_ref(self,
             phase_ref
-        ):
+        )->LiquidPhase|SolidPhase|VaporPhase|LiquidStream|SolidStream|VaporStream:
 
         candidates = []
 
