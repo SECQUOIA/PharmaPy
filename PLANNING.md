@@ -9,21 +9,21 @@
 > than ad hoc, and (3) verify our own process against an explicit checklist.
 >
 > Its authority is limited to planning, prioritization, and releases. Coding
-> and verification rules belong in `AGENTS.md` if that file is adopted (see
-> [§9](#9-adoption-how-these-sections-graduate)). Revisions to either policy
-> document go through normal pull-request review.
+> and verification rules are in `AGENTS.md` (see
+> [§9](#9-adoption-and-maintenance)). Revisions to either policy document go
+> through normal pull-request review.
 
 ## Table of contents
 
 1. [Purpose and how to use this document](#1-purpose-and-how-to-use-this-document)
-2. [Verified snapshot (2026-07-29)](#2-verified-snapshot-2026-07-29)
+2. [Verified snapshot (2026-07-30)](#2-verified-snapshot-2026-07-30)
 3. [Operating model](#3-operating-model)
 4. [Release-risk policy](#4-release-risk-policy)
 5. [First milestone: `0.1.0a1`](#5-first-milestone-010a1)
 6. [Project (#1) changes](#6-project-1-changes)
 7. [Decision log](#7-decision-log)
 8. [Open questions for maintainers](#8-open-questions-for-maintainers)
-9. [Adoption: how these sections graduate](#9-adoption-how-these-sections-graduate)
+9. [Adoption and maintenance](#9-adoption-and-maintenance)
 
 ---
 
@@ -41,13 +41,13 @@ This is a *planning* document, not user-facing docs. Three concrete uses:
 
 **Guiding principle:** this is a small, asynchronous, academic team whose real
 delivery already flows through continuous PR merges. The model below formalizes
-*that*, and deliberately avoids ceremony (sprints, mandatory estimates,
-blocking committee gates) that the team will not sustain.
+*that*, and deliberately avoids ceremony (sprints, mandatory estimates, or
+mandatory committee approvals) that the team will not sustain.
 
-## 2. Verified snapshot (2026-07-29)
+## 2. Verified snapshot (2026-07-30)
 
 Queried read-only through the GitHub REST and GraphQL APIs at
-**2026-07-29T13:54:25Z**. **Time-sensitive** — re-verify before acting on any
+**2026-07-30T14:29:55Z**. **Time-sensitive** — re-verify before acting on any
 count. Re-running the Project claims requires organization access and a token
 with the `read:project` scope.
 
@@ -61,34 +61,46 @@ with the `read:project` scope.
 - The single `severity:critical` is **#68** (adiabatic crystallizer
   energy-balance crash).
 - Org **Project #1 "PharmaPy Development"** was created 2026-07-21 and contains
-  85 items. Its
-  `Priority` values are a mechanical copy of `Severity` (34 High / 20 Medium /
-  3 Low / 1 Urgent — identical distribution), the `Size` field is unused
-  (0 of 85 items populated), and only #23, #26, #134 sit in any iteration.
+  all 86 open issues. Its `Priority` values are a mechanical copy of `Severity`
+  for 58 issues (34 High / 20 Medium / 3 Low / 1 Urgent — identical
+  distribution), the `Size` field is unused (0 of 86 items populated), and only
+  #23, #26, #134 sit in any iteration.
 - CI (`.github/workflows/ci.yml`) runs core tests on **Python 3.11 only**, while
-  `requires-python = ">=3.9"`. Locked pixi installs gate Linux and Windows; the
-  Assimulo integration job is `continue-on-error` (informational).
+  `requires-python = ">=3.9"`. Locked pixi installs are required on Linux and
+  Windows; the Assimulo integration job is `continue-on-error` (informational).
 - The codebase dates to 2021 and is published (DOI
   `10.1016/j.compchemeng.2021.107408`); `0.0.1` is a placeholder, not release
   history.
 
 ## 3. Operating model
 
-One Project, milestone-anchored, continuous flow. Each GitHub concept has
-exactly one meaning:
+Project #1 holds the work, milestones define release targets, and contributors
+take the next item when they have capacity; the team does not plan in sprints.
+Terms used below have these meanings:
+
+- A **blocker** is a problem that must be fixed before a release.
+- An **epic** is a large issue that groups related smaller issues.
+- The **release test suite** is the small set of install, import, example, and
+  numerical checks that must pass before release. §8 Q1 still needs a maintainer
+  decision on exactly which existing test lanes and new numerical checks it
+  contains.
+- A **work-in-progress (WIP) limit** caps how many items may be `In progress` at
+  once.
+
+Each GitHub concept has one meaning:
 
 | Concept | Meaning in this repo |
 | --- | --- |
 | **Project #1** | The single source of truth: full backlog, active board, and roadmap. We do **not** create a Project per release or subsystem. |
-| **Status** | Workflow state only: `Todo` → `In progress` → `Done`. Delivery is controlled by a **work-in-progress (WIP) limit** on `In progress`, not by sprints. Set the cap when a milestone opens using **one active item per active contributor plus one shared review/unblocking slot**; the formula keeps the limit tied to actual team capacity instead of a magic number. |
-| **Milestone** | A repository release (or a concrete, externally meaningful outcome). **Exactly one open at a time** because the Project roadmap already holds longer-horizon work; a second open milestone would create a competing release gate. |
-| **Epic + sub-issues** | Decomposition of a large initiative, using native issue-type `Epic` and parent/sub-issue links. Current epics: #3, #17, #67, #118. This is the roadmap's backbone. |
-| **Priority** | Maintainer delivery order — **re-triaged independently of severity** (see §7 D4). Until re-triaged it is unreliable and is kept out of delivery views. |
+| **Status** | Workflow state only: `Todo` → `In progress` → `Done`. Set the WIP limit when a milestone opens: one active item per active contributor, plus one shared slot for review or unblocking. For example, three active contributors give a limit of four items. |
+| **Milestone** | A repository release (or a concrete, externally meaningful outcome). **Exactly one open at a time** because the Project roadmap already holds longer-horizon work; a second open milestone would create two competing definitions of "ready." |
+| **Epic + sub-issues** | A large tracked effort and its smaller pieces, linked through GitHub's `Epic` type and parent/sub-issue links. Current epics: #3, #17, #67, #118. |
+| **Priority** | Maintainer delivery order, separate from defect severity. Clear the 58 copied values as specified in §6; a blank value means `Needs triage` until a maintainer assigns a real delivery priority (see §7 D4). |
 | **Severity** (label) | Technical impact of a *defect* only. Does not imply delivery order. |
 | **Area** (label) | Affected subsystem. Useful for filtering; not a planning input. |
 | **Assignee** | The one person accountable for the item. No duplicate "owner" field. |
 | **Target date** | Only for a genuinely externally-dated deliverable. Not a general field. |
-| **Iteration** | **Not used as a commitment unit.** (See §7 D3.) Removing it also removes the three-way conflict between iteration dates, `Target date`, and the milestone due date. |
+| **Iteration** | Not used to promise what will ship by a date. (See §7 D3.) Removing it also removes the conflict between iteration dates, `Target date`, and the milestone due date. |
 | **Size** | **Not required.** Optional, and only populated for current-milestone items if the team finds it useful. (See §7 D5.) |
 
 Rationale for dropping sprints: the iteration apparatus was created on
@@ -96,7 +108,7 @@ Rationale for dropping sprints: the iteration apparatus was created on
 and held zero items, and the current board contains work outside the release
 while omitting the release's own critical blocker. The team's actual, working
 coordination mechanism is per-PR "whoever lands second, rebase" notes —
-continuous flow. We formalize that.
+contributors take the next item as capacity opens. We formalize that.
 
 ## 4. Release-risk policy
 
@@ -107,16 +119,17 @@ all of it is neither achievable nor necessary. The rule:
   critical. Each critical must be closed **with a regression test**. *(Today:
   only #68, fixed by PR #106, which adds regression coverage for its four
   sub-defects.)*
-- **`severity:high` → not individually blocking, with a promotion rule.** A high
-  is *promoted* to a blocker if it either (a) produces a **silent wrong
-  numerical result in a documented example/tutorial**, or (b) affects a module
-  exercised by the release **smoke/validation suite**. All non-promoted highs
-  are **disclosed by number in the release notes**.
-- **The gate is behavioral, not lexical.** "No open `severity:critical`" is
-  necessary but insufficient, because severity labels do not cover every
-  correctness issue. Release also requires the smoke/numerical suite green
+- **`severity:high` → not individually blocking, with an escalation rule.** A
+  high-severity issue becomes a blocker if it either (a) produces a **silent
+  wrong numerical result in a documented example/tutorial**, or (b) affects a
+  module exercised by the **release test suite**. All other high-severity
+  issues are **listed by number in the release notes**.
+- **The gate checks behavior, not just labels.** "No open
+  `severity:critical`" is necessary but insufficient, because severity labels
+  do not cover every correctness issue. The release test suite must also pass
   (§5 exit criteria).
-- **A named release manager decides promotions**, recorded on the milestone.
+- **A named release manager decides which high-severity issues become
+  blockers**, and records those decisions on the milestone.
 
 ## 5. First milestone: `0.1.0a1`
 
@@ -136,7 +149,7 @@ The numeric suffix on a pre-release counts successive builds within that phase.
 | **Release** | A uniquely versioned snapshot of the project, represented by an immutable Git tag and published distribution. A release can be a pre-release or a final release. |
 | **`0.1.0a1`** | The first **alpha** for the planned `0.1.0` series. It is suitable for early testing while known correctness gaps and planned release work remain. |
 | **`0.1.0rc1`** | The first **release candidate**. Planned scope is complete; only fixes for release-blocking findings should separate it from the final release. |
-| **`0.1.0`** | The **final release** for this series: the same release segment without a pre-release suffix. “Final” records progression through the release process; it does not by itself claim production validation. |
+| **`0.1.0`** | The **final release** for this series: the same release segment without a pre-release suffix. "Final" records progression through the release process; it does not by itself claim production validation. |
 
 The proposed progression is `0.1.0a1` → later alphas if findings require them →
 `0.1.0rc1` → later release candidates if blockers remain → `0.1.0`. Each later
@@ -150,23 +163,23 @@ explicitly an **alpha** — it does not claim numerical production-validation.
 
 ### Scope (in) — mapped to tracked issues
 
-Implementation status is a dated snapshot from **2026-07-29T13:54:25Z**; the
+Implementation status is a dated snapshot from **2026-07-30T14:29:55Z**; the
 issues remain the durable scope records and must be re-queried before copying
 this table into a milestone.
 
 | Issue | Implementation status at snapshot | Role |
 | --- | --- | --- |
-| #68 | PR **#106** open | The critical crystallizer crash + enthalpy basis (hard gate). |
+| #68 | PR **#106** open | The critical crystallizer crash + enthalpy basis (must be fixed before release). |
 | #134 | PR **#135** open | Solver-free model imports (lazy Assimulo). |
 | #130 | PR **#131** open | Reproducible, public documentation (#131 is one step and intentionally does not close #130). |
 | #8 | PR **#136** merged | Packaging/metadata modernization, `pharmapy-sim` distribution, pixi environments, install guide, and two-platform locked install matrix. Remaining #8 scope stays on the issue; distribution-name reservation is tracked by #146. |
 
 ### Scope (out)
 
-- #7 in its broad form (split out a release-specific smoke/validation issue —
+- #7 in its broad form (split out a release-specific test-suite issue —
   see §8 Q1).
 - #10, the full solver-abstraction initiative.
-- Every correctness issue counted in §2 as a single release gate.
+- Requiring every correctness issue counted in §2 to be closed before release.
 - Epic #118 and the complete StateLayout migration.
 - Speculative bioreactor, crystallizer-extension, and scheduling initiatives.
 - #23 (PR #114) and #26 (PR #115): **in flight, not release scope** unless the
@@ -186,14 +199,14 @@ this table into a milestone.
       `>=3.11`). Dependency bounds and environment policy remain sourced in
       [`DEPENDENCIES.md`](DEPENDENCIES.md).
 - [x] A clean environment installs the package through the documented pip and
-      locked pixi paths. PR #136 added the Linux/Windows smoke-install jobs and
+      locked pixi paths. PR #136 added the Linux/Windows locked-install jobs and
       [`INSTALLATION.md`](INSTALLATION.md); commands and lane semantics are
       sourced in [`TESTING.md`](TESTING.md).
 - [ ] Core modules import **without Assimulo**; a solver path without Assimulo
       fails with a clear, localized message (asserted by a test).
 - [ ] Core CI and documentation CI are green; the public docs site and
       pull-request previews are verified (#130).
-- [ ] **#68 is closed with a regression test**, and the smoke/validation suite
+- [ ] **#68 is closed with a regression test**, and the release test suite
       is green.
 - [ ] No open defect is labelled `severity:critical`.
 - [ ] Release notes enumerate the open `severity:high` correctness issues by
@@ -234,9 +247,11 @@ roles, not milestone ownership.
 
 Remove the `Current iteration` view (no iterations).
 
-**Fields:** retire `Iteration` and `Size` from the model; keep Status, Priority
-(re-triaged), Severity/Area (labels), Milestone, Assignee, and a sparingly-used
-`Target date`.
+**Fields:** retire `Iteration` and `Size` from the model. Clear the 58 existing
+`Priority` values copied from `Severity`; a blank `Priority` means
+`Needs triage`. Maintainers then assign Priority from delivery order, never by
+copying Severity. Keep Status, Priority, Severity/Area (labels), Milestone,
+Assignee, and a sparingly-used `Target date`.
 
 **Automations:** keep auto-add of open issues and archive-on-close; add
 auto-set `Status: Done` when the closing PR merges. Stop mirroring Severity into
@@ -257,10 +272,10 @@ makes the call if consensus is unclear.
 
 | # | Decision | Proposed default | Reversible? | Owner |
 | --- | --- | --- | --- | --- |
-| **D1** | First release version | `0.1.0a1` (alpha) | Hard once tagged/DOI'd | maintainer |
-| **D2** | Distribution name on the index | `pharmapy-sim` (recheck at publish, #146) | Hard once published | maintainer |
-| **D3** | Timeboxed iterations | **Drop**; use WIP-limited continuous flow | Yes | team |
-| **D4** | Priority model | Re-triage independently of severity (or collapse to `Now/Next/Later`) | Yes | maintainer |
+| **D1** | First release version | `0.1.0a1` (alpha) | No after the version or DOI is published | maintainer |
+| **D2** | Distribution name on the index | `pharmapy-sim` (recheck at publish, #146) | No after publication | maintainer |
+| **D3** | Timeboxed iterations | **Drop**; take the next item as capacity opens and enforce the WIP limit | Yes | team |
+| **D4** | Priority model | Clear mirrored values; leave blank as `Needs triage`, then prioritize independently of severity (or use `Now/Next/Later`) | Yes | maintainer |
 | **D5** | `Size` field | Not required; optional for near-term items only | Yes | team |
 | **D6** | #23/#26 in this release? | No unless the owner confirms they ship here | Yes | issue owner |
 | **D7** | Release manager | The maintainer who creates the milestone acts as release manager unless the milestone names another volunteer | Yes | maintainer |
@@ -273,7 +288,7 @@ makes the call if consensus is unclear.
   baseline, which 34 open high-severity correctness defects contradict.
 - **`0.1.0a1`** *(proposed)* — signals "this is the target shape; correctness
   work continues," and allows the alpha → release-candidate → final progression
-  defined in §5 as the backlog burns down.
+  defined in §5 as the remaining work is completed.
 - A non-versioned milestone name is used regardless (above); the *tag* still
   needs a number, so pair it with `0.1.0a1`.
 
@@ -281,7 +296,7 @@ makes the call if consensus is unclear.
 
 These need a human decision; do not invent answers.
 
-1. **Smoke/validation suite.** [`TESTING.md`](TESTING.md) already defines the
+1. **Release test suite.** [`TESTING.md`](TESTING.md) already defines the
    core pytest lane, locked pixi install matrix, and informational Assimulo
    lane. Which of those existing lanes gate the release, and what numerical
    assertions must be added on top? Should #7 be split into a release-specific
@@ -298,9 +313,10 @@ These need a human decision; do not invent answers.
    correctness fixes; a later minor for meaningful API/architecture change. No
    future milestones created until their scope is credible.
 
-## 9. Adoption: how these sections graduate
+## 9. Adoption and maintenance
 
-On merge, this document becomes the reference. As decisions are ratified:
+On merge, this document becomes the reference. As decisions are ratified, copy
+the durable parts into the operational documents and GitHub records:
 
 - §4 (release-risk policy) and §5 due-date/hygiene → the durable content of a
   future `RELEASING.md`.
@@ -309,10 +325,11 @@ On merge, this document becomes the reference. As decisions are ratified:
 - §5 (milestone block) → pasted into the created GitHub milestone.
 - §6 → applied to Project #1.
 
-The authority split with PR #132 is deliberate: `PLANNING.md` owns work
-planning, prioritization, and releases; the proposed `AGENTS.md` owns coding and
-verification rules. A future contributor-facing `CONTRIBUTING.md` should
-summarize and point to both rather than duplicate either.
+The authority split with `AGENTS.md`, adopted through PR #132, is deliberate:
+`PLANNING.md` owns work planning, prioritization, and releases; `AGENTS.md`
+owns coding and verification rules. A future contributor-facing
+`CONTRIBUTING.md` should summarize and point to both rather than duplicate
+either.
 
 ### Maintenance responsibility and refresh triggers
 
@@ -323,6 +340,8 @@ description synchronized with §5 and confirming the release gates before a tag.
 Maintenance is event-driven rather than scheduled on a fixed calendar. Refresh
 the dated §2 snapshot and §5 implementation status together:
 
+- in the final revision after a review or ratification window closes and before
+  that revision is merged;
 - before creating or rolling over a milestone;
 - before tagging any pre-release or final release; and
 - when a ratified decision changes scope, the operating model, or a release
