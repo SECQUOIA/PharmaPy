@@ -659,7 +659,9 @@ class Cake:
 
 class MixedPhase:
     def __init__(self,phases=None):
-        self._Phases =phases if phases is not None else []
+        self._Phases = []
+        if phases is not None:
+            self.Phases = phases
         self.EXTENSIVE_PROPERTIES = {"mass", "vol", "moles"}
     
     @property
@@ -670,7 +672,7 @@ class MixedPhase:
     def Phases(self,phases):
 
         phases = phases if isinstance(phases,(list,tuple)) else [phases]
-        if not all([isinstance(p,ThermoPhysicalManager) for p in phases]):
+        if not all([isinstance(p,ThermoPhysicalManager) or isinstance(p,MixedPhase) for p in phases]):
             raise TypeError("All phases must be PharmaPy Phase Objects")
         phases = self._normalize_phases(phases)
         self._Phases = phases
@@ -804,6 +806,8 @@ class MixedPhase:
     @property
     def num_species(self):
         return len(self.name_species)
+    def to_stream(self):
+        return MixedStream([phase.to_stream() for phase in self.Phases])
 class MixedStream(MixedPhase):
 
     EXTENSIVE_PROPERTIES = {
@@ -852,4 +856,13 @@ class MixedStream(MixedPhase):
         Evaluate every constituent stream and return the results.
         """
         return [stream.evaluate_inputs(time) for stream in self.Phases]
-    
+    @classmethod
+    def from_phase(cls, phase):
+        phase = phase if isinstance(phase, MixedPhase) else MixedPhase(phase)
+
+        streams = [
+            p.to_stream()
+            for p in phase.Phases
+        ]
+
+        return cls(streams)

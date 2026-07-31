@@ -137,17 +137,15 @@ class OperatingKey:
 
 @dataclass
 class ResolvedStreamConnection:
-    """Updates is a dict of dict, where the secondary dict is the updates that will 
-    be passed directly to the updatePhase method of the corresponding PhaseRef's phase"""
-    
+        
     connection: StreamConnection
 
-    updates: dict[PhaseRef, dict]
+    stream: MixedStream
 
 @dataclass
 class StreamConditions:
 
-    outlets: list["ResolvedStreamConnection"]
+    streams: list["ResolvedStreamConnection"]
 
 
 @dataclass

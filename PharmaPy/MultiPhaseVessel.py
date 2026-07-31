@@ -32,7 +32,7 @@ class MultiPhaseVessel():
       
 
         if isothermal and controller is not None:
-            assert 'global_temp' not in controller.keys(), "Cannot change the temperature of an isothermal unit"
+            assert 'global_temp' not in controller.states and 'temp' not in controller.states, "Cannot change the temperature of an isothermal unit"
 
         self.basis = basis
         self.adiabatic = adiabatic
@@ -261,8 +261,12 @@ class MultiPhaseVessel():
             )
 
     def default_diff_states_from_phases(self):
-        """These are which states from the base phases should be in the solver
-        Either override this function for different defaults for children, or modify phase_states directly after phase defintion for complex behavior"""
+        """
+        Mark the default material state for every phase as differential.
+
+        Unit operations that require different behavior should override this
+        method or modify `phase_states` after phase initialization.
+        """
         # do nothing if the phases are already marked diff
         if any(
             state.state_type == "diff"
@@ -271,7 +275,7 @@ class MultiPhaseVessel():
         ):
             return
         for phase in self.phase_states:
-            if phase.phase==PhaseRef('liquid',0) and phase.state.name==self.basis:
+            if phase.state.name==self.basis:
                 phase.state.update_variable('state_type','diff')
 
     @property
@@ -336,7 +340,7 @@ class MultiPhaseVessel():
 
         completed = state.copy()
 
-        controlled = self.controller.compute_state(
+        controlled = self.controller.compute_states(
             time=time,
             completed_state=completed,
             unit=self,
@@ -435,7 +439,7 @@ class MultiPhaseVessel():
     def has_energy_balance(self):
         return (
             not self.isothermal
-            and "global_temp" not in self.controller and "temp" not in self.controller
+            and "global_temp" not in self.controller.states and "temp" not in self.controller.states
         )
     @property
     def has_utility_balance(self):
@@ -652,7 +656,7 @@ class MultiPhaseVessel():
         operating_conditions = {}
 
         operating_conditions.update(
-            self.controller.compute_input(
+            self.controller.compute_operating_conditions(
                 time,
                 completed_state,
                 self,
@@ -950,25 +954,27 @@ class MultiPhaseVessel():
             total_outlet_flow,
             connection,
         ):
-        """
-        Default outlet splitter.
+        """Compute desired outlet flow for a vessel phase.
 
-        Each mapped phase keeps the same fraction of the vessel volumetric
-        flow that it currently occupies.
+        The default implementation distributes the specified outlet
+        connection flow among the mapped phases in proportion to their
+        current volume within the vessel.
+
+        If no total outlet flow is specified, no outlet flow is requested.
         """
 
         if total_outlet_flow is None:
-            return vessel_phase.vol_flow
+            return 0.0
 
         total_vessel_flow = sum(
-            phase.vol_flow
+            phase.vol
             for phase in self.Phases
         )
 
         if total_vessel_flow <= 0:
             return 0.0
 
-        fraction = vessel_phase.vol_flow / total_vessel_flow
+        fraction = vessel_phase.vol / total_vessel_flow
 
         return fraction * total_outlet_flow
     
@@ -978,25 +984,14 @@ class MultiPhaseVessel():
         requested_flow,
     ):
         """
-        Enforce physical limits on an outlet phase flow.
+        Compute the physically achievable outlet flow for a vessel phase.
 
-        Parameters
-        ----------
-        vessel_phase
-            Phase currently in the vessel.
-
-        requested_flow : float
-            Desired outlet volumetric flow for this phase.
-
-        Returns
-        -------
-        float
-            Physically achievable outlet flow.
+        The default implementation assumes the requested flow is
+        achievable. Subclasses may override this to enforce additional
+        constraints (e.g. settling, phase disengagement, hydraulics).
         """
 
-        available = max(vessel_phase.vol_flow, 0.0)
-
-        return min(requested_flow, available)
+        return max(requested_flow, 0.0)
     
     def resolve_outlets(
         self,
@@ -1031,7 +1026,7 @@ class MultiPhaseVessel():
                     requested_flow = operating_conditions[phase_key]
 
                 else:
-                    requested_flow = self.compute_requested_phase_outlet_flow(vessel_phase, total_outlet_flow, connection_num)
+                    requested_flow = self.compute_requested_phase_outlet_flow(vessel_phase, total_outlet_flow, connection)
 
                 actual_flow = self.compute_actual_phase_outlet_flow(vessel_phase,requested_flow)
                 outlet_phase = outlet_stream.get_phase_from_ref(mapping.source_phase)
@@ -1146,14 +1141,16 @@ class MultiPhaseVessel():
             resolved_inlets
         ):
 
-        for inlet in resolved_inlets.inlets:
+        for inlet in resolved_inlets.streams:
             stream = inlet.stream
             for mapping in inlet.connection.phase_mappings:
                 stream_phase = stream.get_phase_from_ref(mapping.source_phase)
 
-                species_flow = getattr(stream_phase,self.basis)
-
-                rates[self.material_key(mapping.sink_phase)] += species_flow
+                species_flow = getattr(stream_phase,self.basis+'_flow')
+                state_key = self.material_key(mapping.source_phase)
+                if state_key not in rates:
+                    continue
+                rates[state_key] += species_flow
 
                 aux.append({
                     "connection": inlet.connection,
@@ -1180,17 +1177,26 @@ class MultiPhaseVessel():
 
         for outlet in resolved_outlets.streams:
 
-            for phase_ref, outlet_phase in outlet.phase_conditions.items():
+            for mapping in outlet.connection.phase_mappings:
 
-                species_flow = getattr(outlet_phase,self.basis)
+                outlet_phase = outlet.stream.get_phase_from_ref(
+                    mapping.source_phase
+                )
 
-                rates[self.material_key(phase_ref)] -= species_flow
+                species_flow = getattr(
+                    outlet_phase,
+                    self.basis + "_flow"
+                )
+                state_key = self.material_key(mapping.source_phase)
+                if state_key not in rates:
+                    continue
+                rates[state_key] -= species_flow
 
                 aux.append({
                     "outlet": outlet,
-                    "phase_ref": phase_ref,
+                    "mapping": mapping,
                     "outlet_phase": outlet_phase,
-                    "species_flow": species_flow
+                    "species_flow": species_flow,
                 })
 
 

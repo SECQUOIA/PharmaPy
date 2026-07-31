@@ -1,12 +1,13 @@
 from PharmaPy.MultiPhaseVessel import MultiPhaseVessel
 from Mechanisms import ReactionMechanism
 from PharmaPy.DataClasses import *
+from ProcessControl_Refactor import Controller
 
 class _BaseReactor(MultiPhaseVessel):
-    def __init__(self, integrator=None, temp_ref=273.15, isothermal=False, reset_states=False, controls={}, h_conv=0, state_events={}, adiabatic=False, jac_type="AD", Phases=None, basis='mass_j', ht_mode="jacket", diam=0, area_base=0):
-        super().__init__(integrator, temp_ref, isothermal, reset_states, controls, h_conv, state_events, adiabatic, jac_type, Phases, basis, ht_mode, diam, area_base)
-        if isothermal:
-            assert adiabatic != 1, "Cannot be isothermal and adiabatic with a reaction present"
+    def __init__(self, *args,**kwargs):
+        super().__init__(*args,**kwargs)
+        if self.isothermal:
+                    assert self.adiabatic != 1, "Cannot be isothermal and adiabatic with a reaction present"
     @property
     def RxnKinetics(self):
         raise AttributeError(
@@ -73,7 +74,7 @@ class ContinuousReactor(_BaseReactor):
         if len(self.outlet_connections) > 0:
             return
 
-        stream = MixedStream(copy.deepcopy(self.Phases))
+        stream = MixedStream.from_phase(copy.deepcopy(self.Phases))
 
         mappings = []
 
@@ -101,3 +102,18 @@ class ContinuousReactor(_BaseReactor):
                 phase_mappings=mappings,
             )
         ]
+    def resolve_outlet_flows(
+        self,
+        total_inlet_vol_flow,
+        operating_conditions,
+    ):
+
+        flows = super().resolve_outlet_flows(
+            total_inlet_vol_flow,
+            operating_conditions,
+        )
+        #Unless the user specifies different outlets, the outlet must equal the volume of the inlet
+        if 0 not in flows:
+            flows[0] = total_inlet_vol_flow
+
+        return flows

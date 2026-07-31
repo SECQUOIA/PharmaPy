@@ -44,10 +44,7 @@ solid1 = SolidPhase(
 )
 
 
-vessel.Phases = [
-    liquid1,
-    solid1
-]
+vessel.Phases = liquid1
 
 
 # -----------------------------
@@ -56,7 +53,7 @@ vessel.Phases = [
 
 inlet = LiquidStream(
     dpath,
-    mass_flow=0.01,
+    mass_flow=0.02,
     mass_frac=[0.3,0.7,0,0,0]
 )
 rxns = ['A + B --> C']

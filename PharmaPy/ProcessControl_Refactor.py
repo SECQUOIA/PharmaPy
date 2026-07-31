@@ -15,7 +15,7 @@ class Controller:
         self.states.clear()
         self.operating_conditions.clear()
 
-    def compute_state(
+    def compute_states(
             self,
             time,
             completed_state,
