@@ -87,6 +87,7 @@ def test_unit_model_converts_drying_rate_before_balance_equations(monkeypatch):
     dryer.porosity = 0.5  # [-]
     dryer.rho_sol = 1500.0  # [kg/m**3]
     dryer.s_inf = 0.1  # [-]
+    dryer.k_perm = 1.0  # [m**2]
     dryer.dPg_dz = 2.0  # [Pa/m]
     dryer.pres_gas = np.array([101325.0, 101000.0])  # [Pa]
     dryer.CakePhase = SimpleNamespace(alpha=1.2)  # [m/kg]
@@ -144,6 +145,18 @@ def test_unit_model_converts_drying_rate_before_balance_equations(monkeypatch):
 
 
 def test_material_balance_uses_mass_drying_rate_for_gas_species():
+    """Verify gas-species transfer after the #81 gas-holdup correction.
+
+    Notes
+    -----
+    This regression was added by the earlier molar-to-mass drying-rate fix.
+    That mass-basis contract is still unchanged: ``dry_rate`` enters this
+    helper as [kg/m**3/s]. The expected gas-species values changed in #81
+    because this branch also asserted the old duplicate gas-holdup divisor.
+    With ``satur = 0.5`` [-], that extra ``(1 - satur)`` [-] divisor doubled
+    the drying-transfer contribution. The explicit pieces below separate that
+    corrected transfer term from the unchanged saturation-correction term.
+    """
     dryer = Drying(number_nodes=2, supercrit_names=["nitrogen"])
     dryer.idx_volatiles = np.array([0, 2])  # [-]
     dryer.porosity = 0.5  # [-]
@@ -182,9 +195,18 @@ def test_material_balance_uses_mass_drying_rate_for_gas_species():
         inputs=inputs,
     )  # [1/s]
 
-    expected_dygas_dt = np.array([
-        [0.239912, -0.000704, 1.2265786666666665],
-        [0.2877728, -0.0007952, 1.2265530666666665],
+    expected_transfer = np.array([
+        [0.12, 0.0, 0.6133333333333334],
+        [0.144, 0.0, 0.6133333333333333],
     ])  # [1/s]
+    expected_saturation_correction = np.array([
+        [-0.000088, -0.000704, -0.000088],
+        [-0.0002272, -0.0007952, -0.0001136],
+    ])  # [1/s]
+    expected_dygas_dt = expected_transfer + expected_saturation_correction  # [1/s]
+    np.testing.assert_allclose(expected_dygas_dt, np.array([
+        [0.119912, -0.000704, 0.6132453333333334],
+        [0.1437728, -0.0007952, 0.6132197333333333],
+    ]))  # [1/s]
 
     np.testing.assert_allclose(dygas_dt, expected_dygas_dt)
