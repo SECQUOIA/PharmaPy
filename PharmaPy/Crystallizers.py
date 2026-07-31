@@ -1315,6 +1315,31 @@ class BatchCryst(_BaseCryst):
         self.vol_offset = 0.75
 
     def jac_states(self, time, states, params, return_only=True):
+        """Return the BatchCryst state Jacobian.
+
+        Parameters
+        ----------
+        time : float
+            Evaluation time [s].
+        states : ndarray
+            Solver state vector ordered as total moments [um**n], liquid mass
+            concentrations [kg/m**3], and liquid volume [m**3].
+        params : ndarray or None
+            Kinetic parameter vector; units depend on the kinetic model.
+        return_only : bool, optional
+            If True, return the cached Jacobian from the solver interface.
+
+        Returns
+        -------
+        ndarray
+            State Jacobian. The concentration-concentration block has units
+            [1/s].
+
+        Notes
+        -----
+        Crystal growth rates are stored in [um/s], so the explicit
+        ``(1e-6)**3`` factors convert crystal-volume terms to [m**3].
+        """
 
         if return_only:
             return self.jac_states_vals
@@ -1398,12 +1423,17 @@ class BatchCryst(_BaseCryst):
                 self.num_distr + self.target_ind] = dfmun_dconc
 
             # Concentration eqns
+            # tr is the crystal mass transfer rate [kg/s].
             tr = 3 * kv * gr * moms[2] * rho_c * (1e-6)**3
+
+            # dtr_dconc_tg is d(tr)/d(c_target) [m**3/s].
             dtr_dconc_tg = g_exp * tr / conc_diff
 
+            # first_conc is [-]; second_conc is [m**3/s].
             first_conc = np.outer(self.kron_jtg - w_conc/rho_l, self.kron_jtg)
             second_conc = -tr/rho_l * np.eye(len(w_conc))
 
+            # d(dmass_conc_dt)/d(mass_conc) [1/s].
             dfconc_dconc = -1/vol_liq * \
                 (dtr_dconc_tg * first_conc + second_conc)
 
