@@ -9,12 +9,12 @@ from PharmaPy.Phases import classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
 from PharmaPy.Commons import trapezoidal_rule
 from PharmaPy.ThermoModule import ThermoPhysicalManager
-from PharmaPy.Phases import LiquidPhase,SolidPhase,VaporPhase
-from PharmaPy.Streams import LiquidStream,SolidStream,VaporStream
+from PharmaPy.Phases import BasePhase
 from collections import defaultdict
 import numpy as np
 from scipy.optimize import newton
 from scipy.interpolate import CubicSpline
+import copy
 
 eps = np.finfo(float).eps
 
@@ -672,8 +672,6 @@ class MixedPhase:
     def Phases(self,phases):
 
         phases = phases if isinstance(phases,(list,tuple)) else [phases]
-        if not all([isinstance(p,ThermoPhysicalManager) or isinstance(p,MixedPhase) for p in phases]):
-            raise TypeError("All phases must be PharmaPy Phase Objects")
         phases = self._normalize_phases(phases)
         self._Phases = phases
 
@@ -685,7 +683,7 @@ class MixedPhase:
             if isinstance(phase, (MixedPhase, Slurry)):
                 adjusted_phases.extend(self._normalize_phases(phase.Phases))
 
-            elif isinstance(phase, ThermoPhysicalManager):
+            elif isinstance(phase, BasePhase) and not phase.is_stream:
                 adjusted_phases.append(phase)
 
             else:
@@ -701,7 +699,7 @@ class MixedPhase:
         return groups
     def get_phase_from_ref(self,
             phase_ref
-        )->LiquidPhase|SolidPhase|VaporPhase|LiquidStream|SolidStream|VaporStream:
+        )->BasePhase:
 
         candidates = []
 
@@ -738,12 +736,12 @@ class MixedPhase:
         if (name.startswith("__") and name.endswith("__")) or name.startswith("_"):
             raise AttributeError(name)
 
-        key =name.removesuffix("s")
+        key =name.removesuffix("s").lower()
         if key in self.phases_by_type:
             out = MixedPhase(self.phases_by_type[key])
             return out
         phases = object.__getattribute__(self,"_Phases")
-        masses = np.array([phase.mass for phase in phases], dtype=float) if hasattr(phases[0],'mass') else np.array([phase.mass_flow for phase in phases], dtype=float)
+        masses = np.array([phase.mass for phase in phases], dtype=float) 
 
         total_mass = masses.sum()
         if total_mass > 0:
@@ -772,10 +770,10 @@ class MixedPhase:
             return wrapper
 
         # Attributes
-        values = np.array([
-            attr if attr is not None else 0
-            for attr in attrs
-        ])
+        if all(v is None for v in attrs):
+            raise AttributeError(f"No phases have attribute {name}")
+
+        values = np.array([0 if v is None else v for v in attrs])
 
         # Extensive properties
         if name in self.EXTENSIVE_PROPERTIES:
@@ -807,7 +805,11 @@ class MixedPhase:
     def num_species(self):
         return len(self.name_species)
     def to_stream(self):
-        return MixedStream([phase.to_stream() for phase in self.Phases])
+        mixedstream = copy.copy(self)
+        phases = mixedstream._Phases
+        mixedstream.__class__ = MixedStream
+        mixedstream.Streams = [phase.to_stream() for phase in phases]
+        return mixedstream
 class MixedStream(MixedPhase):
 
     EXTENSIVE_PROPERTIES = {
@@ -815,24 +817,21 @@ class MixedStream(MixedPhase):
         "vol_flow",
         "mole_flow",
     }
-
-    def __init__(self,Phases=None):
+    
+    def __init__(self,Streams=None):
         super().__init__()
-        if Phases is not None:
-            self.Phases=Phases
+        if Streams is not None:
+            self.Streams=Streams
 
     @property
-    def Phases(self):
-        return self._Phases
+    def Streams(self):
+        # Alias for Phases but with the knowledge that they are stream objects
+        return self.Phases
+    @Streams.setter
+    def Streams(self,value):
+        self.Phases = value
 
-    @Phases.setter
-    def Phases(self, streams):
-
-        streams = streams if isinstance(streams, (list, tuple)) else [streams]
-        normalized = self._normalize_streams(streams)
-        self._Phases = normalized
-
-    def _normalize_streams(self, streams):
+    def _normalize_phases(self, streams):
         """
         Recursively flatten nested MixedStreams while preserving
         individual stream objects.
@@ -841,9 +840,9 @@ class MixedStream(MixedPhase):
         for stream in streams:
 
             if isinstance(stream, MixedStream):
-                normalized.extend(self._normalize_streams(stream.Phases))
+                normalized.extend(self._normalize_streams(stream.Streams))
 
-            elif isinstance(stream, ThermoPhysicalManager) and hasattr(stream,'mass_flow'):
+            elif isinstance(stream,BasePhase) and stream.is_stream:
                 normalized.append(stream)
 
             else:
@@ -855,14 +854,10 @@ class MixedStream(MixedPhase):
         """
         Evaluate every constituent stream and return the results.
         """
-        return [stream.evaluate_inputs(time) for stream in self.Phases]
-    @classmethod
-    def from_phase(cls, phase):
-        phase = phase if isinstance(phase, MixedPhase) else MixedPhase(phase)
-
-        streams = [
-            p.to_stream()
-            for p in phase.Phases
-        ]
-
-        return cls(streams)
+        return [stream.evaluate_inputs(time) for stream in self.Streams]
+    def to_phase(self):
+        mixedphase = copy.copy(self)
+        streams = mixedphase._Phases
+        mixedphase.__class__ = MixedPhase
+        mixedphase.Phases = [stream.to_phase() for stream in streams]
+        return mixedphase

@@ -2,6 +2,7 @@ import numpy as np
 from PharmaPy.ThermoModule import ThermoPhysicalManager
 from PharmaPy.Commons import trapezoidal_rule
 from scipy.optimize import newton
+import copy
 
 import warnings
 
@@ -77,8 +78,11 @@ def getPropsPhaseMix(phases, basis='mass'):
 
 
 class BasePhase(ThermoPhysicalManager):
-
+    is_stream= False
     phase_family = None
+    stream_class = None
+    amount_names = {'mass','moles','vol','mass_j'}
+    composition_names = {'mass_j','mass_frac','mass_conc','mole_conc'}
 
     def __init__(
         self,
@@ -100,7 +104,7 @@ class BasePhase(ThermoPhysicalManager):
     ):
 
         super().__init__(path_thermo)
-
+        self.path_thermo=path_thermo
         self.temp = float(temp)
         self.pres = pressure
 
@@ -114,16 +118,9 @@ class BasePhase(ThermoPhysicalManager):
         # Check extensive specification
         # ----------------------------------------------------------
 
-        amount_specs = [
-            mass is not None,
-            moles is not None,
-            vol is not None,
-            mass_j is not None,
-        ]
-
-        if sum(amount_specs) != 1:
+        if self._count_specified(locals(),self.amount_names) != 1:
             raise ValueError(
-                "Specify exactly one of mass, moles, vol, or mass_j"
+                f"Specify exactly one of {self.amount_names}"
             )
 
 
@@ -131,18 +128,10 @@ class BasePhase(ThermoPhysicalManager):
         # Check composition specification
         # ----------------------------------------------------------
 
-        comp_specs = [
-            mass_j is not None,
-            mass_frac is not None,
-            mole_frac is not None,
-            mass_conc is not None,
-            mole_conc is not None,
-        ]
-
-        if sum(comp_specs) != 1:
+        if self._count_specified(locals(),self.composition_names) != 1:
             raise ValueError(
                 "Specify exactly one composition basis: "
-                "mass_j, mass_frac, mole_frac, mass_conc, or mole_conc"
+                f"{self.composition_names}"
             )
 
         self._mass_frac=None
@@ -171,6 +160,9 @@ class BasePhase(ThermoPhysicalManager):
         if self.phase_family is None:
             raise TypeError("BasePhase cannot be instantiated directly")
 
+
+    def _count_specified(self, namespace, names):
+        return sum(namespace.get(name) is not None for name in names)
 
     # ==============================================================
     # Composition truth
@@ -524,32 +516,18 @@ class BasePhase(ThermoPhysicalManager):
 
 
         # composition update
-        supplied=[
-            mass_j is not None,
-            mass_frac is not None,
-            mole_frac is not None,
-            mass_conc is not None,
-            mole_conc is not None,
-        ]
 
-        if sum(supplied)>1:
-            raise ValueError("Only one composition update allowed")
-        comp_specs = [
-            mass_j is not None,
-            mass_frac is not None,
-            mole_frac is not None,
-            mass_conc is not None,
-            mole_conc is not None,
-        ]
+        if self._count_specified(locals(),self.amount_names)>1:
+            raise ValueError("Only one one update allowed")
 
-        if sum(comp_specs) > 1:
+        if self._count_specified(locals(),self.composition_names) > 1:
             raise ValueError("Specify one or fewer composition basis: mass_j, mass_frac, mole_frac, mass_conc, or mole_conc")
 
-        self.mass_j=mass_j
         self.mass_frac=mass_frac
         self.mole_frac=mole_frac
         self.mass_conc=mass_conc
         self.mole_conc=mole_conc
+        self.mass_j=mass_j
 
 
 
@@ -558,7 +536,12 @@ class BasePhase(ThermoPhysicalManager):
         self.moles=moles
         self.vol=vol
 
-
+    @property
+    def default_composition_name(self):
+        return 'mass_frac'
+    @property
+    def default_quantity_name(self):
+        return 'mass'
 
     @property
     def state_dict(self):
@@ -603,6 +586,8 @@ class BasePhase(ThermoPhysicalManager):
             kwargs["mass_frac"]=self.mass_frac
         if 'phase' not in kwargs:
                     kwargs['phase'] = self.phase_family
+        if 'temp' not in kwargs:
+            kwargs['temp'] = self.temp
         return super().getCpMix(
             *args,
             **kwargs
@@ -622,16 +607,57 @@ class BasePhase(ThermoPhysicalManager):
 
 
     def to_stream(self):
-
-        raise NotImplementedError(
-            "Child phase must define stream conversion"
-        )
+        stream = copy.copy(self)
+        stream.__class__ = self.stream_class
+        stream.is_stream = True
+        stream._DynamicInlet = None
+        stream.controllable = ('mass_flow', 'mole_flow', 'vol_flow', 'temp')
+        stream.time_upstream = None
+        stream.bipartite = None
+        stream.composition_names.add('mass_j_flow')
+        stream.amount_names.update({'mass_flow','mass_j_flow','vol_flow','mole_flow'})
+        return stream
 
 
 class LiquidPhase(BasePhase):
-    def __init__(self, path_thermo=None, temp=298.15, pressure=101325, mass=None, moles=None, vol=None, mass_j=None, mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None, name_solv=None, check_input=True, verbose=True, **kwargs):
+    def __init__(
+            self,
+            path_thermo=None,
+            temp=298.15,
+            pressure=101325,
+            mass=None,
+            moles=None,
+            vol=None,
+            mass_j=None,
+            mass_frac=None,
+            mole_frac=None,
+            mass_conc=None,
+            mole_conc=None,
+            name_solv=None,
+            check_input=True,
+            verbose=True,
+            **kwargs,
+        ):
         self.phase_family = "liquid"
-        super().__init__(path_thermo, temp, pressure, mass, moles, vol, mass_j, mass_frac, mole_frac, mass_conc, mole_conc, name_solv, check_input, verbose, **kwargs)
+        from PharmaPy.Streams import LiquidStream
+        self.stream_class = LiquidStream
+        super().__init__(
+            path_thermo=path_thermo,
+            temp=temp,
+            pressure=pressure,
+            mass=mass,
+            moles=moles,
+            vol=vol,
+            mass_j=mass_j,
+            mass_frac=mass_frac,
+            mole_frac=mole_frac,
+            mass_conc=mass_conc,
+            mole_conc=mole_conc,
+            name_solv=name_solv,
+            check_input=check_input,
+            verbose=verbose,
+            **kwargs,
+        )
         self.cp_liq = np.atleast_2d(self.cp_liq)
         self.p_vap = np.atleast_2d(self.p_vap)
 
@@ -639,14 +665,84 @@ class LiquidPhase(BasePhase):
 
 
 class VaporPhase(BasePhase):
-    def __init__(self, path_thermo=None, temp=298.15, pressure=101325, mass=None, moles=None, vol=None, mass_j=None, mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None, name_solv=None, check_input=True, verbose=True, **kwargs):
+    def __init__(
+        self,
+        path_thermo=None,
+        temp=298.15,
+        pressure=101325,
+        mass=None,
+        moles=None,
+        vol=None,
+        mass_j=None,
+        mass_frac=None,
+        mole_frac=None,
+        mass_conc=None,
+        mole_conc=None,
+        name_solv=None,
+        check_input=True,
+        verbose=True,
+        **kwargs,
+    ):
         self.phase_family = 'vapor'
-        super().__init__(path_thermo, temp, pressure, mass, moles, vol, mass_j, mass_frac, mole_frac, mass_conc, mole_conc, name_solv, check_input, verbose, **kwargs)
+        from PharmaPy.Streams import VaporStream
+        self.stream_class = VaporStream
+        super().__init__(
+            path_thermo=path_thermo,
+            temp=temp,
+            pressure=pressure,
+            mass=mass,
+            moles=moles,
+            vol=vol,
+            mass_j=mass_j,
+            mass_frac=mass_frac,
+            mole_frac=mole_frac,
+            mass_conc=mass_conc,
+            mole_conc=mole_conc,
+            name_solv=name_solv,
+            check_input=check_input,
+            verbose=verbose,
+            **kwargs,
+        )
 
 class SolidPhase(BasePhase):
-    def __init__(self, path_thermo=None, temp=298.15, pressure=101325, mass=None, moles=None, vol=None, mass_j=None, mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None, name_solv=None, check_input=True, verbose=True, **kwargs):
+    def __init__(
+        self,
+        path_thermo=None,
+        temp=298.15,
+        pressure=101325,
+        mass=None,
+        moles=None,
+        vol=None,
+        mass_j=None,
+        mass_frac=None,
+        mole_frac=None,
+        mass_conc=None,
+        mole_conc=None,
+        name_solv=None,
+        check_input=True,
+        verbose=True,
+        **kwargs,
+    ):
         self.phase_family = 'solid'
-        super().__init__(path_thermo, temp, pressure, mass, moles, vol, mass_j, mass_frac, mole_frac, mass_conc, mole_conc, name_solv, check_input, verbose, **kwargs)
+        from PharmaPy.Streams import SolidStream
+        self.stream_class = SolidStream
+        super().__init__(
+            path_thermo=path_thermo,
+            temp=temp,
+            pressure=pressure,
+            mass=mass,
+            moles=moles,
+            vol=vol,
+            mass_j=mass_j,
+            mass_frac=mass_frac,
+            mole_frac=mole_frac,
+            mass_conc=mass_conc,
+            mole_conc=mole_conc,
+            name_solv=name_solv,
+            check_input=check_input,
+            verbose=verbose,
+            **kwargs,
+        )
 
     #============================================================
     # Compatibility API: Deprecation Warning

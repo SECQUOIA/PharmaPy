@@ -64,7 +64,7 @@ class StateVariable:
     name: str
     dim: int
     units: str
-    state_type: str = "alg"
+    state_type: str = "post"
     index: Optional[Sequence] = None
     depends_on: tuple = ("time",)
     stream:Optional[str]=None

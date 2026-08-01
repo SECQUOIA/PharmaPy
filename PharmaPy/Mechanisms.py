@@ -65,6 +65,16 @@ class Mechanism:
         time
     ):
         return 0.0
+    def get_algebraic_residuals(
+        self,
+        **kwargs,
+    ):
+        """
+        Return algebraic residuals keyed by StateKey.
+
+        Differential-only mechanisms simply return {}.
+        """
+        return {}
 class TransferMechanism(Mechanism):
     """
     Computes material exchanged between two phases.
@@ -211,7 +221,7 @@ class PopulationBalance(TransferMechanism):
                     name="supersat",
                     dim=len(self.target_comp),
                     units="kg/m3",
-                    state_type="alg"
+                    state_type="post"
                 )
             )
 
@@ -220,7 +230,7 @@ class PopulationBalance(TransferMechanism):
                 name="solubility",
                 dim=len(self.target_comp),
                 units="kg/m3",
-                state_type="alg"
+                state_type="post"
             )
         )
     def get_material_rate(self, source, sink, connection, completed_state, time):
@@ -243,7 +253,7 @@ class MomentsPopulationBalance(PopulationBalance):
                 dim=4,
                 index=list(range(4)),
                 units="m**n",
-                state_type="alg"
+                state_type="post"
             )
         )
 
@@ -265,7 +275,7 @@ class FVMPopulationBalance(PopulationBalance):
                 dim=4,
                 index=list(range(4)),
                 units="m**n",
-                state_type="alg"
+                state_type="post"
             )
         )
 
@@ -275,7 +285,7 @@ class FVMPopulationBalance(PopulationBalance):
                 dim=self.num_distr,
                 index=list(range(self.num_distr)),
                 units="m3/m3",
-                state_type="alg"
+                state_type="post"
             )
         )
     def get_material_rate(self, source, sink, connection, completed_state, time):

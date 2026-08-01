@@ -74,7 +74,7 @@ class ContinuousReactor(_BaseReactor):
         if len(self.outlet_connections) > 0:
             return
 
-        stream = MixedStream.from_phase(copy.deepcopy(self.Phases))
+        stream = self.Phases.to_stream()
 
         mappings = []
 

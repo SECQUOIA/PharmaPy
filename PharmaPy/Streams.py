@@ -2,14 +2,162 @@ from PharmaPy.Phases import BasePhase
 from PharmaPy.Interpolation import NewtonInterpolation
 from PharmaPy.Results import DynamicResult
 from PharmaPy.DataClasses import StateVariable,StateKey
+import copy
 
 from scipy.interpolate import CubicSpline
 import numpy as np
 
+# ===========================
+# Legacy Streams content
+# ===========================
+
+
+def Interpolation(t_data, y_data, time, newton=True, num_points=3):
+    idx_time = np.argmin(abs(time - t_data))
+
+    idx_lower = max(0, idx_time - 1)
+    idx_upper = min(len(t_data) - 1, idx_lower + num_points)
+
+    t_interp = t_data[idx_lower:idx_upper]
+    y_interp = y_data[idx_lower:idx_upper]
+
+    # Newton interpolation (quadratic, three points)
+    interp = NewtonInterpolation(t_interp, y_interp)
+    y_target = interp.evalPolynomial(time)
+
+    return y_target
+
+
+class BatchToFlowConnector:
+    def __init__(self, cycle_time, flow_mult=1):
+        self.flow_mult = flow_mult
+        self.cycle_time = cycle_time
+
+        self._Phases = None
+        self._Inlet = None
+        self.oper_mode = 'Batch'
+
+        self.is_continuous = True
+
+    @property
+    def Phases(self):
+        return self._Phases
+
+    @Phases.setter
+    def Phases(self, phases):
+        self.has_solids = False
+
+        if isinstance(phases, (list, tuple)):
+            self._Phases = phases
+        elif 'LiquidPhase' in phases.__class__.__name__:
+            self._Phases = [phases]
+        elif 'Slurry' in phases.__class__.__name__:
+            self._Phases = phases.Phases
+            self.has_solids = True
+
+        classify_phases(self)
+        self.nomenclature()
+
+    def nomenclature(self):
+        comp = self.Liquid_1.name_species
+        self.states_di = {
+            'mass_frac': {'dim': len(comp), 'index': comp},
+            'mass_flow': {'dim': 1, 'units': 'kg/s'},
+            'temp': {'dim': 1, 'units': 'K'}}
+
+        self.names_states_out = ('temp', 'pres', 'mass_frac', 'mass_flow')
+
+    def flatten_states(self):
+        pass
+
+    def solve_unit(self):
+        self.retrieve_results()
+
+    def retrieve_results(self):
+
+        fields = ('temp', 'pres', 'mass_frac', 'path_data')
+
+        # if self.cycle_time is None:
+        #     self.cycle_time = self.Phases[0].time_upstream
+
+        if self.has_solids:
+            pass  # TODO: add this if continuous downstream solid processing is made available
+        else:
+            kw_phase = {key: getattr(self.Liquid_1, key) for key in fields}
+
+            kw_phase['path_thermo'] = kw_phase.pop('path_data')
+            mass_flow = self.Liquid_1.mass / self.cycle_time * self.flow_mult
+            outlet = LiquidStream(**kw_phase, mass_flow=mass_flow)
+
+            kw_phase.pop('path_thermo')
+            kw_phase['mass_flow'] = mass_flow
+
+        # kw_phase['time'] = [self.cycle_time]
+        kw_phase['time'] = None
+
+        self.result = DynamicResult(self.states_di, **kw_phase)
+
+        self.Outlet = outlet
+        self.outputs = kw_phase
+
+# ================================================================
+# New Stream Composition
+# ================================================================
+
+
 class BaseStream(BasePhase):
-    def __init__(self, path_thermo=None, temp=298.15, pressure=101325, mass_flow=None, mole_flow=None, vol_flow=None, mass_j_flow=None, mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None, name_solv=None, check_input=True, verbose=True,
-                 controls=None,args_control=None,num_interpolation_points=3,verbose=True, check_input=True, **kwargs):
-        super().__init__(path_thermo, temp, pressure, mass_flow, mole_flow, vol_flow, mass_j_flow, mass_frac, mole_frac, mass_conc, mole_conc, name_solv, check_input, verbose, **kwargs)
+    phase_class = None
+    def __init__(
+        self,
+        path_thermo=None,
+        temp=298.15,
+        pressure=101325,
+        mass_flow=None,
+        mole_flow=None,
+        vol_flow=None,
+        mass_j_flow=None,
+        mass=None,
+        moles=None,
+        vol=None,
+        mass_j=None,
+        mass_frac=None,
+        mole_frac=None,
+        mass_conc=None,
+        mole_conc=None,
+        name_solv=None,
+        controls=None,
+        args_control=None,
+        num_interpolation_points=3,
+        check_input=True,
+        verbose=True,
+        **kwargs,
+    ):
+        self.is_stream=True
+        if mass_flow is not None:
+            mass = mass_flow
+        if mole_flow is not None:
+            moles = mole_flow
+        if vol_flow is not None:
+            vol = vol_flow
+        if mass_j_flow is not None:
+            mass_j = mass_j_flow
+        super().__init__(
+            path_thermo=path_thermo,
+            temp=temp,
+            pressure=pressure,
+            mass=mass,
+            moles=moles,
+            vol=vol,
+            mass_j=mass_j,
+            mass_frac=mass_frac,
+            mole_frac=mole_frac,
+            mass_conc=mass_conc,
+            mole_conc=mole_conc,
+            name_solv=name_solv,
+            check_input=check_input,
+            verbose=verbose,
+            **kwargs,
+        )
         self._DynamicInlet = None
         self.controllable = ('mass_flow', 'mole_flow', 'vol_flow', 'temp') #Deprecation Warning
         self.time_upstream = None
@@ -32,11 +180,16 @@ class BaseStream(BasePhase):
         self.args_control = args_control
 
         self.num_interpolation_points = num_interpolation_points
+        if self.phase_family is None:
+            raise TypeError("BaseStream cannot be instantiated directly")
+        
         
     # ====================================================
     # Aliases for flows
     # =====================================================
-
+    @property
+    def default_quantity_name(self):
+        return 'mass_flow'
     @property
     def mass_flow(self):
         return self.mass
@@ -58,7 +211,7 @@ class BaseStream(BasePhase):
     def vol_flow(self,value):
         if value is not None:
             self.vol = value
-     @property
+    @property
     def mass_j_flow(self):
         return self.mass_j
     @mass_j_flow.setter
@@ -70,15 +223,30 @@ class BaseStream(BasePhase):
     # ========================================
     # Change key names for applicable methods
     # ==========================================
-
+    
     def updatePhase(self,mass_flow=None,mole_flow=None,vol_flow=None,mass_j_flow=None, mole_conc=None, mass_conc=None, mass_frac=None, mole_frac=None, mass_j=None, mass=None, vol=None, moles=None, temp=None, pres=None, **kwargs):
-        if any([all([mass_flow,mass]),all([mole_flow,moles]),all(vol_flow,vol), all(mass_j_flow,mass_j)]):
-            raise RuntimeError("Only a qunatity or flow can be specified, not both")
-        return super().updatePhase(mole_conc, mass_conc, mass_frac, mole_frac, mass_j, mass, vol, moles, temp, pres, **kwargs)
-
+        if any([all([mass_flow,mass]),all([mole_flow,moles]),all([vol_flow,vol]), all([mass_j_flow,mass_j])]):
+            raise RuntimeError("Only a quantity or flow can be specified, not both")
+        mass = mass_flow if mass_flow is not None else mass
+        moles = mole_flow if mole_flow is not None else moles
+        vol = vol_flow if vol_flow is not None else vol
+        mass_j = mass_j_flow if mass_j_flow is not None else mass_j
+        return super().updatePhase(
+            mole_conc=mole_conc,
+            mass_conc=mass_conc,
+            mass_frac=mass_frac,
+            mole_frac=mole_frac,
+            mass_j=mass_j,
+            mass=mass,
+            vol=vol,
+            moles=moles,
+            temp=temp,
+            pres=pres,
+            **kwargs,
+        )
     @property
     def state_dict(self):
-        state_dict = super().state_dict()
+        state_dict = super().state_dict
         state_dict['mass_flow'] = state_dict['mass']
         state_dict['vol_flow'] = state_dict['vol']
         state_dict['mole_flow'] = state_dict['moles']
@@ -160,23 +328,68 @@ class BaseStream(BasePhase):
                 stream="inlet"
             )
         )
+    def to_phase(self):
+        phase = copy.copy(self)
+        phase.__class__ = self.phase_class
+        phase.composition_names.discard('mass_j_flow')
+        phase.amount_names.difference_update({'mass_flow','mass_j_flow','vol_flow','mole_flow'})
+        return phase
 
 
 class LiquidStream(BaseStream):
-    def __init__(self, path_thermo=None, temp=298.15, pressure=101325, mass_flow=None, mole_flow=None, vol_flow=None, mass_j_flow=None, mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None, name_solv=None, check_input=True, verbose=True, controls=None, args_control=None, num_interpolation_points=3, verbose=True, check_input=True, **kwargs):
+    def __init__(
+        self,
+        path_thermo=None,
+        temp=298.15,
+        pressure=101325,
+        mass_flow=None,
+        mole_flow=None,
+        vol_flow=None,
+        mass_j_flow=None,
+        mass_frac=None,
+        mole_frac=None,
+        mass_conc=None,
+        mole_conc=None,
+        name_solv=None,
+        controls=None,
+        num_interpolation_points=3,
+        check_input=True,
+        verbose=True,
+        **kwargs,
+    ):
         self.phase_family='liquid'
-        super().__init__(path_thermo, temp, pressure, mass_flow, mole_flow, vol_flow, mass_j_flow, mass_frac, mole_frac, mass_conc, mole_conc, name_solv, check_input, verbose, controls, args_control, num_interpolation_points, verbose, check_input, **kwargs)
+        from PharmaPy.Phases import LiquidPhase
+        self.phase_class = LiquidPhase
+        super().__init__(
+            path_thermo=path_thermo,
+            temp=temp,
+            pressure=pressure,
+            mass_flow=mass_flow,
+            mole_flow=mole_flow,
+            vol_flow=vol_flow,
+            mass_j_flow=mass_j_flow,
+            mass_frac=mass_frac,
+            mole_frac=mole_frac,
+            mass_conc=mass_conc,
+            mole_conc=mole_conc,
+            name_solv=name_solv,
+            controls=controls,
+            num_interpolation_points=num_interpolation_points,
+            check_input=check_input,
+            verbose=verbose,
+            **kwargs,
+        )
         self.cp_liq = np.atleast_2d(self.cp_liq)
         self.p_vap = np.atleast_2d(self.p_vap)
-class VaporPhase(BaseStream):
-    def __init__(self, path_thermo=None, temp=298.15, pressure=101325, mass_flow=None, mole_flow=None, vol_flow=None, mass_j_flow=None, mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None, name_solv=None, check_input=True, verbose=True, controls=None, args_control=None, num_interpolation_points=3, verbose=True, check_input=True, **kwargs):
-        self.phase_family = 'vapor'
-        super().__init__(path_thermo, temp, pressure, mass_flow, mole_flow, vol_flow, mass_j_flow, mass_frac, mole_frac, mass_conc, mole_conc, name_solv, check_input, verbose, controls, args_control, num_interpolation_points, verbose, check_input, **kwargs)
+class VaporStream(BaseStream):
+    phase_family = 'vapor'
+    from PharmaPy.Phases import VaporPhase
+    phase_class = VaporPhase
 
-class SolidPhase(BaseStream):
-    def __init__(self, path_thermo=None, temp=298.15, pressure=101325, mass_flow=None, mole_flow=None, vol_flow=None, mass_j_flow=None, mass_frac=None, mole_frac=None, mass_conc=None, mole_conc=None, name_solv=None, check_input=True, verbose=True, controls=None, args_control=None, num_interpolation_points=3, verbose=True, check_input=True, **kwargs):
-        self.phase_family='solid'
-        super().__init__(path_thermo, temp, pressure, mass_flow, mole_flow, vol_flow, mass_j_flow, mass_frac, mole_frac, mass_conc, mole_conc, name_solv, check_input, verbose, controls, args_control, num_interpolation_points, verbose, check_input, **kwargs)
+class SolidStream(BaseStream):
+    phase_family='solid'
+    from PharmaPy.Phases import SolidPhase
+    phase_class = SolidPhase
 
     #============================================================
     # Compatibility API: Deprecation Warning
@@ -248,3 +461,81 @@ class SolidPhase(BaseStream):
         porosity = 1 - 1/V_T
 
         return porosity
+
+
+
+
+
+#=======================================
+# Legacy Functions
+# =======================================
+
+
+
+def classify_phases(instance, names=None):
+
+    phases = instance.Phases
+
+    if names is None:
+        solid_count = 1
+        liquid_count = 1
+        vapor_count = 1
+
+        for phase in phases:
+            if 'Liquid' in phase.__class__.__name__:
+                phase_name = 'Liquid_{}'.format(liquid_count)
+                liquid_count += 1
+
+            elif 'Solid' in phase.__class__.__name__:
+                phase_name = 'Solid_{}'.format(solid_count)
+                solid_count += 1
+
+            elif 'Vapor' in phase.__class__.__name__:
+                phase_name = 'Vapor_{}'.format(solid_count)
+                vapor_count += 1
+
+            setattr(phase, 'name', phase_name)
+            setattr(instance, phase_name, phase)
+    else:
+        for phase, name in zip(phases, names):
+            setattr(phase, 'name', phase_name)
+            setattr(instance, name, phase)
+
+
+def getPropsPhaseMix(phases, basis='mass'):
+    # Empty containers
+    props_matrix = np.zeros((len(phases), 3))
+    vfrac_phases = []
+    props_matrix = []
+
+    for ind, phase in enumerate(phases):
+        all_props = phase.getProps(basis=basis)
+        props_matrix.append(all_props[:3])
+
+        if phase.__class__.__name__ == 'LiquidPhase':
+            ind_liq = ind
+        if phase.__class__.__name__ == 'SolidPhase':
+            mom_solid = all_props[-2]
+            conv_exp = np.arange(len(mom_solid))
+            # num/m**3, m/m**3, m**2/m**3, ...
+            mom_meters = mom_solid * (1e-6)**conv_exp
+
+            vfrac_solid = mom_meters[-1] * phase.kv
+            vfrac_phases.append(vfrac_solid)
+
+    props_matrix = np.vstack(props_matrix)
+
+    # Volume fraction and mass fractions of phases
+    vfrac_rest = 1 - sum(vfrac_phases)
+    vfrac_phases.insert(ind_liq, vfrac_rest)
+
+    # to avoid internal casting next line
+    vfrac_phases = np.array(vfrac_phases)
+
+    mass_phases = vfrac_phases * props_matrix[:, 1]
+    mfrac_phases = mass_phases / mass_phases.sum()
+
+    cp, rho, enthalpy = props_matrix.T
+
+    return cp, rho, enthalpy, vfrac_phases, mfrac_phases
+

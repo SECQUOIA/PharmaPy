@@ -329,7 +329,7 @@ class MultiPhaseVessel():
                 name="q_ht",
                 dim=1,
                 units="W",
-                state_type="alg",
+                state_type="post",
                 compute_history=self.compute_qht_history
             ),overwrite=True
         )
@@ -453,7 +453,8 @@ class MultiPhaseVessel():
 
         
         for phase_state in self.phase_states:
-            if phase_state.state.state_type!='diff': continue
+            if phase_state.state.state_type!='diff': 
+                continue
             state_copy = copy.deepcopy(phase_state.state)
             state_copy.phase = (phase_state.phase)
             self.solver_state_collection.add(state_copy,overwrite)
@@ -488,7 +489,7 @@ class MultiPhaseVessel():
                 name="Total_m_in_vessel",
                 dim=1,
                 units="kg/s",
-                state_type="alg",
+                state_type="post",
                 compute_history=self.compute_outlet_massflow_history
             ),overwrite
         )
@@ -507,7 +508,7 @@ class MultiPhaseVessel():
                     name="mole_conc",
                     dim=phase.num_species,
                     units="kmol/m3",
-                    state_type="alg",
+                    state_type="post",
                     index=phase.name_species,
                     phase=process.phase,
                     compute_history=self.compute_mole_conc_history
@@ -545,7 +546,7 @@ class MultiPhaseVessel():
     
     @staticmethod
     def compute_qht_history(state_var,time,solver_history,context):
-        q_ht = context.get_heat_transfer_rate(solver_history[StateKey('global_temp')],solver_history[StateKey('temp_ht')])
+        q_ht = context.get_heat_transfer_rate(solver_history[StateKey('global_temp')],context.Utility.temp_in)
         return q_ht
     
     @staticmethod
@@ -1004,13 +1005,13 @@ class MultiPhaseVessel():
 
         outlet_flows = self.resolve_outlet_flows(total_inlet_vol_flow, operating_conditions)
 
-        for connection_num, connection in enumerate(self.outlet_connections):
+        for connection_num, connection in enumerate(self.outlet_connections):# iterate over outlet streams
 
             outlet_stream = copy.deepcopy(connection.stream)
 
             total_outlet_flow = outlet_flows.get(connection_num)
 
-            for mapping in connection.phase_mappings:
+            for mapping in connection.phase_mappings: #iterate over each phase in that stream
 
                 vessel_phase = self.Phases.get_phase_from_ref(
                     mapping.source_phase
@@ -1031,12 +1032,30 @@ class MultiPhaseVessel():
                 actual_flow = self.compute_actual_phase_outlet_flow(vessel_phase,requested_flow)
                 outlet_phase = outlet_stream.get_phase_from_ref(mapping.source_phase)
 
-                updates = self.get_phase_operating_conditions(
-                    operating_conditions,
-                    connection_num,
-                    mapping.source_phase,
-                )
+                updates = vessel_phase.state_dict
+
+                # Amounts are determined by the outlet flow calculation.
+                for name in outlet_phase.amount_names:
+                    updates.pop(name, None)
+
+                # Keep only the preferred/default composition representation.
+                for name in outlet_phase.composition_names:
+
+                    if name != outlet_phase.default_composition_name:
+                        updates.pop(name, None)
+
+                # Flow is determined by the outlet resolver.
                 updates["vol_flow"] = actual_flow
+
+                # Controller takes precedence over everything.
+                updates.update(
+                    self.get_phase_operating_conditions(
+                        operating_conditions,
+                        connection_num,
+                        mapping.source_phase,
+                    )
+                )
+
                 outlet_phase.updatePhase(**updates)
 
             resolved.append(ResolvedStreamConnection(connection,outlet_stream))
@@ -1179,14 +1198,9 @@ class MultiPhaseVessel():
 
             for mapping in outlet.connection.phase_mappings:
 
-                outlet_phase = outlet.stream.get_phase_from_ref(
-                    mapping.source_phase
-                )
+                outlet_phase = outlet.stream.get_phase_from_ref(mapping.source_phase)
 
-                species_flow = getattr(
-                    outlet_phase,
-                    self.basis + "_flow"
-                )
+                species_flow = getattr(outlet_phase,self.basis + "_flow")
                 state_key = self.material_key(mapping.source_phase)
                 if state_key not in rates:
                     continue
@@ -1262,6 +1276,7 @@ class MultiPhaseVessel():
             self,
             time,
             completed_state,
+            operating_conditions,
             aux
         ):
         """
