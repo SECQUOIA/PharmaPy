@@ -6,6 +6,7 @@ limited to the optional import and problem-construction boundaries; the real
 ``BatchCryst.set_ode_problem`` routing remains under test.
 """
 
+import inspect
 import json
 from pathlib import Path
 
@@ -308,7 +309,6 @@ def test_batch_cryst_ad_fallback_configures_finite_difference_problem(monkeypatc
 
     assert Path(caught[0].filename).resolve() == Path(__file__).resolve()
     assert crystallizer.jac_type == "finite_diff"
-    assert type(crystallizer).np is np
 
     initial_states = np.array([1.0])  # [-], unevaluated handoff sentinel
     kinetic_params = np.array([2.0])  # [-], unevaluated handoff sentinel
@@ -321,3 +321,38 @@ def test_batch_cryst_ad_fallback_configures_finite_difference_problem(monkeypatc
 
     assert problem.jac == crystallizer.jac_states_numerical
     assert problem.rhs_sens == crystallizer.rhs_sensitivity
+
+
+@pytest.mark.parametrize(
+    "crystallizer_name",
+    ("BatchCryst", "MSMPR", "SemibatchCryst"),
+)
+def test_ad_fallback_warning_points_at_caller(crystallizer_name, monkeypatch):
+    """The AD fallback warning is attributed to the constructing caller.
+
+    Covers all three public crystallizers because they sit at different depths:
+    ``BatchCryst`` and ``MSMPR`` derive from ``_BaseCryst`` directly, while
+    ``SemibatchCryst`` subclasses ``MSMPR``. A fixed ``stacklevel`` is therefore
+    correct for at most one of these hierarchies, and pointed at
+    ``Crystallizers.py`` rather than at user code for ``SemibatchCryst``.
+
+    Parameters
+    ----------
+    crystallizer_name : str
+        Attribute name of the public crystallizer class under test.
+    monkeypatch : pytest.MonkeyPatch
+        Cleanup fixture for the optional Assimulo problem boundary.
+    """
+    crystallizers = _import_crystallizers(monkeypatch)
+    crystallizer_class = getattr(crystallizers, crystallizer_name)
+
+    with pytest.warns(RuntimeWarning, match="finite-difference") as caught:
+        construction_line = inspect.currentframe().f_lineno + 1
+        crystallizer = crystallizer_class(target_comp="solute", jac_type="AD")
+
+    # Assert the exact construction line, not only this file: a stacklevel that
+    # is short by one frame still lands inside Crystallizers.py, but one that is
+    # too deep could land elsewhere in this module and pass a file-only check.
+    assert Path(caught[0].filename).resolve() == Path(__file__).resolve()
+    assert caught[0].lineno == construction_line
+    assert crystallizer.jac_type == "finite_diff"

@@ -29,6 +29,7 @@ from matplotlib.colors import LightSource
 from scipy.optimize import newton
 
 import copy
+import inspect
 import string
 import warnings
 
@@ -36,6 +37,43 @@ import numpy as np
 
 eps = np.finfo(float).eps
 gas_ct = 8.314  # J/mol/K
+
+
+def _caller_stacklevel() -> int:
+    """Return the ``warnings.warn`` stacklevel of the nearest external caller.
+
+    A fixed ``stacklevel`` cannot be correct for a class hierarchy of varying
+    depth: ``BatchCryst`` and ``MSMPR`` call ``_BaseCryst.__init__`` directly,
+    while ``SemibatchCryst`` subclasses ``MSMPR`` and so sits one frame deeper.
+    Counting frames instead keeps a warning raised inside this module pointed at
+    the user code that constructed the unit operation.
+
+    Returns
+    -------
+    int
+        Stacklevel [-] identifying the first frame executing outside this
+        module, counted from the caller of this helper. Falls back to ``1``
+        when every frame belongs to this module.
+
+    Notes
+    -----
+    Frames are matched on the module globals rather than on ``__file__`` so the
+    comparison is unaffected by relative or absolute import paths.
+    """
+    frame = inspect.currentframe()
+    if frame is None:  # pragma: no cover - no frame support on this runtime
+        return 1
+
+    module_globals = globals()
+    level = 0
+    frame = frame.f_back  # caller of this helper, i.e. stacklevel 1
+    while frame is not None:
+        level += 1
+        if frame.f_globals is not module_globals:
+            return level
+        frame = frame.f_back
+
+    return 1
 
 
 class _BaseCryst:
@@ -110,8 +148,7 @@ class _BaseCryst:
                 "available; using finite-difference sensitivities with "
                 "NumPy.",
                 RuntimeWarning,
-                # Public subclasses add one frame above this base initializer.
-                stacklevel=3,
+                stacklevel=_caller_stacklevel(),
             )
             jac_type = 'finite_diff'
 

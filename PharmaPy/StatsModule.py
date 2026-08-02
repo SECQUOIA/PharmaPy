@@ -427,6 +427,12 @@ class StatisticsClass:
         ``numpy.linalg.solve`` and ``numpy.linalg.inv``. Their documented
         ``LinAlgError`` is the only failure treated as a recoverable numerical
         bootstrap sample; programming and model errors propagate unchanged.
+
+        This recovery is therefore scoped to ``opt_method='LM'``.
+        ``ParameterEstimation.optimize_fn`` also accepts ``'IPOPT'``, whose
+        numerical failures surface from cyipopt rather than as a
+        ``LinAlgError``. Under that method a failed sample aborts the whole
+        bootstrap run instead of recording a NaN row.
         """
         y_samples = self.get_bootsamples(
             num_samples)  # [response-dependent units]
