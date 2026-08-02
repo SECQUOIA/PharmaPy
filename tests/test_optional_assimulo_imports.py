@@ -32,22 +32,28 @@ LAZY_CONSTRUCTORS = (
     "Implicit_Problem",
 )
 
+# Block Assimulo through a sys.meta_path finder rather than by patching
+# builtins.__import__. importlib.import_module, which PharmaPy._assimulo uses to
+# load the backend, resolves through importlib._bootstrap._gcd_import and never
+# consults builtins.__import__, so a builtins patch lets the real Assimulo load
+# whenever it is installed. A meta-path finder participates in that resolution
+# and so blocks both statement imports and importlib.import_module.
+#
+# ModuleNotFoundError carries name="assimulo" because _load_assimulo_symbol
+# distinguishes a missing install from a broken one on exactly that attribute.
 IMPORT_BLOCKER = textwrap.dedent("""
-    import builtins
+    import sys
 
-    original_import = builtins.__import__
+    class _AssimuloBlocker:
+        def find_spec(self, name, path=None, target=None):
+            if name == "assimulo" or name.startswith("assimulo."):
+                raise ModuleNotFoundError(
+                    "Assimulo import blocked by regression test",
+                    name="assimulo",
+                )
+            return None
 
-    def import_without_assimulo(
-        name, globals=None, locals=None, fromlist=(), level=0
-    ):
-        if name == "assimulo" or name.startswith("assimulo."):
-            raise ModuleNotFoundError(
-                "Assimulo import blocked by regression test",
-                name="assimulo",
-            )
-        return original_import(name, globals, locals, fromlist, level)
-
-    builtins.__import__ = import_without_assimulo
+    sys.meta_path.insert(0, _AssimuloBlocker())
     """)
 
 
@@ -105,6 +111,17 @@ def test_solver_construction_reports_missing_assimulo(symbol_name, tmp_path):
             )
             if expected not in str(exc):
                 raise AssertionError(str(exc)) from exc
+            # Both the missing-install and the incompatible-install branch embed
+            # the message above, so assert the discriminator too: a missing
+            # install is reported from ModuleNotFoundError, while an installed
+            # backend lacking the symbol is reported from AttributeError and
+            # adds "does not provide". Without this the test would still pass
+            # while exercising the branch it is not named for.
+            if not isinstance(exc.__cause__, ModuleNotFoundError):
+                raise AssertionError(
+                    "expected a missing-install error, got cause "
+                    f"{{type(exc.__cause__).__name__}}: {{exc}}"
+                ) from exc
         else:
             raise AssertionError(
                 "{symbol_name} construction unexpectedly succeeded"
