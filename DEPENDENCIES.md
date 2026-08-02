@@ -12,8 +12,9 @@ conda-forge environment in `environment.yml`, or a local source build of
 Assimulo.
 
 pixi is the recommended developer/CI environment manager: its `[tool.pixi]`
-configuration in `pyproject.toml` provides a `default` (core, Assimulo-free)
-and an `assimulo` (full backend) environment backed by a committed `pixi.lock`,
+configuration in `pyproject.toml` provides a `default` (core, Assimulo-free),
+an `assimulo` (full backend), and a `docs` (documentation toolchain)
+environment backed by a committed `pixi.lock`,
 which is this repository's locked, reproducible way to obtain the conda-forge
 solver stack. `[project]` remains the source of truth for pip users under the
 `pharmapy-sim` distribution name; the Python import remains `PharmaPy`. The pixi
@@ -42,3 +43,37 @@ optional extra.
   pinned in pip metadata because that release is not available from PyPI.
   Dependabot intentionally ignores Assimulo updates and Cython major-version
   updates until a broader solver stack is verified.
+
+## Documentation dependencies
+
+The Sphinx toolchain lives in the `docs` optional extra
+(`[project.optional-dependencies].docs`) and is mirrored by the pixi `docs`
+feature and environment. `pixi run docs` reproduces the same warning-as-error
+build that the Sphinx docs CI job and Read the Docs run, from the committed
+lock. The pip path (`pip install ".[docs]"`) is what CI and Read the Docs
+themselves use, so both surfaces must stay synchronized like the core ones.
+
+Upper caps exclude the next major of a rendering-relevant package until the
+built site has been checked against it; lower bounds keep a modern baseline
+rather than encoding a specific known-bad release. The exact versions that make
+a build reproducible come from `pixi.lock`, not from these ranges.
+
+- `sphinx>=7.2,<9`: the site builder. The cap excludes the unreleased Sphinx 9
+  major. Note that the effective floor is set by the extensions rather than by
+  this bound: `sphinxcontrib-bibtex` 2.7 requires `Sphinx>=7.4`, and
+  `nbsphinx` 0.9.8 excludes the broken Sphinx 8.2.0 and 8.2.1 point releases.
+- `sphinx-rtd-theme>=2,<4`: the published theme. Theme majors change rendered
+  output and navigation, so the cap keeps an unvalidated major from silently
+  changing the site.
+- `nbsphinx>=0.9`: renders the example notebooks. Requires the `pandoc` binary,
+  which pip metadata cannot express; CI and Read the Docs install it from apt
+  and the pixi `docs` feature resolves it from conda-forge.
+- `sphinxcontrib-bibtex>=2.6`: renders `references.bib`. 2.6 is the first line
+  supporting the Sphinx 7 series that this extra's lower bound admits.
+- `ipykernel>=6`: nbsphinx requires a kernelspec to parse notebooks even though
+  `nbsphinx_execute = 'never'` means they are never executed during the build.
+
+Documentation builds require Python 3.10 or newer, above the package's own
+`requires-python = ">=3.9"`, because `doc/online_docs/conf.py` resolves the
+installed distribution with `importlib.metadata.packages_distributions`, added
+in 3.10. CI, Read the Docs, and the pixi `docs` environment all pin 3.11.
