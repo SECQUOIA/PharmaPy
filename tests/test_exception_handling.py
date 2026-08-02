@@ -320,6 +320,7 @@ def test_batch_cryst_ad_fallback_configures_finite_difference_problem(monkeypatc
     )
 
     assert problem.jac == crystallizer.jac_states_numerical
+    assert crystallizer.jac_params_fn == crystallizer.jac_params_numerical
     assert problem.rhs_sens == crystallizer.rhs_sensitivity
 
 
