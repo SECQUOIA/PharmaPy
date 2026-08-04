@@ -3,13 +3,19 @@
 For runnable pip, pixi, and conda installation instructions, see
 [`INSTALLATION.md`](INSTALLATION.md).
 
-The default install keeps only the core runtime dependencies. Assimulo is an
-optional solver dependency because it is difficult to build on common pip-only
-environments, is not published on PyPI above version 3.0, and is only needed for
-the solver-backed unit-operation models. For solver-backed runs, use the pixi
-environments defined in `pyproject.toml` (`pixi run -e assimulo ...`), the
-conda-forge environment in `environment.yml`, or a local source build of
-Assimulo.
+The default install keeps only the core runtime dependencies. PharmaPy uses
+Assimulo to connect dynamic unit-operation models to the SUNDIALS CVode and IDA
+integrators for ordinary differential equations (ODEs) and differential-
+algebraic equations (DAEs), respectively. It remains optional because
+solver-independent workflows do not invoke those integrations.
+
+PharmaPy supports Assimulo 3.4.3, which conda-forge distributes as a compiled
+package but PyPI does not provide for PharmaPy's supported Python versions. A
+pip-only installation therefore requires a compatible native build toolchain
+for Assimulo's Cython, C, Fortran, and SUNDIALS components. For solver-backed
+runs, use the pixi environment defined in `pyproject.toml` (`pixi run -e
+assimulo ...`), the conda-forge environment in `environment.yml`, or a local
+source build of Assimulo.
 
 pixi is the recommended developer/CI environment manager: its `[tool.pixi]`
 configuration in `pyproject.toml` provides a `default` (core, Assimulo-free),
