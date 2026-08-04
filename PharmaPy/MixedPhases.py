@@ -410,7 +410,29 @@ class SlurryStream(Slurry):
         return self._Phases
 
     @Phases.setter
-    def Phases(self, phases_list):
+    def Phases(self, phases_list: Sequence[object]) -> None:
+        """Attach component phases and synchronize the slurry-stream state.
+
+        Parameters
+        ----------
+        phases_list : sequence of object
+            Liquid and solid phase collaborators. For moment-based input,
+            ``moments[3]`` is the volume-normalized third moment [m**3/m**3],
+            and the solid phase supplies its volumetric shape factor ``kv``
+            [-].
+
+        Raises
+        ------
+        ValueError
+            If volume-specific moments are supplied for a zero-volume slurry
+            stream.
+
+        Notes
+        -----
+        This override obtains phase volume shares from
+        :meth:`Slurry.getFractions`, which applies ``kv`` when converting the
+        third moment to a solid volume fraction [-].
+        """
         if isinstance(phases_list, tuple):
             phases_list = list(phases_list)
 

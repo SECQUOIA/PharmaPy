@@ -23,6 +23,9 @@ from PharmaPy.MixedPhases import Cake, Slurry
 from PharmaPy.Phases import LiquidPhase, SolidPhase
 
 
+pytestmark = pytest.mark.unit
+
+
 # Volumetric shape factor of the crystals [-]. Chosen well away from the
 # default 1.0 so that an omitted kv changes the result by a factor of two.
 KV_TEST = 0.5
@@ -95,6 +98,11 @@ def test_cake_volume_uses_shape_factor(thermo_path):
 
     cake = Cake()
     cake.Phases = (liquid, solid)
+
+    # Independently integrated from the fixed Gaussian CSD above:
+    # trapz(distrib * x**3, x) * (1e-6)**3.
+    expected_mu_three = 1.2224284763295205e-3  # [m**3]
+    assert solid.moments[3] == pytest.approx(expected_mu_three, rel=1e-12)
 
     mu_three = solid.moments[3]  # [m**3]
     expected_cake_vol = KV_TEST * mu_three / (1 - cake.porosity)  # [m**3]
