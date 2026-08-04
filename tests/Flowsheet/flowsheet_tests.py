@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Jan 22 18:28:36 2024
+"""Assimulo flowsheet tests whose imports also guard the lazy boundary.
 
-@author: ybarhate
+Originally created by ybarhate on January 22, 2024.
 """
 
 
@@ -12,6 +11,19 @@ import importlib.util
 import numpy as np
 import pytest
 from copy import deepcopy
+
+from PharmaPy.Reactors import BatchReactor, SemibatchReactor, PlugFlowReactor
+from PharmaPy.Containers import DynamicCollector
+from PharmaPy.Crystallizers import BatchCryst, MSMPR
+from PharmaPy.SolidLiquidSep import Filter
+from PharmaPy.Streams import LiquidStream, SolidStream
+from PharmaPy.Phases import LiquidPhase, SolidPhase
+from PharmaPy.MixedPhases import SlurryStream
+from PharmaPy.Kinetics import RxnKinetics, CrystKinetics
+from PharmaPy.Utilities import CoolingWater
+from PharmaPy.Interpolation import PiecewiseLagrange
+from PharmaPy.ProcessControl import DynamicInput
+from PharmaPy.SimExec import SimulationExec
 
 HAS_ASSIMULO = importlib.util.find_spec("assimulo") is not None
 pytestmark = [
@@ -23,24 +35,6 @@ pytestmark = [
         reason="assimulo is not installed; solver-backed integration tests skipped",
     ),
 ]
-
-if HAS_ASSIMULO:
-    from PharmaPy.Reactors import BatchReactor, SemibatchReactor, PlugFlowReactor
-    from PharmaPy.Containers import DynamicCollector
-    from PharmaPy.Crystallizers import BatchCryst, MSMPR
-    from PharmaPy.SolidLiquidSep import Filter
-
-    from PharmaPy.Streams import LiquidStream, SolidStream
-    from PharmaPy.Phases import LiquidPhase, SolidPhase
-    from PharmaPy.MixedPhases import SlurryStream
-
-    from PharmaPy.Kinetics import RxnKinetics, CrystKinetics
-
-    from PharmaPy.Utilities import CoolingWater
-    from PharmaPy.Interpolation import PiecewiseLagrange
-    from PharmaPy.ProcessControl import DynamicInput
-
-    from PharmaPy.SimExec import SimulationExec
 
 
 class TestFlowsheets(unittest.TestCase):
