@@ -5,6 +5,8 @@ Created on Tue Jun 16 15:43:14 2020
 @author: dcasasor
 """
 
+from collections.abc import Sequence
+
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
 from PharmaPy.Commons import trapezoidal_rule
@@ -97,7 +99,26 @@ class Slurry:
         return self._Phases
 
     @Phases.setter
-    def Phases(self, phases_list):
+    def Phases(self, phases_list: Sequence[object]) -> None:
+        """Attach component phases and synchronize the slurry state.
+
+        Parameters
+        ----------
+        phases_list : sequence of object
+            Liquid and solid phase collaborators. For moment-based input,
+            ``moments[3]`` is the volume-normalized third moment
+            [m**3/m**3], and the solid phase supplies its volumetric shape
+            factor ``kv`` [-].
+
+        Raises
+        ------
+        ValueError
+            If volume-specific moments are supplied for a zero-volume slurry.
+
+        Notes
+        -----
+        The physical solid volume fraction is ``kv * moments[3]`` [-].
+        """
         if isinstance(phases_list, (list, tuple)):
             phases_list = list(phases_list)
 
@@ -115,7 +136,8 @@ class Slurry:
             if self.vol == 0:
                 raise ValueError('If the moments are provided, Slurry volume needs to be larger than 0.')
 
-            vol_liq = self.vol * (1 - self.moments[3])
+            solid_vol_frac = self.Solid_1.kv * self.moments[3]  # [-]
+            vol_liq = self.vol * (1 - solid_vol_frac)  # [m**3]
             self.Solid_1.updatePhase(moments=self.moments * self.vol)
             self.Liquid_1.updatePhase(vol=vol_liq)
         elif self.distrib is None:
@@ -560,13 +582,29 @@ class Cake:
         return self._Phases
 
     @Phases.setter
-    def Phases(self, phases_list):
+    def Phases(self, phases_list: Sequence[object]) -> None:
+        """Attach component phases and compute packed-cake properties.
+
+        Parameters
+        ----------
+        phases_list : sequence of object
+            Liquid and solid phase collaborators. The solid third moment is
+            the unscaled particle-volume moment [m**3], while ``kv`` is its
+            volumetric shape factor [-].
+
+        Notes
+        -----
+        The physical solid volume is ``kv * moments[3]`` [m**3]. Dividing by
+        the packed solid fraction ``1 - porosity`` [-] gives cake volume
+        [m**3].
+        """
         self._Phases = list(phases_list)
 
         classify_phases(self)
 
-        self.porosity = self.Solid_1.getPorosity()
-        self.cake_vol = self.Solid_1.moments[3] / (1 - self.porosity)
+        self.porosity = self.Solid_1.getPorosity()  # [-]
+        solid_vol = self.Solid_1.kv * self.Solid_1.moments[3]  # [m**3]
+        self.cake_vol = solid_vol / (1 - self.porosity)  # [m**3]
         self.alpha = self.get_alpha()
 
         self.num_species = self.Liquid_1.num_species
