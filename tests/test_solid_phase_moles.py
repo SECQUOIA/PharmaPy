@@ -48,6 +48,9 @@ def test_solid_phase_moles_from_explicit_mass(path_thermo):
 
     phase = SolidPhase(path_thermo, mass=mass, mass_frac=_MASS_FRAC)
 
+    expected_mw_av = 1 / _INV_MW_AV  # [g/mol]
+    assert phase.mw_av == pytest.approx(expected_mw_av)
+
     expected_moles = mass * 1000 * _INV_MW_AV  # [mol] = 24.0 mol
     assert phase.moles == pytest.approx(expected_moles)
 
