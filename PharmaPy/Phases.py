@@ -198,7 +198,7 @@ class BasePhase(ThermoPhysicalManager):
         else:
 
             # Preserve composition information for zero inventory states
-            self.mass = 0
+            self.mass = np.float64(0.0)
 
             if self.mass_frac is None:
                 raise RuntimeError("Cannot assign zero mass_j without an existing composition")
@@ -217,6 +217,7 @@ class BasePhase(ThermoPhysicalManager):
 
         if self.mass_frac is None:
             raise RuntimeError("Cannot set mass before composition is defined")
+
 
         self._mass = value
 
@@ -317,17 +318,18 @@ class BasePhase(ThermoPhysicalManager):
 
     @property
     def moles(self):
+        #keep in mind these are essentially kmol since mass is kg
         if self.mass is None:
             return None
                 
-        return self.mass / self.mw_av * 1000
+        return self.mass / self.mw_av
 
 
     @moles.setter
     def moles(self,value):
         if value is None:
             return
-        self.mass = value*self.mw_av/1000
+        self.mass = value*self.mw_av
 
 
 
@@ -518,7 +520,7 @@ class BasePhase(ThermoPhysicalManager):
         # composition update
 
         if self._count_specified(locals(),self.amount_names)>1:
-            raise ValueError("Only one one update allowed")
+            raise ValueError("Only one amount update allowed")
 
         if self._count_specified(locals(),self.composition_names) > 1:
             raise ValueError("Specify one or fewer composition basis: mass_j, mass_frac, mole_frac, mass_conc, or mole_conc")

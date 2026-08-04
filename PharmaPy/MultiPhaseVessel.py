@@ -75,6 +75,8 @@ class MultiPhaseVessel():
         #Integrator
         self.integrator = integrator
 
+        self.debug=False
+
 
     @property
     def Phases(self):
@@ -336,7 +338,7 @@ class MultiPhaseVessel():
         
 
     
-    def complete_state(self, state, time):
+    def complete_state(self, state, time)->dict[StateKey]:
 
         completed = state.copy()
 
@@ -369,6 +371,7 @@ class MultiPhaseVessel():
                 completed[key] = value
 
         return completed
+    
     def get_default_temperature(self):
         return self.Phases[0].temp
     
@@ -416,7 +419,7 @@ class MultiPhaseVessel():
 
         self.elapsed_time = 0
 
-        self.outputs = None
+        self.result = None
         self._initialize_state_collections()
 
         
@@ -426,7 +429,7 @@ class MultiPhaseVessel():
         self.Phases = self.__initial_phases
 
         self.elapsed_time = 0
-        self.outputs = None
+        self.result = None
 
         for process in self.intraphase_processes:
             process.mechanism.reset()
@@ -648,40 +651,41 @@ class MultiPhaseVessel():
                 packed.extend(np.asarray(global_rates[key]).flatten())
 
         return np.asarray(packed)
-    def complete_operating_conditions(
-        self,
-        time,
-        completed_state,
-    ):
+    def debug_print(self,material_contributions):
+        rates = self.sum_material_contributions(material_contributions)
+        
+        print("packed dm =", rates[self.material_key(PhaseRef("liquid",0))].sum())
+        print("Mass balance terms")
 
-        operating_conditions = {}
+        print("inlet species")
+        print(material_contributions['inlet'][self.material_key(PhaseRef("liquid",0))])
 
-        operating_conditions.update(
-            self.controller.compute_operating_conditions(
-                time,
-                completed_state,
-                self,
-            ))
+        print("outlet species")
+        print(material_contributions['outlet'][self.material_key(PhaseRef("liquid",0))])
 
-        return operating_conditions
+        print("reaction species")
+        print(material_contributions['intraphase'][self.material_key(PhaseRef("liquid",0))])
+
+        print("sum inlet   ", material_contributions['inlet'][self.material_key(PhaseRef("liquid",0))].sum())
+        print("sum outlet  ", material_contributions['outlet'][self.material_key(PhaseRef("liquid",0))].sum())
+        print("sum reaction", material_contributions['intraphase'][self.material_key(PhaseRef("liquid",0))].sum())
     
     def unit_model(self, time, states, params=None, sw=None,
-                    mat_bce=False, enrgy_bce=False):
+                    mat_bce=False, enrgy_bce=False,alg_bce=False):
         unpacked_state = self.solver_state_collection.unpack(states)
         completed_state = self.complete_state(unpacked_state,time)
         self.update_phases_from_state(completed_state)
-        operating_conditions = self.complete_operating_conditions(time,completed_state)
 
         # Balances
         material_rates, material_contributions, aux = self.material_balances(
-            time,completed_state,operating_conditions)
+            time,completed_state)
         
 
         if mat_bce:
             return self.pack_state_rates(material_rates)
         global_rates = {}
         energy_rates = self.energy_balances(
-                time,completed_state,operating_conditions, aux)
+                time,completed_state, aux)
         global_rates.update(energy_rates)
 
         # utility_rates = self.utility_energy_balance(
@@ -697,9 +701,23 @@ class MultiPhaseVessel():
             f"Returned {len(balances)} derivatives "
             f"for {len(states)} solver states."
         )
+        if self.debug:
+            self.debug_print(material_contributions)
         self.derivatives = balances
         return balances
+        # algebraic_residuals = self.algebraic_balances(
+        #     time,
+        #     completed_state,
+        #     operating_conditions,
+        # )
 
+        # if alg_bce:
+        #     return algebraic_residuals
+        # if not algebraic_residuals:
+        #     # legacy behavior
+        #     return balances
+        # else:
+        #     return balances, algebraic_residuals
     def compile_integrator(self, **kwargs):
         return self.integrator.compile_integrator(
             self,
@@ -742,31 +760,62 @@ class MultiPhaseVessel():
             rates[key] = np.zeros(state.dim)
 
         return rates
-    
-    def material_balances(self,time,completed_state,completed_operating_condition):
+    def get_operating_conditions(self,time:float,completed_state:dict[StateKey])->tuple[StreamConditions,StreamConditions,dict[OperatingKey]]:
+        # --------------------------------------------
+        # Controller sees current vessel state
+        # --------------------------------------------
 
-        resolved_inlets = self.resolve_inlets(completed_state,completed_operating_condition)
-        total_inlet_flow = self.get_total_inlet_vol_flow(resolved_inlets)
-        resolved_outlets = self.resolve_outlets(completed_state,completed_operating_condition,total_inlet_flow)
+        self.controller.observe(time,completed_state,self)
+
+        operating_conditions=self.controller.compute_operating_conditions(
+                time,
+                completed_state,
+                self
+            )
+        # --------------------------------------------
+        # Resolve inlet after possible inlet control
+        # --------------------------------------------
+        resolved_inlets = self.resolve_inlets(completed_state,operating_conditions)
+        # --------------------------------------------
+        # Controller observes actual inlet
+        # --------------------------------------------
+        self.controller.observe(time,completed_state,self,resolved_inlets=resolved_inlets)
 
 
-        contributions, aux = self.limit_material_rates(
-            time,
-            completed_state,
-            resolved_inlets,
-            resolved_outlets
-        )
+        operating_conditions.update(
+            self.controller.compute_operating_conditions(
+                time,completed_state,self,resolved_inlets=resolved_inlets))
 
-        rates = self.sum_material_contributions(
-            contributions
-        )
+
+        # Re-resolve inlet in case controller changed it
+        resolved_inlets = self.resolve_inlets(completed_state,operating_conditions)
+
+        # --------------------------------------------
+        # Resolve outlets
+        resolved_outlets = self.resolve_outlets(completed_state,operating_conditions)
+        return resolved_inlets,resolved_outlets,operating_conditions
+        
+    def material_balances(
+        self,
+        time:float,
+        completed_state:dict[StateKey],
+    ):
+
+        resolved_inlets,resolved_outlets,operating_conditions = self.get_operating_conditions(time,completed_state)
+        # --------------------------------------------
+        # Material balances
+        # --------------------------------------------
+        contributions, aux = self.limit_material_rates(time,completed_state,resolved_inlets,resolved_outlets)
+
+
+        rates = self.sum_material_contributions(contributions)
 
         return rates, contributions, aux
 
     def check_negative_inventory(
             self,
-            rates,
-            completed_state):
+            rates:dict[StateKey],
+            completed_state:dict[StateKey]):
 
         violations = {}
 
@@ -776,7 +825,7 @@ class MultiPhaseVessel():
 
             inventory = getattr(phase,self.basis)
 
-            mask = (inventory + rate < -eps)
+            mask = (inventory + rate < -eps*10)
 
             if np.any(mask):
 
@@ -785,8 +834,8 @@ class MultiPhaseVessel():
         return violations
     def calculate_scale(
             self,
-            violations,
-            contributions):
+            violations:dict[StateKey,np.ndarray],
+            contributions:dict[str:dict[StateKey]]):
         """Only phase transfer is considered inventory-limited. Intraphase mechanisms
         should be responsible for ensuring their own kinetics remain physically valid
         If you desire to scale other terms, simply add them to scalable_terms"""
@@ -890,7 +939,7 @@ class MultiPhaseVessel():
 
     def sum_material_contributions(
         self,
-        contributions):
+        contributions:dict[str,dict[StateKey]]):
 
         rates = self.initialize_material_rate_dictionary()
 
@@ -901,23 +950,23 @@ class MultiPhaseVessel():
                 rates[state_key] += rate
 
         return rates
-    def material_key(self, phase_ref):
+    def material_key(self, phase_ref:PhaseRef):
         return StateKey(self.basis, phase_ref)
+    
     def resolve_outlet_flows(
         self,
-        total_inlet_vol_flow,
-        operating_conditions,
+        operating_conditions:dict[OperatingKey,Any],
     ):
 
         flows = {}
         for i, connection in enumerate(self.outlet_connections):
-            key = OperatingKey("vol_flow",connection=i)
+            key = OperatingKey("vol_flow",connection=i,port='outlet')
             if key in operating_conditions:
                 flows[i] = operating_conditions[key]
 
         return flows
     
-    def get_total_inlet_vol_flow(self,resolved_inlets:StreamConditions):
+    def get_total_inlet_vol_flow(self,resolved_inlets:StreamConditions)->float:
 
         total = 0.0
         for inlet in resolved_inlets.streams:
@@ -927,22 +976,26 @@ class MultiPhaseVessel():
     
     def get_phase_operating_conditions(
         self,
-        operating_conditions,
-        connection,
-        phase_ref,
-    ):
+        operating_conditions:dict[OperatingKey,Any],
+        connection:int,
+        phase_ref:PhaseRef,
+        port:str
+    )->dict[OperatingKey,Any]:
 
         updates = {}
+        port = port.lower()
 
         for key, value in operating_conditions.items():
 
             if key.connection != connection:
                 continue
 
-            if (
-                key.phase is not None
-                and key.phase != phase_ref
-            ):
+            if (key.phase is not None
+                and key.phase != phase_ref):
+                continue
+
+            if (key.port is not None
+                and key.port!=port):
                 continue
 
             updates[key.name] = value
@@ -992,18 +1045,17 @@ class MultiPhaseVessel():
         constraints (e.g. settling, phase disengagement, hydraulics).
         """
 
-        return max(requested_flow, 0.0)
+        return min(max(requested_flow, 0.0),vessel_phase.vol)
     
     def resolve_outlets(
         self,
-        completed_state,
-        operating_conditions,
-        total_inlet_vol_flow,
+        completed_state:dict,
+        operating_conditions:dict[OperatingKey],
     )->StreamConditions:
 
         resolved = []
 
-        outlet_flows = self.resolve_outlet_flows(total_inlet_vol_flow, operating_conditions)
+        outlet_flows = self.resolve_outlet_flows(operating_conditions)
 
         for connection_num, connection in enumerate(self.outlet_connections):# iterate over outlet streams
 
@@ -1013,48 +1065,45 @@ class MultiPhaseVessel():
 
             for mapping in connection.phase_mappings: #iterate over each phase in that stream
 
-                vessel_phase = self.Phases.get_phase_from_ref(
-                    mapping.source_phase
-                )
-
-                phase_key = OperatingKey(
-                    "vol_flow",
-                    connection=connection_num,
-                    phase=mapping.source_phase,
-                )
-
-                if phase_key in operating_conditions:
-                    requested_flow = operating_conditions[phase_key]
-
-                else:
-                    requested_flow = self.compute_requested_phase_outlet_flow(vessel_phase, total_outlet_flow, connection)
-
-                actual_flow = self.compute_actual_phase_outlet_flow(vessel_phase,requested_flow)
+                vessel_phase = self.Phases.get_phase_from_ref(mapping.source_phase)
                 outlet_phase = outlet_stream.get_phase_from_ref(mapping.source_phase)
 
+                # Default outlet request
+                requested_flow = self.compute_requested_phase_outlet_flow(vessel_phase,total_outlet_flow,connection)
+
+                # Controller (or other operating conditions) may override the request
+                requested_flow = self.get_phase_operating_conditions(
+                    operating_conditions,
+                    connection_num,
+                    mapping.source_phase,
+                    "outlet",
+                ).pop("vol_flow", requested_flow)
+
+                # Apply physical limits once
+                actual_flow = self.compute_actual_phase_outlet_flow(vessel_phase,requested_flow)
                 updates = vessel_phase.state_dict
 
-                # Amounts are determined by the outlet flow calculation.
+                # Amounts are determined from the resolved outlet flow
                 for name in outlet_phase.amount_names:
                     updates.pop(name, None)
 
-                # Keep only the preferred/default composition representation.
+                # Keep only the preferred composition representation
                 for name in outlet_phase.composition_names:
-
                     if name != outlet_phase.default_composition_name:
                         updates.pop(name, None)
 
-                # Flow is determined by the outlet resolver.
-                updates["vol_flow"] = actual_flow
-
-                # Controller takes precedence over everything.
+                # Add any remaining operating-condition overrides
                 updates.update(
                     self.get_phase_operating_conditions(
                         operating_conditions,
                         connection_num,
                         mapping.source_phase,
+                        "outlet",
                     )
                 )
+
+                # Physical limit always wins
+                updates["vol_flow"] = actual_flow
 
                 outlet_phase.updatePhase(**updates)
 
@@ -1072,28 +1121,17 @@ class MultiPhaseVessel():
 
             for mapping in connection.phase_mappings:
 
-                inlet_phase = inlet_stream.get_phase_from_ref(
-                    mapping.source_phase
-                )
+                inlet_phase = inlet_stream.get_phase_from_ref(mapping.source_phase)
 
                 updates = self.get_phase_operating_conditions(
                     operating_conditions,
                     connection_num,
                     mapping.source_phase,
+                    port='inlet'
                 )
 
                 inlet_phase.updatePhase(**updates)
 
-                flow_key = OperatingKey(
-                    "vol_flow",
-                    connection=connection_num,
-                    phase=mapping.source_phase,
-                )
-
-                if flow_key in operating_conditions:
-                    inlet_phase.updatePhase(
-                        vol_flow=operating_conditions[flow_key]
-                    )
 
             resolved.append(
                 ResolvedStreamConnection(
@@ -1126,14 +1164,16 @@ class MultiPhaseVessel():
             completed_state,
             resolved_inlets
         )
-
+        m0 = self.Phases[0].mass.copy()
+        v0 = self.Phases[0].vol
+        rho0 = self.Phases[0].getDensity()
+        mf0 = self.Phases[0].mass_frac.copy()
         self.add_intraphase_terms(
             contributions["intraphase"],
             aux['intraphase'],
             time,
             completed_state
         )
-
         self.add_transfer_terms(
             contributions["transfer"],
             aux['transfer'],
@@ -1148,7 +1188,9 @@ class MultiPhaseVessel():
             completed_state,
             resolved_outlets
         )
-
+        if self.debug:
+            phase2 = copy.deepcopy(self.Phases[0])
+            print(f'Time:{round(time,2)}, rho:{phase2.getDensity()}, vol:{phase2.vol},mass:{phase2.mass},mf:{phase2.mass_frac}')
         return contributions, aux
     
     def add_inlet_terms(
@@ -1199,12 +1241,20 @@ class MultiPhaseVessel():
             for mapping in outlet.connection.phase_mappings:
 
                 outlet_phase = outlet.stream.get_phase_from_ref(mapping.source_phase)
-
                 species_flow = getattr(outlet_phase,self.basis + "_flow")
                 state_key = self.material_key(mapping.source_phase)
                 if state_key not in rates:
                     continue
                 rates[state_key] -= species_flow
+                if self.debug:
+                    print(f"Time:{time}, in_vessel:{self.Phases[0].mass_j}, outlet:{outlet_phase.mass_j}")
+                    print(f"time:{time}, Outlet props:",
+                        outlet_phase.vol_flow,
+                        outlet_phase.mass_flow,
+                        outlet_phase.getDensity(),
+                        outlet_phase.vol_flow*outlet_phase.getDensity(),
+                        f"Sum species_flow:{ species_flow.sum()}",
+                        )
 
                 aux.append({
                     "outlet": outlet,
@@ -1276,7 +1326,6 @@ class MultiPhaseVessel():
             self,
             time,
             completed_state,
-            operating_conditions,
             aux
         ):
         """
@@ -1525,12 +1574,7 @@ class MultiPhaseVessel():
     
     def update_final_conditions(self,completed_state,time,solver_history,output_history):
         completed_state = self.complete_state(completed_state,time[-1])
-        operating_conditions = self.complete_operating_conditions(time[-1],completed_state)
-
-        resolved_inlets = self.resolve_inlets(completed_state,operating_conditions)
-        inlet_flow = self.get_total_inlet_vol_flow(resolved_inlets)
-        resolved_outlets = self.resolve_outlets(completed_state,operating_conditions,inlet_flow)
-
+        resolved_inlets,resolved_outlets,operating_conditions = self.get_operating_conditions(time,completed_state)
         self.outlet_conditions =resolved_outlets
         
         self.elapsed_time = time[-1]
@@ -1543,10 +1587,10 @@ class MultiPhaseVessel():
 
         completed_state = self.update_final_state(solver_history)
         self.update_final_conditions(completed_state,time,solver_history,output_history)
-        self.outputs = self.build_dynamic_result(time,
+        self.result = self.build_dynamic_result(time,
                     solver_history,
                     output_history)
-        return self.outputs
+        return self.result
     
 
     def build_dynamic_result(

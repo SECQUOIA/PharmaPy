@@ -139,7 +139,6 @@ class ReactionMechanism(Mechanism):
         ])
 
         conc = phase.mole_conc
-
         deltah_rxn = None
 
         if self.kinetics.keq_params is not None:
@@ -197,6 +196,70 @@ class ReactionMechanism(Mechanism):
 
    
     
+
+
+class SimplifiedReactionMechanism(Mechanism):
+    """
+    Computes intraphase material generation or consumption.
+
+    Returns
+    -------
+    species_mass_rates : ndarray
+        Species generation/consumption rates.
+
+    aux : dict
+        Cached reaction information required by
+        get_heat_generation().
+    """
+    def __init__(
+        self,
+        kinetics,
+        molarity_in_L=True
+    ):
+
+        self.kinetics = kinetics
+        self.molarity_in_L = molarity_in_L
+    def get_material_rate(
+            self,
+            process,
+            phase,
+            time,
+            completed_state
+        ):
+
+        # Current moles of each species
+        moles = phase.mole_conc * phase.vol
+
+        n0 = moles[0]
+        n1 = moles[1]
+
+        # Limiting reagent
+        reacted = min(n0, n1)
+
+        species_mass_rates = np.zeros(phase.num_species)
+
+        # Consume reactants
+        species_mass_rates[0] = -reacted * phase.mw[0]
+        species_mass_rates[1] = -reacted * phase.mw[1]
+
+        # Produce product
+        species_mass_rates[2] = reacted * phase.mw[2]
+
+        aux = {
+            "phase": phase,
+            "rxn_rates": np.array([reacted]),
+            "process": process,
+        }
+
+        return species_mass_rates, aux
+
+    def get_heat_generation(self, aux, completed_state, time):
+        return 0.0
+    
+    
+
+
+   
     
 class DirectTransfer(TransferMechanism):
 

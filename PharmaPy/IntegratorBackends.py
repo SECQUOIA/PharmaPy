@@ -63,7 +63,7 @@ class AssimuloBackend(IntegratorBackend):
 
         self._problem = None
         self._solver = None
-        self.options = {}
+        self.options = {'maxh':1}
         self.state_event_list = []
 
         self.eval_sens = False

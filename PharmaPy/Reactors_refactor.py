@@ -1,11 +1,11 @@
 from PharmaPy.MultiPhaseVessel import MultiPhaseVessel
 from Mechanisms import ReactionMechanism
 from PharmaPy.DataClasses import *
-from ProcessControl_Refactor import Controller
+from ProcessControl_Refactor import Controller, DefaultContinuousVesselVolume
 
 class _BaseReactor(MultiPhaseVessel):
-    def __init__(self, *args,**kwargs):
-        super().__init__(*args,**kwargs)
+    def __init__(self, integrator=None, temp_ref=273.15, isothermal=False, reset_states=False, controller=Controller(), h_conv=0, state_events={}, adiabatic=False, jac_type="AD", Phases=None, basis='mass_j', ht_mode="jacket", diam=0, area_base=0):
+        super().__init__(integrator, temp_ref, isothermal, reset_states, controller, h_conv, state_events, adiabatic, jac_type, Phases, basis, ht_mode, diam, area_base)
         if self.isothermal:
                     assert self.adiabatic != 1, "Cannot be isothermal and adiabatic with a reaction present"
     @property
@@ -65,8 +65,8 @@ class ContinuousReactor(_BaseReactor):
 
     oper_mode = "continuous"
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, integrator=None, temp_ref=273.15, isothermal=False, reset_states=False, controller=DefaultContinuousVesselVolume(), h_conv=0, state_events={}, adiabatic=False, jac_type="AD", Phases=None, basis='mass_j', ht_mode="jacket", diam=0, area_base=0):
+        super().__init__(integrator, temp_ref, isothermal, reset_states, controller, h_conv, state_events, adiabatic, jac_type, Phases, basis, ht_mode, diam, area_base)
 
     def configure_default_connections(self):
 
@@ -102,18 +102,4 @@ class ContinuousReactor(_BaseReactor):
                 phase_mappings=mappings,
             )
         ]
-    def resolve_outlet_flows(
-        self,
-        total_inlet_vol_flow,
-        operating_conditions,
-    ):
-
-        flows = super().resolve_outlet_flows(
-            total_inlet_vol_flow,
-            operating_conditions,
-        )
-        #Unless the user specifies different outlets, the outlet must equal the volume of the inlet
-        if 0 not in flows:
-            flows[0] = total_inlet_vol_flow
-
-        return flows
+    

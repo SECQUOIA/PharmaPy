@@ -133,6 +133,11 @@ class OperatingKey:
 
     component: str | None = None
 
+    port: str | None = None
+
+    def __post_init__(self):
+        object.__setattr__(self,'port',self.port.lower())
+
 
 
 @dataclass
