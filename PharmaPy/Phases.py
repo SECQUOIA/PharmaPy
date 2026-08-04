@@ -854,6 +854,16 @@ class SolidPhase(ThermoPhysicalManager):
     -------
     None.
 
+    Notes
+    -----
+    Solid mass is stored in kilograms, while molecular weight is stored in
+    grams per mole. Mole amounts are calculated from the finalized solid mass
+    after converting it to grams during construction.
+
+    ``moles`` is set by the constructor only. Unlike ``LiquidPhase``,
+    ``updatePhase`` does not recompute it, so ``moles`` becomes stale when the
+    phase mass is updated.
+
     """
     
     def __init__(self, path_thermo, temp=298.15, temp_ref=298.15, pres=101325,
@@ -923,8 +933,10 @@ class SolidPhase(ThermoPhysicalManager):
             else:
                 self.vol = self.mass / dens
 
-        mw_av = np.dot(self.mole_frac, self.mw)
-        self.moles = mass / mw_av
+        mw_av = np.dot(self.mole_frac, self.mw)  # [g/mol]
+        self.mw_av = mw_av  # [g/mol]
+        mass_grams = self.mass * 1000  # [g]
+        self.moles = mass_grams / mw_av  # [mol]
 
         if mass_frac is not None:
             sum_fracs = sum(mass_frac)
