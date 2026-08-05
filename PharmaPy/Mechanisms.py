@@ -138,7 +138,7 @@ class ReactionMechanism(Mechanism):
             for species in phase.name_species
         ])
 
-        conc = phase.mole_conc
+        conc = np.maximum(phase.mole_conc,0.0) #sanitize input incase integrator gave slightly negative
         deltah_rxn = None
 
         if self.kinetics.keq_params is not None:

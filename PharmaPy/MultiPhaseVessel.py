@@ -675,7 +675,6 @@ class MultiPhaseVessel():
         unpacked_state = self.solver_state_collection.unpack(states)
         completed_state = self.complete_state(unpacked_state,time)
         self.update_phases_from_state(completed_state)
-
         # Balances
         material_rates, material_contributions, aux = self.material_balances(
             time,completed_state)
@@ -696,7 +695,7 @@ class MultiPhaseVessel():
             return self.pack_state_rates(global_rates=global_rates)
 
         balances = self.pack_state_rates(material_rates=material_rates,
-                                         global_rates=global_rates)
+                                        global_rates=global_rates)
         assert len(balances) == len(states), (
             f"Returned {len(balances)} derivatives "
             f"for {len(states)} solver states."
@@ -790,10 +789,7 @@ class MultiPhaseVessel():
         # Re-resolve inlet in case controller changed it
         resolved_inlets = self.resolve_inlets(completed_state,operating_conditions)
 
-        # --------------------------------------------
-        # Resolve outlets
-        resolved_outlets = self.resolve_outlets(completed_state,operating_conditions)
-        return resolved_inlets,resolved_outlets,operating_conditions
+        return resolved_inlets,operating_conditions
         
     def material_balances(
         self,
@@ -801,11 +797,11 @@ class MultiPhaseVessel():
         completed_state:dict[StateKey],
     ):
 
-        resolved_inlets,resolved_outlets,operating_conditions = self.get_operating_conditions(time,completed_state)
+        resolved_inlets,operating_conditions = self.get_operating_conditions(time,completed_state)
         # --------------------------------------------
         # Material balances
         # --------------------------------------------
-        contributions, aux = self.limit_material_rates(time,completed_state,resolved_inlets,resolved_outlets)
+        contributions, aux = self.limit_material_rates(time,completed_state,resolved_inlets,operating_conditions)
 
 
         rates = self.sum_material_contributions(contributions)
@@ -814,76 +810,117 @@ class MultiPhaseVessel():
 
     def check_negative_inventory(
             self,
-            rates:dict[StateKey],
-            completed_state:dict[StateKey]):
+            rates,
+            completed_state,
+            limiter_dt=1.0):
 
         violations = {}
 
         for state_key, rate in rates.items():
 
-            phase = self.Phases.get_phase_from_ref(state_key.phase)
+            inventory = completed_state[
+                state_key
+            ]
 
-            inventory = getattr(phase,self.basis)
-
-            mask = (inventory + rate < -eps*10)
+            mask = (
+                inventory + rate * limiter_dt
+                < -eps*10
+            )
 
             if np.any(mask):
-
                 violations[state_key] = mask
 
         return violations
+    
     def calculate_scale(
             self,
-            violations:dict[StateKey,np.ndarray],
-            contributions:dict[str:dict[StateKey]]):
-        """Only phase transfer is considered inventory-limited. Intraphase mechanisms
-        should be responsible for ensuring their own kinetics remain physically valid
-        If you desire to scale other terms, simply add them to scalable_terms"""
+            violations,
+            completed_state,
+            contributions,
+            dt=1.0
+        ):
+
+        scalable_terms = [
+            "transfer",
+            "outlet",
+        ]
+
+        fixed_terms = [
+            "inlet",
+            "intraphase",
+        ]
+
         scales = {}
 
-        scalable_terms = ["transfer"]
+        # Only phases that violated need correction
+        for state_key in violations:
 
-        for state_key, mask in violations.items():
+            phase_ref = state_key.phase
 
             phase = self.Phases.get_phase_from_ref(
-                state_key.phase
+                phase_ref
             )
 
-            inventory = getattr(
-                phase,
-                self.basis
-            )
+            inventory = completed_state[state_key]
 
-            total_consumption = np.zeros_like(
-                inventory
-            )
+            fixed = np.zeros_like(inventory)
+            scalable = np.zeros_like(inventory)
+
+            for term in fixed_terms:
+                fixed += contributions[term].get(
+                    state_key,
+                    0,
+                )
 
             for term in scalable_terms:
-
-                total_consumption += np.minimum(
-                    contributions[term][state_key],
-                    0
+                scalable += contributions[term].get(
+                    state_key,
+                    0,
                 )
 
-            scale = np.ones_like(
-                inventory
+
+            # How much inventory remains after unavoidable mechanisms
+            allowable = inventory + fixed*dt
+
+
+            species_scales = np.ones_like(
+                inventory,
+                dtype=float
             )
 
-            violating_species = np.where(mask)[0]
 
-            for ind in violating_species:
+            consuming = scalable < 0
 
-                consumed = -total_consumption[ind]
+            species_scales[consuming] = (
+                allowable[consuming]
+                /
+                (-scalable[consuming]*dt + eps)
+            )
 
-                if consumed <= 0:
-                    continue
 
-                scale[ind] = min(
-                    1.0,
-                    inventory[ind] / (consumed+eps)
-                )
+            # Any species that is already impossible due to
+            # fixed terms should force complete removal of scalable sinks.
+            species_scales = np.clip(
+                species_scales,
+                0.0,
+                1.0,
+            )
 
-            scales[state_key] = scale
+
+            # A phase outlet/transfer cannot selectively remove
+            # only the offending species. It must scale the entire
+            # phase movement.
+            phase_scale = np.min(
+                species_scales
+            )
+
+
+            scales[state_key] = np.full_like(
+                inventory,
+                phase_scale,
+                dtype=float
+            )
+
 
         return scales
     
@@ -906,36 +943,112 @@ class MultiPhaseVessel():
                 mass_j=new_mass
             )
                 
-    
+    def restore_effective_inventory(
+            self,
+            original_inventory:dict[PhaseRef],
+            scales,
+        ):
+
+        for phase_ref, mass in original_inventory.items():
+
+            phase = self.Phases.get_phase_from_ref(
+                phase_ref
+            )
+
+            phase.updatePhase(
+                **{
+                    self.basis:
+                        mass * scales[phase_ref]
+                }
+            )
     
     def limit_material_rates(
+                self,
+                time,
+                completed_state,
+                resolved_inlets,
+                operating_conditions,
+                limiter_dt=1.0,
+            ):
+
+            resolved_outlets = self._resolve_outlets(
+                completed_state,
+                operating_conditions
+            )
+
+            contributions, aux = self.calculate_material_contributions(
+                time,
+                completed_state,
+                resolved_inlets,
+                resolved_outlets,
+            )
+
+            rates = self.sum_material_contributions(
+                contributions
+            )
+
+            contributions,aux = self.apply_linear_rate_scaling(
+                contributions,
+                aux,
+                rates,
+                completed_state,
+                limiter_dt
+            )
+
+            return contributions, aux
+    def apply_linear_rate_scaling(
             self,
-            time,
+            contributions,
+            aux,
+            rates,
             completed_state,
-            resolved_inlets,
-            resolved_outlets
+            dt=1.0,
         ):
-        """Soft constraint to ensure mass conservation is not violated between the generation and phase transference. If violation is detected, the  
-        mass movement is scaled back by scaling the effective mass available until no violations are detected. The original mass is then restored from completed_state"""
-        
-        for iteration in range(5):
-            contributions,aux= self.calculate_material_contributions(time,completed_state,resolved_inlets,resolved_outlets)
+        """
+        Linearly scale consuming contributions to prevent negative inventory.
 
-            rates = self.sum_material_contributions(contributions)
+        Assumes dt is the expected integration step. This does not modify
+        phases and does not regenerate nonlinear mechanisms.
+        """
 
-            violations = self.check_negative_inventory(rates,completed_state)
-
-            if len(violations) == 0:
-                self.update_phases_from_state(completed_state)
-                return contributions, aux
-            scales = self.calculate_scale(violations,contributions)
-
-            self.scale_phase_inventory(scales)
-        self.update_phases_from_state(completed_state)
-        raise RuntimeError(
-            "Material balance limiter failed "
-            "to converge after 5 iterations."
+        violations = self.check_negative_inventory(
+            rates,
+            completed_state,
+            limiter_dt=dt
         )
+
+        if not violations:
+            return contributions, aux
+
+        scales = self.calculate_scale(
+            violations,
+            completed_state,
+            contributions,
+        )
+
+        scalable_terms = [
+            "transfer",
+            "outlet",
+        ]
+
+        for term in scalable_terms:
+
+            for state_key, rate in contributions[term].items():
+
+                if state_key not in scales:
+                    continue
+
+                contributions[term][state_key] *= scales[state_key]
+        for item in aux["outlet"]:
+            phase_ref = item["mapping"].source_phase
+            key = self.material_key(phase_ref)
+
+            if key in scales:
+                item["species_flow"] *= scales[key]
+                item["outlet_phase"].updatePhase(
+                    mass_j= getattr(item['outlet_phase'],self.basis) * scales[key]
+                )
+        return contributions, aux
 
     def sum_material_contributions(
         self,
@@ -1047,7 +1160,7 @@ class MultiPhaseVessel():
 
         return min(max(requested_flow, 0.0),vessel_phase.vol)
     
-    def resolve_outlets(
+    def _resolve_outlets(
         self,
         completed_state:dict,
         operating_conditions:dict[OperatingKey],
@@ -1067,17 +1180,18 @@ class MultiPhaseVessel():
 
                 vessel_phase = self.Phases.get_phase_from_ref(mapping.source_phase)
                 outlet_phase = outlet_stream.get_phase_from_ref(mapping.source_phase)
-
+                
                 # Default outlet request
                 requested_flow = self.compute_requested_phase_outlet_flow(vessel_phase,total_outlet_flow,connection)
 
                 # Controller (or other operating conditions) may override the request
-                requested_flow = self.get_phase_operating_conditions(
+                ops =self.get_phase_operating_conditions(
                     operating_conditions,
                     connection_num,
                     mapping.source_phase,
                     "outlet",
-                ).pop("vol_flow", requested_flow)
+                )
+                requested_flow = ops.pop("vol_flow", requested_flow)
 
                 # Apply physical limits once
                 actual_flow = self.compute_actual_phase_outlet_flow(vessel_phase,requested_flow)
@@ -1164,10 +1278,6 @@ class MultiPhaseVessel():
             completed_state,
             resolved_inlets
         )
-        m0 = self.Phases[0].mass.copy()
-        v0 = self.Phases[0].vol
-        rho0 = self.Phases[0].getDensity()
-        mf0 = self.Phases[0].mass_frac.copy()
         self.add_intraphase_terms(
             contributions["intraphase"],
             aux['intraphase'],
@@ -1574,7 +1684,8 @@ class MultiPhaseVessel():
     
     def update_final_conditions(self,completed_state,time,solver_history,output_history):
         completed_state = self.complete_state(completed_state,time[-1])
-        resolved_inlets,resolved_outlets,operating_conditions = self.get_operating_conditions(time,completed_state)
+        resolved_inlets,operating_conditions = self.get_operating_conditions(time,completed_state)
+        resolved_outlets = self._resolve_outlets(completed_state,operating_conditions)
         self.outlet_conditions =resolved_outlets
         
         self.elapsed_time = time[-1]
@@ -1641,20 +1752,3 @@ class MultiPhaseVessel():
         #backward compatibility
         return self.Phases.num_species
         
-
-if __name__=='__main__':
-    dpath = r"C:\Users\zhillma\OneDrivePZH\Documents\Documents\_Grad_School\mypharmadev\PharmaPy\tests\Flowsheet\data\compound_database.json"
-
-    from PharmaPy.IntegratorBackends import AssimuloBackend
-
-    integrator = AssimuloBackend()
-    vessel = MultiPhaseVessel(integrator)
-    liquid1 = LiquidPhase(dpath,mass=1,mass_frac=[.3,.7,0,0,0])
-    solid1 = SolidPhase(dpath,mass=0,mass_frac=[0,0,1,0,0])
-    vessel.Phases = [liquid1,solid1]
-    inlet=  LiquidStream(dpath,mass_flow=.01,mass_frac=[.3,.7,0,0,0])
-    vessel.Inlet = inlet
-    # outlet = LiquidStream(dpath,mass_flow=0.005)
-    # vessel.Outlet = outlet
-    vessel.solve_unit(300)
-    print('done')

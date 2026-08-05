@@ -13,7 +13,7 @@ dpath = r"C:\Users\zhillma\OneDrivePZH\Documents\Documents\_Grad_School\mypharma
 
 
 # -----------------------------
-# Reactor
+# Reactor Setup
 # -----------------------------
 
 integrator = AssimuloBackend()
@@ -29,9 +29,10 @@ vessel = ContinuousReactor(
 # -----------------------------
 # Initial phases
 # -----------------------------
+m = 1
 liquid1 = LiquidPhase(
     dpath,
-    mass=1000,
+    mass=m,
     mass_frac=[0.4,0.6,0,0,0],
 
 )
@@ -52,7 +53,7 @@ vessel.Phases = liquid1
 
 inlet = LiquidStream(
     dpath,
-    mass_flow=0.02,
+    mass_flow=m/10,
     mass_frac=[0.4,0.6,0,0,0]
 )
 rxns = ['A + B --> C', 'C + A --> D']
@@ -61,8 +62,8 @@ ea_vals = np.array([1e2,1e2])#,1e4]) #psuedo no activation energy
 Rkinetics = RxnKinetics(path=dpath,rxn_list=rxns, k_params=kvals_rxns,ea_params=ea_vals)
 Utility = CoolingWater(mass_flow=100, temp_in=273.55)
 vessel.Utility = Utility
-vessel.RxnKinetics = Rkinetics
-vessel.controller.target_volume=.001
+# vessel.RxnKinetics = Rkinetics
+vessel.controller.target_volume=1
 vessel.Inlet = inlet
 
 
@@ -71,7 +72,7 @@ vessel.Inlet = inlet
 # -----------------------------
 
 vessel.solve_unit(
-    runtime=3000
+    runtime=10000
 )
 
 
@@ -105,9 +106,12 @@ print(
     "Vessel Final vol:",
     vessel.Phases.vol
 )
-
+import matplotlib.pyplot as plt
 if True:
-    import matplotlib.pyplot as plt
+    plt.plot(vessel.result.time,vessel.result.Total_m_in_vessel)
+    plt.show()
+    print(vessel.result.time,vessel.result.Total_m_in_vessel)
+if False:
     for mj,spec in zip(vessel.result.mass_j_liquid0.T,['A','B','C','D','Solvent']):
         if spec=='Solvent':continue
         plt.plot(vessel.result.time,mj,label=spec)

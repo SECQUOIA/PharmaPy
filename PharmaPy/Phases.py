@@ -219,7 +219,7 @@ class BasePhase(ThermoPhysicalManager):
             raise RuntimeError("Cannot set mass before composition is defined")
 
 
-        self._mass = value
+        self._mass = np.float64(value)
 
 
 
@@ -243,7 +243,7 @@ class BasePhase(ThermoPhysicalManager):
                 "mass_frac must sum to one"
             )
 
-        self._mass_frac=value
+        self._mass_frac=value.copy()
 
     @property
     def mole_frac(self):
