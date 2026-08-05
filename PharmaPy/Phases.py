@@ -3,12 +3,13 @@
 
 # import numpy as np
 # from autograd import numpy as np
+import warnings
+from typing import Optional
+
 import numpy as np
 from PharmaPy.ThermoModule import ThermoPhysicalManager
 from PharmaPy.Commons import trapezoidal_rule
 from scipy.optimize import newton
-
-import warnings
 
 eps = np.finfo(float).eps
 
@@ -959,8 +960,38 @@ class SolidPhase(ThermoPhysicalManager):
     def name(self, name):
         self._name = name
 
-    def updatePhase(self, x_distrib=None, distrib=None, mass=None,
-                    moments=None):
+    def updatePhase(self, x_distrib: Optional[np.ndarray] = None,
+                    distrib: Optional[np.ndarray] = None,
+                    mass: Optional[float] = None,
+                    moments: Optional[np.ndarray] = None) -> None:
+        """Update the solid size distribution, mass, or moments.
+
+        Parameters
+        ----------
+        x_distrib : numpy.ndarray, optional
+            Crystal-size grid with shape ``(num_sizes,)`` [um]. When supplied,
+            it replaces the stored grid before distribution moments are
+            recalculated.
+        distrib : numpy.ndarray, optional
+            Number-based crystal-size distribution with shape
+            ``(num_sizes,)`` [#/um on the phase population basis]. Its third
+            moment is converted to physical solid volume with the volumetric
+            shape factor ``kv``.
+        mass : float, optional
+            Solid mass [kg]. When supplied, it determines the stored volume
+            from the solid mixture density [kg/m**3].
+        moments : numpy.ndarray, optional
+            Crystal-size-distribution moments with shape ``(num_moments,)``.
+            Moment order ``n`` has units [m**n on the phase population basis].
+
+        Notes
+        -----
+        Distribution-derived volume follows ``V_solid = kv * mu_3`` [m**3].
+        If ``mass`` is supplied in the same call, the explicit mass and its
+        density-derived volume take precedence. If ``moments`` is also
+        supplied, it replaces the recalculated moments without another mass or
+        volume update. The constructor-only ``moles`` attribute is unchanged.
+        """
         if x_distrib is not None:
             self.x_distrib = x_distrib
 
@@ -969,8 +1000,8 @@ class SolidPhase(ThermoPhysicalManager):
             self.moments = self.getMoments()
             self.num_distrib = len(distrib)
 
-            self.vol = self.moments[3]
-            self.mass = self.moments[3] * self.getDensity()
+            self.vol = self.moments[3] * self.kv  # [m**3]
+            self.mass = self.vol * self.getDensity()  # [kg]
 
         if mass is not None:
             self.mass = mass
