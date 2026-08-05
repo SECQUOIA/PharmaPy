@@ -13,24 +13,28 @@ enthalpy of ``dh`` per mole of reaction as written describes exactly the same
 chemistry as ``A -> 0.5B`` with ``dh / 2``, so both must produce the same molar
 production rates *and* the same heat-release rate.
 
+An asymmetric two-reaction case, ``2A -> B`` and ``3B -> C``, additionally
+pins the normalization factors to the reaction axis in every reactor energy
+path. Reversing the per-reaction factors must change the independently
+calculated heat source and fail the regression.
+
 The fixture uses the pure-component database already committed for the
 plug-flow reactor integration tests; species A and B have different liquid-Cp
 polynomials, so the sensible-heat correction ``delta_cp`` is non-zero at the
 evaluation temperature and is covered by the same invariance check.
 """
 
-import sys
 from pathlib import Path
-from types import ModuleType
 
 import numpy as np
 import pytest
+
+from assimulo_helpers import import_module_with_assimulo_stub
 
 
 pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PACKAGE_INIT = REPO_ROOT / "PharmaPy" / "__init__.py"
 THERMO_PATH = str(REPO_ROOT / "tests" / "integration" / "data" /
                   "pfr_test_pure_comp.json")
 
@@ -48,85 +52,96 @@ REACTION_ORDERS = [[1.0]]  # [-]
 K_PARAMS = np.array([1.0e-3])  # [1/s], pre-exponential factor
 EA_PARAMS = np.array([0.0])  # [J/mol], flat temperature dependence
 
+# Two differently normalized reactions make reaction-axis ordering observable.
+MULTI_STOICH_AS_WRITTEN = np.array([
+    [-2.0, 1.0, 0.0, 0.0],
+    [0.0, -3.0, 1.0, 0.0],
+])  # [-]
+MULTI_STOICH_NORMALIZATION = np.array([2.0, 3.0])  # [-]
+MULTI_STOICH_NORMALIZED = (
+    MULTI_STOICH_AS_WRITTEN / MULTI_STOICH_NORMALIZATION[:, None]
+)  # [-]
+MULTI_DELTA_HRXN_AS_WRITTEN = np.array([
+    -1.0e5, -6.0e4,
+])  # [J/mol of each reaction as written]
+MULTI_DELTA_HRXN_NORMALIZED = (
+    MULTI_DELTA_HRXN_AS_WRITTEN / MULTI_STOICH_NORMALIZATION
+)  # [J/mol of each normalized reaction extent]
+MULTI_REACTION_ORDERS = [[1.0], [1.0]]  # [-]
+MULTI_K_PARAMS = np.array([1.0e-3, 2.0e-3])  # [1/s]
+MULTI_EA_PARAMS = np.array([0.0, 0.0])  # [J/mol]
+MULTI_MOLE_CONC = np.array([1.5, 0.4, 0.3, 5.0])  # [mol/L]
+
 TREF_HRXN = 298.15  # [K]
 TEMP_EVAL = 320.0  # [K], deliberately off TREF_HRXN so delta_cp is non-zero
 VOL_EVAL = 2.0  # [m**3]
 MOLE_CONC = np.array([1.5, 0.4, 0.0, 5.0])  # [mol/L]
 
-STUB_HEAT_AS_WRITTEN = -100.0  # [J/mol of reaction as written]
-STUB_EXTENT_RATE = 3.0  # [mol/L/s] on the normalized reaction basis
-STUB_STOICH_NORMALIZATION = 2.0  # [-]
+STUB_HEATS_AS_WRITTEN = np.array([
+    -100.0, -60.0,
+])  # [J/mol of each reaction as written]
+STUB_EXTENT_RATES = np.array([
+    3.0, 2.0,
+])  # [mol/L/s] on each normalized reaction basis
+STUB_STOICH_NORMALIZATION = np.array([2.0, 3.0])  # [-]
 STUB_CP = np.array([100.0, 200.0])  # [J/mol/K]
 STUB_MOLE_CONC = np.array([1.0, 2.0])  # [mol/L]
 STUB_VOL_FLOW = 1.0  # [m**3/s]
 
 
-def _stub_assimulo_modules(monkeypatch):
-    """Let algebra-only reactor tests import without the optional solver."""
-    assimulo = ModuleType("assimulo")
-
-    solvers = ModuleType("assimulo.solvers")
-    solvers.CVode = object
-    solvers.LSODAR = object
-
-    problem = ModuleType("assimulo.problem")
-    problem.Explicit_Problem = object
-
-    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
-    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
-    monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
-
-
-def _prefer_source_package():
-    """Avoid importing the outer checkout package named PharmaPy."""
-    loaded = sys.modules.get("PharmaPy")
-    loaded_path = getattr(loaded, "__file__", None)
-    if loaded is not None and (
-            loaded_path is None or Path(loaded_path).resolve() != PACKAGE_INIT):
-        del sys.modules["PharmaPy"]
-
-    try:
-        sys.path.remove(str(REPO_ROOT))
-    except ValueError:
-        pass
-    sys.path.insert(0, str(REPO_ROOT))
-
-
 @pytest.fixture
 def pharmapy(monkeypatch):
-    """Import the reactor, phase, and kinetics modules from this checkout."""
-    _prefer_source_package()
+    """Import reactor dependencies from this checkout.
 
-    def _load():
-        import PharmaPy.Kinetics as kinetics_module
-        import PharmaPy.Phases as phases_module
-        import PharmaPy.Reactors as reactors_module
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Pytest cleanup fixture used if optional Assimulo imports need stubs.
 
-        return kinetics_module, phases_module, reactors_module
+    Returns
+    -------
+    tuple of module
+        The ``(Kinetics, Phases, Reactors)`` modules from this checkout.
+    """
+    assimulo_stub = {
+        "solvers": {"CVode": object, "LSODAR": object},
+        "problem": {"Explicit_Problem": object},
+    }
+    module_names = (
+        "PharmaPy.Kinetics", "PharmaPy.Phases", "PharmaPy.Reactors",
+    )
+    return tuple(
+        import_module_with_assimulo_stub(
+            monkeypatch, module_name, **assimulo_stub
+        )
+        for module_name in module_names
+    )
 
-    try:
-        return _load()
-    except ModuleNotFoundError as exc:
-        if exc.name != "assimulo":
-            raise
 
-        _stub_assimulo_modules(monkeypatch)
-        return _load()
-
-
-def _build_batch_reactor(pharmapy, stoich_matrix, delta_hrxn):
-    """Assemble an isothermal batch reactor for one stoichiometric writing.
+def _build_batch_reactor(
+        pharmapy, stoich_matrix, delta_hrxn, *, k_params=K_PARAMS,
+        ea_params=EA_PARAMS, reaction_orders=REACTION_ORDERS,
+        mole_conc=MOLE_CONC):
+    """Assemble an isothermal batch reactor for a stoichiometric writing.
 
     Parameters
     ----------
     pharmapy : tuple of module
         The ``(Kinetics, Phases, Reactors)`` modules from the ``pharmapy``
         fixture.
-    stoich_matrix : numpy.ndarray, shape (1, 4)
+    stoich_matrix : numpy.ndarray, shape (n_rxns, 4)
         Stoichiometric coefficients [-] over the database species order.
-    delta_hrxn : float
-        Heat of reaction at ``TREF_HRXN`` [J/mol of reaction as written],
-        consistent with ``stoich_matrix``.
+    delta_hrxn : float or numpy.ndarray, shape (n_rxns,)
+        Heat of each reaction at ``TREF_HRXN``
+        [J/mol of reaction as written], consistent with ``stoich_matrix``.
+    k_params : numpy.ndarray, shape (n_rxns,), optional
+        Pre-exponential factors [1/s].
+    ea_params : numpy.ndarray, shape (n_rxns,), optional
+        Activation energies [J/mol].
+    reaction_orders : list of list of float, optional
+        Orders of each reaction with respect to its reactants [-].
+    mole_conc : numpy.ndarray, shape (4,), optional
+        Species concentrations [mol/L] over the database species order.
 
     Returns
     -------
@@ -137,14 +152,14 @@ def _build_batch_reactor(pharmapy, stoich_matrix, delta_hrxn):
     kinetics_module, phases_module, reactors_module = pharmapy
 
     liquid = phases_module.LiquidPhase(THERMO_PATH, temp=TEMP_EVAL,
-                                       vol=VOL_EVAL, mole_conc=MOLE_CONC,
+                                       vol=VOL_EVAL, mole_conc=mole_conc,
                                        verbose=False)
 
     kinetics = kinetics_module.RxnKinetics(
-        path=THERMO_PATH, k_params=K_PARAMS, ea_params=EA_PARAMS,
+        path=THERMO_PATH, k_params=k_params, ea_params=ea_params,
         stoich_matrix=stoich_matrix,
         partic_species=liquid.name_species,
-        params_f=REACTION_ORDERS,
+        params_f=reaction_orders,
         delta_hrxn=delta_hrxn, tref_hrxn=TREF_HRXN)
 
     reactor = reactors_module.BatchReactor(isothermal=True)
@@ -159,15 +174,29 @@ def _build_batch_reactor(pharmapy, stoich_matrix, delta_hrxn):
     return reactor
 
 
-def _heat_generation_rate(reactor):
-    """Return the reaction heat-generation rate [W] at the fixture state.
+def _heat_generation_rate(reactor, mole_conc=MOLE_CONC):
+    """Return the reaction heat-generation rate [W] at a fixture state.
 
+    Parameters
+    ----------
+    reactor : BatchReactor
+        Reactor whose heat-generation rate is evaluated.
+    mole_conc : numpy.ndarray, shape (4,), optional
+        Species concentrations [mol/L] over the database species order.
+
+    Returns
+    -------
+    float
+        Exothermic heat-generation rate [W].
+
+    Notes
+    -----
     ``energy_balances(heat_prof=True)`` reports the reaction column with the
     opposite sign of the ``source_term`` that drives ``dtemp_dt``; this helper
     undoes that so a positive value means an exothermic release.
     """
     heat_profile = reactor.energy_balances(
-        0.0, MOLE_CONC, VOL_EVAL, TEMP_EVAL, TEMP_EVAL, {}, heat_prof=True)
+        0.0, mole_conc, VOL_EVAL, TEMP_EVAL, TEMP_EVAL, {}, heat_prof=True)
 
     return -float(heat_profile[0, 0])  # [W]
 
@@ -236,21 +265,24 @@ class _RateBasisLiquid:
 
         Returns
         -------
-        numpy.ndarray
-            Reaction enthalpy [J/mol of reaction as written].
+        numpy.ndarray, shape (n_temperatures, 2)
+            Reaction enthalpies [J/mol of reaction as written].
         """
         num_temperatures = len(np.atleast_1d(temp))
-        return np.full((num_temperatures, 1),
-                       STUB_HEAT_AS_WRITTEN)  # [J/mol of reaction]
+        return np.tile(
+            STUB_HEATS_AS_WRITTEN, (num_temperatures, 1)
+        )  # [J/mol of reaction as written]
 
 
 class _RateBasisKinetics:
     """Minimal normalized-rate contract for reactor energy-balance tests."""
 
-    delta_hrxn = np.array([STUB_HEAT_AS_WRITTEN])  # [J/mol of reaction]
-    stoich_matrix = np.array([[-2.0, 1.0]])  # [-]
-    stoich_normalization = np.array([
-        STUB_STOICH_NORMALIZATION])  # [-]
+    delta_hrxn = STUB_HEATS_AS_WRITTEN  # [J/mol of reaction as written]
+    stoich_matrix = np.array([
+        [-2.0, 1.0],
+        [1.0, -3.0],
+    ])  # [-]
+    stoich_normalization = STUB_STOICH_NORMALIZATION  # [-]
     tref_hrxn = TREF_HRXN  # [K]
 
     def __init__(self):
@@ -258,7 +290,7 @@ class _RateBasisKinetics:
         self.received_delta_hrxn = None  # [J/mol of reaction as written]
 
     def get_rxn_rates(self, conc, temp, overall_rates=False, delta_hrxn=None):
-        """Return a fixed normalized extent rate [mol/L/s].
+        """Return fixed normalized extent rates [mol/L/s].
 
         Parameters
         ----------
@@ -274,12 +306,16 @@ class _RateBasisKinetics:
 
         Returns
         -------
-        numpy.ndarray
+        numpy.ndarray, shape (n_states, 2)
             Per-reaction normalized extent rates [mol/L/s].
         """
-        self.received_delta_hrxn = np.asarray(delta_hrxn)  # [J/mol of rxn]
+        self.received_delta_hrxn = np.asarray(
+            delta_hrxn
+        )  # [J/mol of reaction as written]
         num_states = np.atleast_2d(conc).shape[0]
-        return np.full((num_states, 1), STUB_EXTENT_RATE)  # [mol/L/s]
+        return np.tile(
+            STUB_EXTENT_RATES, (num_states, 1)
+        )  # [mol/L/s]
 
 
 def _configure_rate_basis_reactor(reactor):
@@ -307,11 +343,19 @@ def _configure_rate_basis_reactor(reactor):
 
 
 def _expected_stub_source_term():
-    """Return independently derived reaction heat source [W/m**3]."""
+    """Return the independently derived reaction heat source.
+
+    Returns
+    -------
+    float
+        Volumetric heat-generation rate [W/m**3].
+    """
     heat_per_normalized_extent = (
-        STUB_HEAT_AS_WRITTEN / STUB_STOICH_NORMALIZATION
+        STUB_HEATS_AS_WRITTEN / STUB_STOICH_NORMALIZATION
     )  # [J/mol of normalized reaction extent]
-    return -heat_per_normalized_extent * STUB_EXTENT_RATE * 1000  # [W/m**3]
+    return -np.dot(
+        heat_per_normalized_extent, STUB_EXTENT_RATES
+    ) * 1000  # [W/m**3]
 
 
 def test_species_rates_are_invariant_to_stoichiometric_writing(pharmapy):
@@ -370,6 +414,50 @@ def test_heat_of_reaction_matches_normalized_extent_basis(pharmapy):
     assert q_as_written == pytest.approx(expected_q, rel=1e-10)
 
 
+def test_multi_reaction_heat_keeps_reaction_axis_alignment(pharmapy):
+    """Distinct normalization factors stay aligned with their reactions."""
+    as_written = _build_batch_reactor(
+        pharmapy, MULTI_STOICH_AS_WRITTEN, MULTI_DELTA_HRXN_AS_WRITTEN,
+        k_params=MULTI_K_PARAMS, ea_params=MULTI_EA_PARAMS,
+        reaction_orders=MULTI_REACTION_ORDERS,
+        mole_conc=MULTI_MOLE_CONC,
+    )
+    normalized = _build_batch_reactor(
+        pharmapy, MULTI_STOICH_NORMALIZED, MULTI_DELTA_HRXN_NORMALIZED,
+        k_params=MULTI_K_PARAMS, ea_params=MULTI_EA_PARAMS,
+        reaction_orders=MULTI_REACTION_ORDERS,
+        mole_conc=MULTI_MOLE_CONC,
+    )
+
+    np.testing.assert_allclose(
+        as_written.Kinetics.stoich_normalization,
+        MULTI_STOICH_NORMALIZATION,
+    )
+    np.testing.assert_allclose(
+        as_written.Kinetics.get_rxn_rates(MULTI_MOLE_CONC, TEMP_EVAL),
+        normalized.Kinetics.get_rxn_rates(MULTI_MOLE_CONC, TEMP_EVAL),
+        rtol=1e-10,
+    )
+
+    normalized_heat = normalized.Liquid_1.getHeatOfRxn(
+        MULTI_STOICH_NORMALIZED, TEMP_EVAL, normalized.mask_species,
+        MULTI_DELTA_HRXN_NORMALIZED, TREF_HRXN,
+    )  # [J/mol of each normalized reaction extent]
+    expected_extent_rates = MULTI_K_PARAMS * MULTI_MOLE_CONC[
+        :2
+    ]  # [mol/L/s]
+    expected_heat = -np.dot(
+        np.ravel(normalized_heat), expected_extent_rates
+    ) * VOL_EVAL * 1000  # [W]
+
+    assert _heat_generation_rate(
+        normalized, MULTI_MOLE_CONC
+    ) == pytest.approx(expected_heat, rel=1e-10)
+    assert _heat_generation_rate(
+        as_written, MULTI_MOLE_CONC
+    ) == pytest.approx(expected_heat, rel=1e-10)
+
+
 def test_batch_reported_heat_matches_temperature_source(pharmapy):
     """The scaled heat profile and temperature derivative use one source."""
     reactor = _build_batch_reactor(
@@ -388,6 +476,25 @@ def test_batch_reported_heat_matches_temperature_source(pharmapy):
 
     assert float(np.ravel(dtemp_dt)[0]) == pytest.approx(
         heat_generation / thermal_capacitance, rel=1e-10)
+
+
+def test_batch_uses_normalized_heat_with_raw_equilibrium_handoff(pharmapy):
+    """Batch scales heat only and passes raw enthalpies to kinetics."""
+    reactor = pharmapy[2].BatchReactor(isothermal=True)
+    kinetics = _configure_rate_basis_reactor(reactor)
+    reactor.conc_inert = np.array([])  # [mol/L]
+
+    reactor_volume = 2.0  # [m**3]
+    heat_profile = reactor.energy_balances(
+        0.0, STUB_MOLE_CONC, reactor_volume, TEMP_EVAL, TEMP_EVAL, {},
+        heat_prof=True,
+    )  # [W]
+
+    expected_source = _expected_stub_source_term() * reactor_volume  # [W]
+    assert -float(heat_profile[0, 0]) == pytest.approx(expected_source)
+    np.testing.assert_allclose(
+        kinetics.received_delta_hrxn, [STUB_HEATS_AS_WRITTEN]
+    )
 
 
 @pytest.mark.parametrize("reactor_name", ["CSTR", "SemibatchReactor"])
@@ -417,7 +524,7 @@ def test_tank_reactors_use_normalized_heat_with_raw_equilibrium_handoff(
     expected_source = _expected_stub_source_term() * reactor_volume  # [W]
     assert float(heat_profile[0, 0]) == pytest.approx(expected_source)
     np.testing.assert_allclose(
-        kinetics.received_delta_hrxn, [[STUB_HEAT_AS_WRITTEN]])
+        kinetics.received_delta_hrxn, [STUB_HEATS_AS_WRITTEN])
 
 
 def test_pfr_steady_energy_uses_normalized_heat_basis(pharmapy):
@@ -445,7 +552,7 @@ def test_pfr_steady_energy_uses_normalized_heat_basis(pharmapy):
     assert float(np.ravel(dtemp_dvol)[0]) == pytest.approx(
         expected_dtemp_dvol)
     np.testing.assert_allclose(
-        kinetics.received_delta_hrxn, [[STUB_HEAT_AS_WRITTEN]])
+        kinetics.received_delta_hrxn, [STUB_HEATS_AS_WRITTEN])
 
 
 def test_pfr_dynamic_energy_uses_normalized_heat_basis(pharmapy):
@@ -460,7 +567,7 @@ def test_pfr_dynamic_energy_uses_normalized_heat_basis(pharmapy):
     vol_diff = np.diff(reactor.vol_discr)  # [m**3]
     temp = np.full(3, TEMP_EVAL)  # [K]
     mole_conc = np.tile(STUB_MOLE_CONC, (3, 1))  # [mol/L]
-    rate_i = np.full((3, 1), STUB_EXTENT_RATE)  # [mol/L/s]
+    rate_i = np.tile(STUB_EXTENT_RATES, (3, 1))  # [mol/L/s]
 
     dtemp_dt = reactor.energy_balances(
         0.0, mole_conc, vol_diff, temp, STUB_VOL_FLOW, rate_i,
