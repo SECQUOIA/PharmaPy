@@ -631,32 +631,55 @@ class Cake:
 
         self.num_species = self.Liquid_1.num_species
 
-    def get_alpha(self):
-        csd = self.Solid_1.distrib
-        porosity = self.porosity
-        rho_sol = self.Solid_1.getDensity()
-        x_grid = self.Solid_1.x_distrib * 1e-6
+    def get_alpha(self) -> np.floating:
+        """Calculate the volume-weighted specific cake resistance.
 
-        kv = 0.524  # converting number based CSD to volume based:
+        Returns
+        -------
+        numpy.floating
+            Specific cake resistance on a solid-mass basis [m/kg].
 
-        del_x_dist = np.diff(x_grid)
-        node_x_dist = (x_grid[:-1] + x_grid[1:]) / 2
-        node_CSD = (csd[:-1] + csd[1:]) / 2
+        Notes
+        -----
+        Crystal sizes are stored in micrometres and converted to metres for
+        the resistance calculation. The number-based CSD may use any common
+        number basis because only normalized bin weights are used.
 
-        # Volume of crystals in each bin
-        vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
-        frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
+        Each bin is weighted by ``n_i * delta_x_i * kv * x_i**3``. The solid
+        phase supplies the scalar volumetric shape factor ``kv`` [-]. For any
+        nonzero scalar value, it cancels exactly when these weights are divided
+        by their sum, so the returned resistance is independent of ``kv``.
 
-        csd = vol_cry
+        The local resistance follows the Carman--Kozeny form
+        ``180 * (1 - porosity) / (porosity**3 * rho_s * x_i**2)`` and assumes
+        a positive size grid, nonzero ``kv``, and ``0 < porosity < 1``.
+        """
+        csd = self.Solid_1.distrib  # [common number basis/um]
+        porosity = self.porosity  # [-]
+        solid_density = self.Solid_1.getDensity()  # [kg/m**3]
+        micrometer_to_meter = 1e-6  # [m/um], exact unit conversion
+        size_grid = self.Solid_1.x_distrib * micrometer_to_meter  # [m]
+        shape_factor = self.Solid_1.kv  # [-]
 
-        # numerator = trapezoidal_rule(x_grid, csd * alpha_x)
-        # alpha = numerator / (self.Solid_1.moments[0] + eps)
+        bin_widths = np.diff(size_grid)  # [m]
+        node_sizes = (size_grid[:-1] + size_grid[1:]) / 2  # [m]
+        node_csd = (csd[:-1] + csd[1:]) / 2  # [common number basis/um]
 
-        # Calculate irreducible saturation in weighted csd (volume based)
-        vol_frac = vol_cry/ np.sum(vol_cry)
-        x_grid = node_x_dist
-        alpha_x = 180 * (1 - porosity) / porosity**3 / x_grid**2 / rho_sol
-        alpha = np.sum(alpha_x * vol_frac)
+        # The arbitrary common scale of these proportional-volume weights
+        # cancels during normalization together with the scalar shape factor.
+        volume_weights = (
+            node_csd * bin_widths * (shape_factor * node_sizes**3)
+        )  # [common proportional-volume basis]
+        volume_fractions = volume_weights / np.sum(volume_weights)  # [-]
+
+        # The coefficient 180 [-] defines the documented Carman--Kozeny form.
+        local_resistance = (
+            180 * (1 - porosity)
+            / porosity**3
+            / node_sizes**2
+            / solid_density
+        )  # [m/kg]
+        alpha = np.sum(local_resistance * volume_fractions)  # [m/kg]
 
         return alpha
 
