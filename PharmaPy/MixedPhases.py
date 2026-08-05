@@ -677,10 +677,11 @@ class Cake:
         )  # [common proportional-volume basis]
         volume_fractions = volume_weights / np.sum(volume_weights)  # [-]
 
-        # Carman (1937), Equation 10, with the measured Kozeny constant k = 5.
-        carman_kozeny_coefficient = 180  # [-]
+        # Carman--Kozeny coefficient from Carman (1937), Equation 10, with
+        # the measured Kozeny constant k = 5.
+        ck_coeff = 180  # [-]
         local_resistance = (
-            carman_kozeny_coefficient * (1 - porosity)
+            ck_coeff * (1 - porosity)
             / porosity**3
             / node_sizes**2
             / solid_density
