@@ -15,9 +15,6 @@ import numpy as np
 from scipy.optimize import newton
 from scipy.interpolate import CubicSpline
 
-eps = np.finfo(float).eps
-
-
 def Interpolation(t_data, y_data, time):
     idx_time = np.argmin(abs(time - t_data))
 
@@ -653,6 +650,14 @@ class Cake:
         The local resistance follows the Carman--Kozeny form
         ``180 * (1 - porosity) / (porosity**3 * rho_s * x_i**2)`` and assumes
         a positive size grid, nonzero ``kv``, and ``0 < porosity < 1``.
+        The dimensionless coefficient 180 follows Carman (1937), Equation 10,
+        with the measured Kozeny constant ``k = 5`` for packed granular beds.
+
+        References
+        ----------
+        Carman, P. C. (1937). Fluid flow through granular beds. *Transactions
+        of the Institution of Chemical Engineers*, 15, 150-166,
+        https://doi.org/10.1016/S0263-8762(97)80003-2.
         """
         csd = self.Solid_1.distrib  # [common number basis/um]
         porosity = self.porosity  # [-]
@@ -672,9 +677,10 @@ class Cake:
         )  # [common proportional-volume basis]
         volume_fractions = volume_weights / np.sum(volume_weights)  # [-]
 
-        # The coefficient 180 [-] defines the documented Carman--Kozeny form.
+        # Carman (1937), Equation 10, with the measured Kozeny constant k = 5.
+        carman_kozeny_coefficient = 180  # [-]
         local_resistance = (
-            180 * (1 - porosity)
+            carman_kozeny_coefficient * (1 - porosity)
             / porosity**3
             / node_sizes**2
             / solid_density
