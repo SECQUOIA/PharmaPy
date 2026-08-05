@@ -3,13 +3,14 @@
 
 # import numpy as np
 # from autograd import numpy as np
-import warnings
 from typing import Optional
 
 import numpy as np
 from PharmaPy.ThermoModule import ThermoPhysicalManager
 from PharmaPy.Commons import trapezoidal_rule
 from scipy.optimize import newton
+
+import warnings
 
 eps = np.finfo(float).eps
 
@@ -827,8 +828,9 @@ class SolidPhase(ThermoPhysicalManager):
         Fraction of the species participating in the solid phase in mass basis.
         The default is None.
     moments : array, optional
-        Array of size N, containing the distribution moments in um**n, 
-        for n = 0,...,N - 1. The default is None.
+        Total-population distribution moments with shape ``(num_moments,)``.
+        Moment order ``n`` has units [m**n], with order zero a crystal count
+        [-]. The default is None.
     num_mom : integer, optional
         Number of moments describing the solid phase [-]. This sizes the
         classical moment-method state vector. The default is 4 (orders 0--3).
@@ -836,8 +838,12 @@ class SolidPhase(ThermoPhysicalManager):
         Array of size N, containing the internal grid
         size coordinate of the solids [um]. The default is None
     distrib : array, optional
-        Array of size N, constaining the initial distribution of crystals
-        [#/m**3/um]. The default is None.
+        Initial crystal-size distribution with shape ``(num_sizes,)``. When
+        ``mass == 0``, this must be a number-based total-population
+        distribution [#/um] and is stored directly. When ``mass > 0``, the
+        values are normalized as dimensionless bin weights [-] on the
+        ``distrib_type`` basis, then converted to [#/um] consistently with the
+        specified solid mass. The default is None.
     distrib_type : string, optional
         Type of distribution of crystals. The option is 'mass_frac' 
         or 'vol_perc'. The default is 'vol_perc'.
@@ -972,22 +978,30 @@ class SolidPhase(ThermoPhysicalManager):
         x_distrib : numpy.ndarray, optional
             Crystal-size grid with shape ``(num_sizes,)`` [um]. When supplied,
             it replaces the stored grid before distribution moments are
-            recalculated.
+            recalculated. It does not refresh the stored bin widths ``dx``;
+            that pre-existing synchronization defect is tracked in issue #162.
         distrib : numpy.ndarray, optional
-            Number-based crystal-size distribution with shape
-            ``(num_sizes,)`` [#/um on the phase population basis]. Its third
-            moment is converted to physical solid volume with the volumetric
-            shape factor ``kv``.
+            Number-based crystal-size distribution on the total-population
+            basis with shape ``(num_sizes,)`` [#/um]. It is assigned directly,
+            without the constructor's mass-based normalization or conversion.
+            Its third moment [m**3] is converted to physical solid volume with
+            the volumetric shape factor ``kv``.
         mass : float, optional
             Solid mass [kg]. When supplied, it determines the stored volume
             from the solid mixture density [kg/m**3].
         moments : numpy.ndarray, optional
             Crystal-size-distribution moments with shape ``(num_moments,)``.
-            Moment order ``n`` has units [m**n on the phase population basis].
+            Moment order ``n`` has units [m**n] on the total-population basis;
+            order zero is a crystal count [-].
 
         Notes
         -----
-        Distribution-derived volume follows ``V_solid = kv * mu_3`` [m**3].
+        On the required total-population basis, the distribution-derived third
+        moment ``mu_3`` has units [m**3], and volume follows
+        ``V_solid = kv * mu_3`` [m**3]. By contrast, construction with
+        ``mass > 0`` interprets ``distrib`` as normalized bin weights and
+        converts them according to ``distrib_type`` before moments are taken.
+
         If ``mass`` is supplied in the same call, the explicit mass and its
         density-derived volume take precedence. If ``moments`` is also
         supplied, it replaces the recalculated moments without another mass or

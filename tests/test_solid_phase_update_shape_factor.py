@@ -39,13 +39,13 @@ _X_DISTRIB = np.array([0.0, 100.0, 200.0, 300.0])  # [um]
 
 # Number density with distinct interior nodes, so the quadrature weights of
 # the two interior points cannot cancel a swapped-node error.
-_DISTRIB = np.array([0.0, 1.0e7, 1.25e6, 0.0])  # [#/um/m**3]
+_DISTRIB = np.array([0.0, 1.0e7, 1.25e6, 0.0])  # [#/um]
 
 # Third moment computed independently of PharmaPy: the trapezoidal integral of
 # distrib * x**3 over the grid, converted from um**3 to m**3.
 #   h * [ (0 + a*1e6)/2 + (a*1e6 + b*8e6)/2 + (b*8e6 + 0)/2 ]
-#     = 100 * (1e7 * 1e6 + 8 * 1.25e6 * 1e6) = 2e15 um**3/m**3
-_MOM_THREE = 2.0e15 * 1e-18  # [m**3/m**3]
+#     = 100 * (1e7 * 1e6 + 8 * 1.25e6 * 1e6) = 2e15 um**3
+_MOM_THREE = 2.0e15 * 1e-18  # [m**3]
 
 # Scaling applied to the distribution passed to updatePhase, so the update is
 # a genuine state change rather than a repeat of the constructor's input.
@@ -88,10 +88,10 @@ def test_update_phase_distrib_applies_shape_factor(path_thermo):
     assert phase.moments[3] == pytest.approx(_MOM_THREE)
     assert phase.vol == pytest.approx(_MOM_THREE * _KV)  # [m**3]
 
-    updated_distrib = _DISTRIB * _UPDATE_SCALE  # [#/um/m**3]
+    updated_distrib = _DISTRIB * _UPDATE_SCALE  # [#/um]
     phase.updatePhase(distrib=updated_distrib)
 
-    expected_mom_three = _MOM_THREE * _UPDATE_SCALE  # [m**3/m**3]
+    expected_mom_three = _MOM_THREE * _UPDATE_SCALE  # [m**3]
     expected_vol = expected_mom_three * _KV  # [m**3]
     expected_mass = expected_vol * _RHO_SOLID  # [kg]
 
@@ -132,9 +132,15 @@ def test_update_phase_distrib_preserves_configured_moment_count(path_thermo):
         assert phase.moments == pytest.approx(expected_moments)
 
 
-def test_update_phase_distrib_matches_constructor(path_thermo):
-    """Constructing and updating to the same distribution must agree."""
-    target_distrib = _DISTRIB * _UPDATE_SCALE  # [#/um/m**3]
+def test_update_phase_distrib_matches_zero_mass_constructor(path_thermo):
+    """Distribution-derived construction and updating must agree.
+
+    This equivalence applies when ``mass == 0`` and both paths receive a
+    number-based total-population distribution [#/um]. With explicit mass, the
+    constructor instead normalizes and converts ``distrib`` by
+    ``distrib_type`` while ``updatePhase`` assigns it directly.
+    """
+    target_distrib = _DISTRIB * _UPDATE_SCALE  # [#/um]
 
     constructed = SolidPhase(
         path_thermo, mass=0, mass_frac=_MASS_FRAC,
@@ -155,7 +161,7 @@ def test_update_phase_distrib_matches_constructor(path_thermo):
 def test_update_phase_preserves_unit_shape_factor_behavior(path_thermo):
     """The historical ``kv = 1`` calculation must remain bit-for-bit stable."""
     unit_shape_factor = 1.0  # [-]
-    updated_distrib = _DISTRIB * _UPDATE_SCALE  # [#/um/m**3]
+    updated_distrib = _DISTRIB * _UPDATE_SCALE  # [#/um]
     phase = SolidPhase(
         path_thermo, mass=0, mass_frac=_MASS_FRAC,
         x_distrib=_X_DISTRIB, distrib=_DISTRIB, kv=unit_shape_factor,
