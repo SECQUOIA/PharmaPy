@@ -278,7 +278,10 @@ class RxnKinetics:
         for ind in range(self.num_rxns):
             ref_stoich[ind] = stoich_matrix[ind, first_negative[ind]]
 
-        self.normalized_stoich = stoich_matrix.T / abs(ref_stoich)
+        # Magnitude of the first reactant coefficient in each raw reaction.
+        self.stoich_normalization = abs(ref_stoich)  # [-]
+        self.normalized_stoich = (
+            stoich_matrix.T / self.stoich_normalization)  # [-]
         self.stoich_matrix = stoich_matrix
 
         # ---------- Parameters
