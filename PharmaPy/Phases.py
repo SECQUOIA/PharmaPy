@@ -830,7 +830,8 @@ class SolidPhase(ThermoPhysicalManager):
         Array of size N, containing the distribution moments in um**n, 
         for n = 0,...,N - 1. The default is None.
     num_mom : integer, optional
-        Maximum order of moments describing solid phase. The default is 4.
+        Number of moments describing the solid phase [-]. This sizes the
+        classical moment-method state vector. The default is 4 (orders 0--3).
     x_distrib : array, optional
         Array of size N, containing the internal grid
         size coordinate of the solids [um]. The default is None
@@ -877,6 +878,7 @@ class SolidPhase(ThermoPhysicalManager):
         super().__init__(path_thermo)
         self.kv = kv
         self.distrib_type = distrib_type
+        self.num_mom = num_mom  # [-]
 
         self.cp_solid = np.atleast_2d(self.cp_solid)
 
@@ -910,7 +912,6 @@ class SolidPhase(ThermoPhysicalManager):
             self.distrib = self.getDistribution(x_distrib, distrib)
 
             self.num_distrib = len(distrib)
-            self.num_mom = num_mom
 
             mom_idx = np.arange(self.num_mom)
             self.moments = self.getMoments(mom_num=mom_idx)
@@ -990,14 +991,17 @@ class SolidPhase(ThermoPhysicalManager):
         If ``mass`` is supplied in the same call, the explicit mass and its
         density-derived volume take precedence. If ``moments`` is also
         supplied, it replaces the recalculated moments without another mass or
-        volume update. The constructor-only ``moles`` attribute is unchanged.
+        volume update. Distribution updates recalculate orders zero through
+        ``self.num_mom - 1``, preserving the configured moment-state size. The
+        constructor-only ``moles`` attribute is unchanged.
         """
         if x_distrib is not None:
             self.x_distrib = x_distrib
 
         if distrib is not None:
             self.distrib = distrib
-            self.moments = self.getMoments()
+            moment_orders = np.arange(self.num_mom)  # [-]
+            self.moments = self.getMoments(mom_num=moment_orders)
             self.num_distrib = len(distrib)
 
             self.vol = self.moments[3] * self.kv  # [m**3]

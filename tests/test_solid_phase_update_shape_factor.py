@@ -1,4 +1,4 @@
-"""Regression test for the solid shape factor in ``SolidPhase.updatePhase``.
+"""Regression tests for distribution-driven ``SolidPhase.updatePhase``.
 
 The volumetric shape factor ``kv`` relates the third moment of the crystal
 size distribution to the crystal volume fraction, so every path that
@@ -6,8 +6,12 @@ back-calculates volume and mass from ``moments[3]`` must apply it. The
 constructor does; the ``distrib`` branch of ``updatePhase`` must agree with it
 rather than assuming ``kv = 1``.
 
+Distribution updates must also preserve ``num_mom``, which sizes the moment
+state used by classical moment crystallizers, including when a phase receives
+its first distribution after construction.
+
 The fixture uses a two-component solid with a common density, so the density
-mixing rule cannot perturb the moments-derived mass, and a three-node size grid
+mixing rule cannot perturb the moments-derived mass, and a four-node size grid
 whose length differs from the component count so a transposed axis cannot pass
 unnoticed.
 """
@@ -97,6 +101,35 @@ def test_update_phase_distrib_applies_shape_factor(path_thermo):
     # mass [kg] that the update produced.
     assert (phase.vol, phase.mass) == pytest.approx(
         (expected_vol, expected_mass))
+
+
+def test_update_phase_distrib_preserves_configured_moment_count(path_thermo):
+    """Distribution updates must retain every configured moment order.
+
+    Classical moment crystallizers use ``SolidPhase.num_mom`` to size their
+    moment state vector, and ``method_of_moments`` evolves every supplied
+    order. Recomputing only orders 0--3 would silently change that state shape.
+    """
+    num_mom = 6  # [-], exercises orders 0--5 beyond the four-moment default
+    updated_distrib = _DISTRIB * _UPDATE_SCALE  # [#/um]
+    initialized_phase = SolidPhase(
+        path_thermo, mass=0, mass_frac=_MASS_FRAC,
+        x_distrib=_X_DISTRIB, distrib=_DISTRIB, kv=_KV, num_mom=num_mom,
+    )
+    deferred_phase = SolidPhase(
+        path_thermo, mass=0, mass_frac=_MASS_FRAC, kv=_KV,
+        num_mom=num_mom,
+    )
+
+    # Hand-computed trapezoidal moments for orders 0--5. Entry n has units
+    # [m**n] on the total-population basis (order zero is a crystal count [-]).
+    expected_moments = np.array([
+        2.25e9, 2.5e5, 30.0, 4.0e-3, 6.0e-7, 1.0e-10,
+    ])  # heterogeneous [m**n], n = 0,...,5
+    for phase in (initialized_phase, deferred_phase):
+        phase.updatePhase(x_distrib=_X_DISTRIB, distrib=updated_distrib)
+        assert phase.num_mom == num_mom
+        assert phase.moments == pytest.approx(expected_moments)
 
 
 def test_update_phase_distrib_matches_constructor(path_thermo):
