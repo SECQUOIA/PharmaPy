@@ -76,8 +76,9 @@ a build reproducible come from `pixi.lock`, not from these ranges.
   and the pixi `docs` feature resolves it from conda-forge.
 - `sphinxcontrib-bibtex>=2.6`: renders `references.bib`. 2.6 is the first line
   supporting the Sphinx 7 series that this extra's lower bound admits.
-- `ipykernel>=6`: nbsphinx requires a kernelspec to parse notebooks even though
-  `nbsphinx_execute = 'never'` means they are never executed during the build.
+- `ipykernel>=6`: gives contributors a kernel in the locked docs environment
+  when regenerating committed notebook outputs. The documentation build itself
+  consumes those outputs and does not execute notebooks.
 
 Documentation builds require Python 3.10 or newer, above the package's own
 `requires-python = ">=3.9"`, because `doc/online_docs/conf.py` resolves the

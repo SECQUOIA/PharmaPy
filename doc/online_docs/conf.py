@@ -85,7 +85,8 @@ bibtex_bibfiles = ['references.bib']
 # `fail_on_warning: true` on Read the Docs) an execution error in a notebook
 # would then fail the build of an unrelated change. Keeping this 'never' makes
 # the build depend only on what is committed. `ipykernel` stays in the docs
-# dependencies because nbsphinx still requires a kernelspec to parse notebooks.
+# dependencies so contributors can regenerate those committed notebook outputs
+# in the locked documentation environment.
 nbsphinx_execute = 'never'
 
 # Add any paths that contain templates here, relative to this directory.
