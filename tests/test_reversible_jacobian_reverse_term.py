@@ -31,34 +31,34 @@ def _db(data_path):
 def _reversible_kinetics(data_path):
     return RxnKinetics(
         path=_db(data_path),
-        k_params=[1.0],        # kf = 1 at temp_ref = inf
-        ea_params=[0.0],
+        k_params=[1.0],        # kf = 1 [1/time] at temp_ref = inf
+        ea_params=[0.0],       # [J/mol]
         stoich_matrix=STOICH,
         partic_species=PARTIC,
         keq_params=[2.0],
-        delta_hrxn=[0.0],      # Keq constant = 2, independent of temperature
-        tref_hrxn=298.15,
+        delta_hrxn=[0.0],      # [J/mol_rxn]; Keq is temperature-independent
+        tref_hrxn=298.15,      # [K]
     )
 
 
 def _temperature_sensitive_reversible_kinetics(data_path):
     return RxnKinetics(
         path=_db(data_path),
-        k_params=[1.0],
-        ea_params=[0.0],
+        k_params=[1.0],        # kf = 1 [1/time] at temp_ref = inf
+        ea_params=[0.0],       # [J/mol]
         stoich_matrix=STOICH,
         partic_species=PARTIC,
         keq_params=[2.0],
-        delta_hrxn=[-5.0e4],
-        tref_hrxn=298.15,
+        delta_hrxn=[-5.0e4],   # [J/mol_rxn]
+        tref_hrxn=298.15,      # [K]
     )
 
 
 def _irreversible_kinetics(data_path):
     return RxnKinetics(
         path=_db(data_path),
-        k_params=[1.0],
-        ea_params=[0.0],
+        k_params=[1.0],        # kf = 1 [1/time] at temp_ref = inf
+        ea_params=[0.0],       # [J/mol]
         stoich_matrix=STOICH,
         partic_species=PARTIC,
     )
@@ -94,9 +94,9 @@ def _import_base_reactor(monkeypatch):
 def test_reversible_jacobian_includes_reverse_term(data_path):
     kin = _reversible_kinetics(data_path)
 
-    temp = 298.15
-    conc = np.array([1.0, 1.0, 1.0, 1.0])   # reverse rate nonzero at C_B = 1
-    deltah = np.array([0.0])
+    temp = 298.15  # [K]
+    conc = np.array([1.0, 1.0, 1.0, 1.0])   # [mol/L]; C_B makes reverse nonzero
+    deltah = np.array([0.0])  # [J/mol_rxn]
 
     analytical = np.asarray(
         kin.get_rxn_rates(conc, temp, overall_rates=True, jac=True)
@@ -110,7 +110,7 @@ def test_reversible_jacobian_includes_reverse_term(data_path):
 
     n = conc.size
     fd = np.zeros((n, n))
-    h = 1e-6
+    h = 1e-6  # [mol/L]
     for j in range(n):
         cp = conc.copy(); cp[j] += h
         cm = conc.copy(); cm[j] -= h
@@ -131,8 +131,8 @@ def test_irreversible_forward_jacobian_is_unchanged(data_path):
 
     analytical = np.asarray(
         kin.get_rxn_rates(
-            np.array([1.0, 1.0, 1.0, 1.0]),
-            298.15,
+            np.array([1.0, 1.0, 1.0, 1.0]),  # [mol/L]
+            298.15,  # [K]
             overall_rates=True,
             jac=True,
         )
@@ -151,12 +151,12 @@ def test_irreversible_forward_jacobian_is_unchanged(data_path):
 def test_reversible_jacobian_supports_batched_concentrations(data_path):
     kin = _reversible_kinetics(data_path)
 
-    temp = np.array([298.15, 310.0])
+    temp = np.array([298.15, 310.0])  # [K]
     conc = np.array([
         [1.0, 1.0, 1.0, 1.0],
         [2.0, 0.5, 1.0, 1.0],
-    ])
-    deltah = np.array([0.0])
+    ])  # [mol/L]
+    deltah = np.array([0.0])  # [J/mol_rxn]
 
     analytical = np.asarray(
         kin.get_rxn_rates(conc, temp, overall_rates=True, jac=True)
@@ -169,7 +169,7 @@ def test_reversible_jacobian_supports_batched_concentrations(data_path):
 
     n_times, n_species = conc.shape
     fd = np.zeros((n_times, n_species, n_species))
-    h = 1e-6
+    h = 1e-6  # [mol/L]
     for i in range(n_times):
         for j in range(n_species):
             cp = conc.copy(); cp[i, j] += h
@@ -183,9 +183,9 @@ def test_reversible_jacobian_supports_batched_concentrations(data_path):
 def test_reversible_jacobian_uses_runtime_delta_hrxn(data_path):
     kin = _temperature_sensitive_reversible_kinetics(data_path)
 
-    temp = 350.0
-    conc = np.array([1.0, 1.0, 1.0, 1.0])
-    runtime_deltah = np.array([-4.0e4])
+    temp = 350.0  # [K]
+    conc = np.array([1.0, 1.0, 1.0, 1.0])  # [mol/L]
+    runtime_deltah = np.array([-4.0e4])  # [J/mol_rxn]
 
     analytical = np.asarray(
         kin.get_rxn_rates(
@@ -209,7 +209,7 @@ def test_reversible_jacobian_uses_runtime_delta_hrxn(data_path):
 
     n = conc.size
     fd = np.zeros((n, n))
-    h = 1e-6
+    h = 1e-6  # [mol/L]
     for j in range(n):
         cp = conc.copy(); cp[j] += h
         cm = conc.copy(); cm[j] -= h
@@ -220,14 +220,14 @@ def test_reversible_jacobian_uses_runtime_delta_hrxn(data_path):
 
 def test_reactor_jacobian_passes_runtime_delta_hrxn(monkeypatch):
     base_reactor = _import_base_reactor(monkeypatch)
-    runtime_deltah = np.array([-4.0e4])
+    runtime_deltah = np.array([-4.0e4])  # [J/mol_rxn]
 
     class CaptureKinetics:
         num_species = 2
         keq_params = np.array([2.0])
         stoich_matrix = np.array([[-1.0, 1.0]])
-        delta_hrxn = np.array([-5.0e4])
-        tref_hrxn = 298.15
+        delta_hrxn = np.array([-5.0e4])  # [J/mol_rxn]
+        tref_hrxn = 298.15  # [K]
 
         def __init__(self):
             self.calls = []
@@ -237,7 +237,7 @@ def test_reactor_jacobian_passes_runtime_delta_hrxn(monkeypatch):
             return np.eye(2)
 
     class CaptureLiquid:
-        temp = 350.0
+        temp = 350.0  # [K]
 
         def __init__(self):
             self.calls = []
@@ -258,9 +258,9 @@ def test_reactor_jacobian_passes_runtime_delta_hrxn(monkeypatch):
         mask_species=np.array([True, True]),
     )
 
+    states = np.array([1.0, 1.0])  # [mol/L]
     jac = base_reactor.get_jacobians(
-        reactor, time=0.0, states=np.array([1.0, 1.0]), sw=None,
-        sens=None, params=None)
+        reactor, time=0.0, states=states, sw=None, sens=None, params=None)
 
     np.testing.assert_allclose(jac, np.eye(2))
     assert len(liquid.calls) == 1
