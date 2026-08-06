@@ -3,44 +3,15 @@
 import numpy as np
 import pytest
 
-from assimulo_helpers import import_module_with_assimulo_stub
+import PharmaPy.Distillation as distillation
 
 
 pytestmark = pytest.mark.unit
 
 
-def _import_distillation_module(monkeypatch):
-    """Import Distillation while stubbing only optional Assimulo symbols.
+def test_positive_reflux_below_minimum_uses_configured_shortcut_ratio():
+    """Specified reflux below ``Rmin`` uses the configured multiplier."""
 
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the shared optional-import helper.
-
-    Returns
-    -------
-    module
-        Imported ``PharmaPy.Distillation`` module.
-    """
-    module = import_module_with_assimulo_stub(
-        monkeypatch,
-        "PharmaPy.Distillation",
-        solvers={"IDA": object},
-        problem={"Implicit_Problem": object},
-    )
-    return module
-
-
-def test_positive_reflux_below_minimum_uses_configured_shortcut_ratio(
-        monkeypatch):
-    """Specified reflux below ``Rmin`` uses the configured multiplier.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the optional Assimulo import helper.
-    """
-    module = _import_distillation_module(monkeypatch)
     z_feed = np.array([0.40, 0.60])  # [-], feed mole fractions
 
     x_dist = np.array([0.90, 0.10])  # [-], distillate mole fractions
@@ -50,7 +21,7 @@ def test_positive_reflux_below_minimum_uses_configured_shortcut_ratio(
     min_reflux = 2.0  # [-], Lmin/D
     num_min = 4.0  # [-], minimum equilibrium-stage count
 
-    class ShortcutColumn(module.DistillationColumn):
+    class ShortcutColumn(distillation.DistillationColumn):
         """Shortcut-design double with deterministic correlations."""
 
         def global_material_bce(self, received_z_feed=None):
@@ -124,20 +95,14 @@ def test_positive_reflux_below_minimum_uses_configured_shortcut_ratio(
     assert result["reflux"] == pytest.approx(3.6)  # 1.8 [-] * Rmin 2.0 [-]
 
 
-def test_default_shortcut_reflux_ratio_is_pinned(monkeypatch):
-    """The documented default multiplier remains 1.5 [-].
+def test_default_shortcut_reflux_ratio_is_pinned():
+    """The documented default multiplier remains 1.5 [-]."""
 
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the optional Assimulo import helper.
-    """
-    module = _import_distillation_module(monkeypatch)
     z_feed = np.array([0.40, 0.60])  # [-], feed mole fractions
     x_dist = np.array([0.90, 0.10])  # [-], distillate mole fractions
     x_bottom = np.array([0.10, 0.90])  # [-], bottoms mole fractions
 
-    class ShortcutColumn(module.DistillationColumn):
+    class ShortcutColumn(distillation.DistillationColumn):
         """Shortcut-design double with deterministic minimum reflux."""
 
         def global_material_bce(self, received_z_feed=None):
@@ -207,19 +172,13 @@ def test_default_shortcut_reflux_ratio_is_pinned(monkeypatch):
 
     result = column.calculate_shortcut_design()
 
-    assert module.DEFAULT_REFLUX_TO_MINIMUM_RATIO == pytest.approx(1.5)
+    assert distillation.DEFAULT_REFLUX_TO_MINIMUM_RATIO == pytest.approx(1.5)
     assert result["reflux"] == pytest.approx(3.0)  # 1.5 [-] * Rmin 2.0 [-]
 
 
-def test_backward_compatible_shortcut_aliases(monkeypatch):
-    """Deprecated shortcut-design aliases delegate to canonical methods.
+def test_backward_compatible_shortcut_aliases():
+    """Deprecated shortcut-design aliases delegate to canonical methods."""
 
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the optional Assimulo import helper.
-    """
-    module = _import_distillation_module(monkeypatch)
     expected = {
         "material_balances": {},  # flows [mol/s], fractions [-]
         "min_reflux": 1.2,  # [-]
@@ -229,7 +188,7 @@ def test_backward_compatible_shortcut_aliases(monkeypatch):
         "num_feed": 4.0,  # [-], tray count from the top
     }
 
-    class AliasColumn(module.DistillationColumn):
+    class AliasColumn(distillation.DistillationColumn):
         """Shortcut alias double with deterministic delegate methods."""
 
         def calculate_shortcut_design(self, time=None):
@@ -285,15 +244,9 @@ def test_backward_compatible_shortcut_aliases(monkeypatch):
             0.7)
 
 
-def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
-    """Underwood minimum reflux includes feed quality in the root target.
+def test_underwood_min_reflux_includes_feed_quality_in_target():
+    """Underwood minimum reflux includes feed quality in the root target."""
 
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the optional Assimulo import helper.
-    """
-    module = _import_distillation_module(monkeypatch)
     alpha = np.array([4.0, 1.0])  # [-], relative volatility to HK
     z_feed = np.array([0.40, 0.60])  # [-], feed mole fractions
     x_dist = np.array([0.90, 0.10])  # [-], distillate mole fractions
@@ -301,7 +254,7 @@ def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
     dist_flowrate = 10.0  # [mol/s]
     bot_flowrate = 15.0  # [mol/s]
 
-    class UnderwoodColumn(module.DistillationColumn):
+    class UnderwoodColumn(distillation.DistillationColumn):
         """Underwood numeric double with deterministic relative volatility."""
 
         def get_alpha(self, pres, x_frac):
@@ -347,17 +300,11 @@ def test_underwood_min_reflux_includes_feed_quality_in_target(monkeypatch):
     assert min_reflux == pytest.approx(0.7)
 
 
-def test_column_startup_accepts_deprecated_time_heuristics_keyword(monkeypatch):
-    """The old startup keyword remains available with a deprecation warning.
+def test_column_startup_accepts_deprecated_time_heuristics_keyword():
+    """The old startup keyword remains available with a deprecation warning."""
 
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the optional Assimulo import helper.
-    """
-    module = _import_distillation_module(monkeypatch)
 
-    class StartupColumn(module.DynamicDistillation):
+    class StartupColumn(distillation.DynamicDistillation):
         """Dynamic column double with deterministic shortcut design."""
 
         def calculate_shortcut_design(self, time=None):

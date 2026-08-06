@@ -6,79 +6,19 @@ until the open Drying correctness issues are resolved, so the assertions here
 pin the local unit and holdup contracts affected by #81.
 """
 
-import sys
-from types import ModuleType, SimpleNamespace
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
+
+import PharmaPy.Drying_Model as drying_model
 
 
 pytestmark = pytest.mark.unit
 
 
-def _stub_assimulo_modules(monkeypatch):
-    """Provide the minimal optional Assimulo API needed to import Drying.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used only to register temporary import modules.
-
-    Notes
-    -----
-    The stub is limited to import-time solver symbols. These tests do not
-    replace the drying calculations under review with solver behavior.
-    """
-    assimulo = ModuleType("assimulo")
-
-    class ExplicitProblem:
-        def __init__(self, *args, **kwargs):
-            self.args = args
-            self.kwargs = kwargs
-
-    solvers = ModuleType("assimulo.solvers")
-    solvers.CVode = object
-
-    problem = ModuleType("assimulo.problem")
-    problem.Explicit_Problem = ExplicitProblem
-
-    exception = ModuleType("assimulo.exception")
-    exception.TerminateSimulation = Exception
-
-    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
-    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
-    monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
-    monkeypatch.setitem(sys.modules, "assimulo.exception", exception)
-
-
-def _import_drying_model(monkeypatch):
-    """Import ``PharmaPy.Drying_Model`` for solver-free unit tests.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Used only when the optional Assimulo package is absent locally.
-
-    Returns
-    -------
-    module
-        Imported ``PharmaPy.Drying_Model`` module.
-    """
-    try:
-        from PharmaPy import Drying_Model
-    except ModuleNotFoundError as exc:
-        if exc.name != "assimulo":
-            raise
-        _stub_assimulo_modules(monkeypatch)
-
-        from PharmaPy import Drying_Model
-
-    return Drying_Model
-
-
-def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
+def test_unit_model_uses_relative_permeability_for_gas_velocity():
     """Darcy velocity uses the clipped relative permeability factor [-]."""
-    drying_model = _import_drying_model(monkeypatch)
     dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
     dryer.idx_volatiles = np.array([0, 2])  # component indices [-]
     dryer.num_volatiles = 2  # [-]
@@ -162,9 +102,8 @@ def test_unit_model_uses_relative_permeability_for_gas_velocity(monkeypatch):
     np.testing.assert_allclose(captured["u_gas"], np.array([0.0, 0.55, 0.0]))
 
 
-def test_material_balance_uses_single_gas_holdup_factor_for_transfer(monkeypatch):
+def test_material_balance_uses_single_gas_holdup_factor_for_transfer():
     """Gas transfer divides by the gas holdup exactly once."""
-    drying_model = _import_drying_model(monkeypatch)
     dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
     dryer.idx_volatiles = np.array([0, 2])  # component indices [-]
     dryer.porosity = 0.5  # [-]
@@ -226,8 +165,6 @@ def test_solve_unit_single_node_initial_state_includes_condensed_temperature(
     full transient; the broader end-to-end Drying solve remains deferred until
     the open Drying correctness issues are resolved.
     """
-    drying_model = _import_drying_model(monkeypatch)
-
     dryer = drying_model.Drying(number_nodes=1, supercrit_names=["nitrogen"])
     dryer.names_states_in = ["temp", "mass_frac"]
     dryer.idx_supercrit = np.array([1])  # component indices [-]
@@ -275,6 +212,11 @@ def test_solve_unit_single_node_initial_state_includes_condensed_temperature(
         raise CapturedInitialState
 
     dryer.unit_model = assert_initial_state_width
+    monkeypatch.setattr(
+        drying_model,
+        "Explicit_Problem",
+        lambda *args, **kwargs: SimpleNamespace(),
+    )
 
     with pytest.raises(CapturedInitialState):
         dryer.solve_unit(deltaP=10.0)
