@@ -292,7 +292,29 @@ class _BaseReactor:
         return events
 
     def heat_transfer(self, temp, temp_ht, vol):
-        """Return reactor heat transfer duty for supported heat-transfer modes."""
+        """Return reactor heat transfer duty for supported heat-transfer modes.
+
+        Parameters
+        ----------
+        temp : float or numpy.ndarray
+            Reactor temperature [K].
+        temp_ht : float or numpy.ndarray
+            Heat-transfer utility temperature [K].
+        vol : float
+            Liquid volume in contact with the heat-transfer surface [m**3].
+
+        Returns
+        -------
+        heat_transf : float or numpy.ndarray
+            Heat-transfer duty [W]. Positive when the reactor loses heat to
+            the utility.
+
+        Raises
+        ------
+        NotImplementedError
+            If ``ht_mode`` is 'coil', which is documented as an option but
+            has no implementation.
+        """
         # Heat transfer area
         if self.ht_mode == 'coil':  # Half pipe heat transfer
             raise NotImplementedError(
@@ -1554,14 +1576,29 @@ class PlugFlowReactor(_BaseReactor):
         return dconc_dv
 
     def energy_steady(self, conc, temp):
+        """Steady-state energy balance derivative along reactor volume.
+
+        Parameters
+        ----------
+        conc : numpy.ndarray
+            Molar concentrations of the participating species [mol/L].
+        temp : float
+            Reactor temperature at the current volume coordinate [K].
+
+        Returns
+        -------
+        dtemp_dv : float
+            Temperature derivative with respect to reactor volume [K/m**3].
+        """
         _, cp_j = self.Liquid_1.getCpPure(temp)
 
         concentr = np.zeros_like(self.Liquid_1.mole_conc)
         concentr[self.mask_species] = conc
         concentr[~self.mask_species] = self.c_inert
 
-        # Volumetric heat capacity
-        cp_vol = np.dot(cp_j, concentr) * 1000  # W/K
+        # Volumetric heat capacity. cp_j is [J/mol/K] and concentr is [mol/L],
+        # so the product is [J/L/K]; the 1000 is the L -> m**3 conversion.
+        cp_vol = np.dot(cp_j, concentr) * 1000  # [J/m**3/K]
 
         # Heat of reaction
         delta_href = self.Kinetics.delta_hrxn
@@ -1574,20 +1611,28 @@ class PlugFlowReactor(_BaseReactor):
         rates = self.Kinetics.get_rxn_rates(conc, temp, overall_rates=False,
                                             delta_hrxn=deltah_rxn)
 
-        # ---------- Balance terms (W)
-        source_term = -np.dot(deltah_rxn, rates) * 1000  # W / m**3
+        # ---------- Balance terms [W/m**3]
+        # deltah_rxn is [J/mol] and rates is [mol/L/s], so the product is
+        # [W/L]; the 1000 is the L -> m**3 conversion, matching the transient
+        # balance in energy_balances. Negative because an exothermic reaction
+        # carries deltah_rxn < 0 and releases heat.
+        source_term = -np.dot(deltah_rxn, rates) * 1000  # [W/m**3]
 
         if self.adiabatic:
-            heat_transfer = 0
-        else:  # W/m**3
-            # The steady-PFR area formula is a pre-existing issue tracked in #33.
-            a_prime = self.diam / 4  # m**2 / m**3
+            heat_transfer = 0  # [W/m**3]
+        else:
+            # Wetted area per unit reactor volume for a cylindrical tube:
+            # (pi*D*L) / (pi*D**2/4 * L) = 4/D. Refs #33.
+            a_prime = 4 / self.diam  # [m**2/m**3]
+            # u_ht [W/m**2/K] * a_prime [m**2/m**3] * dT [K] -> [W/m**3]
             heat_transfer = self.u_ht * a_prime * (
                 temp - self.temp_ht_steady)
 
+        # vol_flow [m**3/s] * cp_vol [J/m**3/K] -> [W/K]
         flow_term = self.Inlet.vol_flow * cp_vol
 
         # -------- Energy balance
+        # [W/m**3] / [W/K] -> [K/m**3], integrated over reactor volume
         dtemp_dv = (source_term - heat_transfer) / flow_term
 
         return dtemp_dv
@@ -1612,6 +1657,32 @@ class PlugFlowReactor(_BaseReactor):
         return deriv
 
     def solve_steady(self, vol_rxn, adiabatic=False):
+        """Integrate the steady-state PFR balances along reactor volume.
+
+        Parameters
+        ----------
+        vol_rxn : float
+            Reactor volume to integrate over [m**3]. The independent variable
+            of this solve is volume, not time.
+        adiabatic : bool (optional, default = False)
+            Whether to neglect wall heat transfer [-]. When False, the
+            utility inlet condition is sampled once into ``temp_ht_steady``
+            and the energy balance takes the heat-transfer branch.
+
+        Returns
+        -------
+        volPosition : numpy.ndarray
+            Volume coordinates of the returned profile [m**3].
+        states_solver : numpy.ndarray
+            Solution states at each volume coordinate: participating-species
+            molar concentrations [mol/L], followed by temperature [K] when
+            'temp' is among the unit states.
+
+        Notes
+        -----
+        This method overwrites the instance ``adiabatic`` attribute with the
+        argument value.
+        """
         self.adiabatic = adiabatic
         self.set_names()
 

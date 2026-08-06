@@ -83,7 +83,58 @@ def test_pfr_solve_steady_reads_inlet_mole_conc(data_path):
     assert reactor.concProfSteady.shape[0] == vol_position.size
     assert reactor.Kinetics.num_rxns == 2
     assert reactor.tempProfSteady[-1] > reactor.Inlet.temp
-    assert reactor.tempProfSteady[-1] < reactor.temp_ht_steady
+
+    # With the correct 4/D specific area the 1 inch tube is strongly coupled
+    # to the utility, so the profile equilibrates to it rather than merely
+    # staying below it: a bare `< temp_ht_steady` bound holds here by ~4e-12 K,
+    # which is inside the solver tolerance and would pass for the wrong reason.
+    assert reactor.tempProfSteady[-1] == pytest.approx(
+        reactor.temp_ht_steady, abs=1e-6)
+    assert reactor.tempProfSteady[-1] <= reactor.temp_ht_steady
+
+
+def test_steady_pfr_specific_area_matches_tube_geometry(data_path):
+    """Pin the steady-PFR specific heat-transfer area to 4/D (Refs #33).
+
+    Probing at zero reactant concentration makes every reaction rate zero, so
+    the source term vanishes exactly and the steady energy balance reduces to
+    ``dT/dV = -u_ht * a_prime * (T - T_ht) / (vol_flow * cp_vol)``. That lets
+    ``a_prime`` [m**2/m**3] be recovered from one call and compared against
+    the tube geometry 4/D -- the same expression the transient balance uses.
+    The reciprocal form D/4 fails this by a factor of 16/D**2.
+
+    Zeroing ``delta_hrxn`` would not work here: ``getHeatOfRxn`` applies a
+    heat-capacity correction between ``tref_hrxn`` and the probe temperature,
+    so the heat of reaction is nonzero even when the reference value is zero.
+    """
+    config, datapath = _load_pfr_config(data_path)
+
+    reactor = PlugFlowReactor(**config["reactor"])
+    reactor.Inlet = LiquidStream(datapath, **config["inlet"])
+    reactor.Phases = LiquidPhase(datapath, **config["phase"])
+    reactor.Kinetics = RxnKinetics(**config["kinetics"])
+    reactor.Utility = CoolingWater(**config["utility"])
+
+    reactor.solve_steady(reactor.Liquid_1.vol)
+
+    temp_probe = 310.0  # [K], held away from the utility temperature
+    conc_probe = np.zeros_like(reactor.concProfSteady[0])  # [mol/L], no rates
+
+    dtemp_dv = float(reactor.energy_steady(conc_probe, temp_probe))  # [K/m**3]
+
+    concentr = np.zeros_like(reactor.Liquid_1.mole_conc)  # [mol/L]
+    concentr[reactor.mask_species] = conc_probe
+    concentr[~reactor.mask_species] = reactor.c_inert
+    _, cp_j = reactor.Liquid_1.getCpPure(temp_probe)  # [J/mol/K]
+    cp_vol = np.dot(cp_j, concentr) * 1000  # [J/m**3/K]
+    flow_term = reactor.Inlet.vol_flow * cp_vol  # [W/K]
+
+    a_prime = -dtemp_dv * flow_term / (
+        reactor.u_ht * (temp_probe - reactor.temp_ht_steady))  # [m**2/m**3]
+
+    assert a_prime == pytest.approx(4 / reactor.diam, rel=1e-8)
+    # Hand-computed for the fixture's 0.0254 m (1 inch) tube: 4/0.0254.
+    assert a_prime == pytest.approx(157.4803, rel=1e-4)
 
 
 @pytest.mark.parametrize("reactor_cls", SENSITIVITY_REACTORS)
