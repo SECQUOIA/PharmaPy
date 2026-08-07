@@ -5,6 +5,8 @@ Created on Wed May 27 10:12:13 2020
 @author: dcasasor
 """
 
+from typing import Optional
+
 from PharmaPy.Phases import LiquidPhase, SolidPhase, VaporPhase, classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
 from PharmaPy.Results import DynamicResult
@@ -239,6 +241,44 @@ class SolidStream(SolidPhase):
         # del self.mass
         # # del self.vol
         # del self.moles
+
+    def updatePhase(self, x_distrib: Optional[np.ndarray] = None,
+                    distrib: Optional[np.ndarray] = None,
+                    mass: Optional[float] = None,
+                    moments: Optional[np.ndarray] = None) -> None:
+        """Update solid-stream state and synchronize flow-basis aliases.
+
+        Parameters
+        ----------
+        x_distrib : numpy.ndarray, optional
+            Crystal-size grid with shape ``(num_sizes,)`` [um].
+        distrib : numpy.ndarray, optional
+            Total-population number distribution with shape ``(num_sizes,)``
+            [#/um].
+        mass : float, optional
+            Solid mass flow represented by the inherited phase amount
+            attribute [kg/s].
+        moments : numpy.ndarray, optional
+            Total-population moments with shape ``(num_moments,)``. Entry
+            ``n`` has the inherited solid-phase unit [m**n], with order zero
+            a crystal count [-].
+
+        Notes
+        -----
+        ``SolidStream`` preserves the historical ``SolidPhase`` amount
+        attributes as flow-rate storage. After the phase update, ``mass`` and
+        ``moles`` therefore map to ``mass_flow`` [kg/s] and ``mole_flow``
+        [mol/s], respectively.
+        """
+        super().updatePhase(
+            x_distrib=x_distrib,
+            distrib=distrib,
+            mass=mass,
+            moments=moments,
+        )
+
+        self.mass_flow = self.mass  # [kg/s]
+        self.mole_flow = self.moles  # [mol/s]
 
 
 class VaporStream(VaporPhase):

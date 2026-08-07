@@ -428,7 +428,8 @@ class SlurryStream(Slurry):
         -----
         This override obtains phase volume shares from
         :meth:`Slurry.getFractions`, which applies ``kv`` when converting the
-        third moment to a solid volume fraction [-].
+        third moment to a solid volume fraction [-]. Solid-stream mass and
+        mole flow are reconciled through :meth:`SolidStream.updatePhase`.
         """
         if isinstance(phases_list, tuple):
             phases_list = list(phases_list)
@@ -448,14 +449,13 @@ class SlurryStream(Slurry):
             vol_share = self.getFractions()
             vol_phases = vol_share * self.vol
 
-            mass_liq, mass_sol = vol_phases * dens_phases
+            mass_liq, mass_sol = vol_phases * dens_phases  # [kg/s] each
             self.mass_slurry = np.dot(vol_phases, dens_phases)
             self.mass_flow = self.mass_slurry
 
             self.Liquid_1.updatePhase(mass_flow=mass_liq)
 
-            self.Solid_1.updatePhase(moments=self.moments)
-            self.Solid_1.mass_flow = mass_sol
+            self.Solid_1.updatePhase(moments=self.moments, mass=mass_sol)
             self.Solid_1.vol_flow = vol_phases[1]
 
         elif self.distrib is None:
@@ -503,7 +503,7 @@ class SlurryStream(Slurry):
                 vol_share = self.getFractions()
                 vol_phases = vol_share * self.vol
 
-                mass_liq, mass_sol = vol_phases * dens_phases
+                mass_liq, mass_sol = vol_phases * dens_phases  # [kg/s] each
                 self.mass_slurry = np.dot(vol_phases, dens_phases)
                 self.mass_flow = self.mass_slurry
 
@@ -519,8 +519,10 @@ class SlurryStream(Slurry):
 
             self.Liquid_1.updatePhase(mass_flow=mass_liq)
 
-            self.Solid_1.updatePhase(x_distrib=self.x_distrib, distrib=f_distr)
-            self.Solid_1.mass_flow = mass_sol
+            self.Solid_1.updatePhase(
+                x_distrib=self.x_distrib,
+                distrib=f_distr,
+            )
             self.Solid_1.vol_flow = vol_phases[1]
 
         self.num_species = self.Liquid_1.num_species
