@@ -1,36 +1,22 @@
-"""Extent-basis consistency of the reactor heat-of-reaction source term.
+"""Regression coverage for reaction heat-source extent-basis robustness.
 
-Issue #22: ``RxnKinetics`` normalizes the stoichiometric matrix so that the
-first reactant of each reaction has coefficient 1, and the per-reaction rates
-returned by ``get_rxn_rates(overall_rates=False)`` are expressed on that
-normalized extent basis. The reactor energy balances instead obtain
-``deltah_rxn`` from ``getHeatOfRxn`` fed the *raw* stoichiometric matrix, i.e.
-per mole of reaction as written. Multiplying the two mixes bases whenever the
-first reactant's coefficient differs from 1.
+Equivalent stoichiometric writings must produce identical species rates and
+heat release when their raw reaction enthalpies are scaled consistently. An
+asymmetric two-reaction fixture pins the normalization factors to their
+reaction axis across Batch, CSTR/Semibatch, and steady and dynamic plug-flow
+reactor energy balances.
 
-The regression contract exercised here is scale invariance: ``2A -> B`` with an
-enthalpy of ``dh`` per mole of reaction as written describes exactly the same
-chemistry as ``A -> 0.5B`` with ``dh / 2``, so both must produce the same molar
-production rates *and* the same heat-release rate.
-
-An asymmetric two-reaction case, ``2A -> B`` and ``3B -> C``, additionally
-pins the normalization factors to the reaction axis in every reactor energy
-path. Reversing the per-reaction factors must change the independently
-calculated heat source and fail the regression.
-
-The fixture uses the pure-component database already committed for the
-plug-flow reactor integration tests; species A and B have different liquid-Cp
-polynomials, so the sensible-heat correction ``delta_cp`` is non-zero at the
-evaluation temperature and is covered by the same invariance check.
+The suite also verifies that raw enthalpies reach equilibrium kinetics while
+only the heat-source operand is normalized, and that Batch heat reporting
+matches the temperature-state source. The real-thermo fixture exercises a
+non-zero sensible-heat correction using the existing PFR component data.
 """
 
+import importlib
 from pathlib import Path
 
 import numpy as np
 import pytest
-
-from assimulo_helpers import import_module_with_assimulo_stub
-
 
 pytestmark = pytest.mark.unit
 
@@ -90,32 +76,18 @@ STUB_VOL_FLOW = 1.0  # [m**3/s]
 
 
 @pytest.fixture
-def pharmapy(monkeypatch):
+def pharmapy():
     """Import reactor dependencies from this checkout.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used if optional Assimulo imports need stubs.
 
     Returns
     -------
     tuple of module
         The ``(Kinetics, Phases, Reactors)`` modules from this checkout.
     """
-    assimulo_stub = {
-        "solvers": {"CVode": object, "LSODAR": object},
-        "problem": {"Explicit_Problem": object},
-    }
     module_names = (
         "PharmaPy.Kinetics", "PharmaPy.Phases", "PharmaPy.Reactors",
     )
-    return tuple(
-        import_module_with_assimulo_stub(
-            monkeypatch, module_name, **assimulo_stub
-        )
-        for module_name in module_names
-    )
+    return tuple(importlib.import_module(name) for name in module_names)
 
 
 def _build_batch_reactor(
