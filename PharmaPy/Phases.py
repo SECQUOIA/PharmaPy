@@ -1018,7 +1018,7 @@ class SolidPhase(ThermoPhysicalManager):
         supplied, it replaces the recalculated moments without another mass or
         volume update. Distribution updates recalculate orders zero through
         ``self.num_mom - 1``, preserving the configured moment-state size. The
-        The mole amount is recalculated whenever a distribution or explicit
+        mole amount is recalculated whenever a distribution or explicit
         mass changes the solid inventory. A moments-only update does not imply
         an amount change and therefore leaves mass, volume, and moles intact.
         """

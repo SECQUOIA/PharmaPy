@@ -115,6 +115,9 @@ class Slurry:
         Notes
         -----
         The physical solid volume fraction is ``kv * moments[3]`` [-].
+        For moment-based input, the solid mass [kg] is derived from that
+        physical volume [m**3] and the solid mixture density [kg/m**3], then
+        reconciled with the solid mole amount [mol].
         """
         if isinstance(phases_list, (list, tuple)):
             phases_list = list(phases_list)
@@ -134,8 +137,14 @@ class Slurry:
                 raise ValueError('If the moments are provided, Slurry volume needs to be larger than 0.')
 
             solid_vol_frac = self.Solid_1.kv * self.moments[3]  # [-]
+            vol_sol = self.vol * solid_vol_frac  # [m**3]
             vol_liq = self.vol * (1 - solid_vol_frac)  # [m**3]
-            self.Solid_1.updatePhase(moments=self.moments * self.vol)
+            dens_sol = self.Solid_1.getDensity()  # [kg/m**3]
+            mass_sol = vol_sol * dens_sol  # [kg]
+            self.Solid_1.updatePhase(
+                moments=self.moments * self.vol,
+                mass=mass_sol,
+            )
             self.Liquid_1.updatePhase(vol=vol_liq)
         elif self.distrib is None:
             vol_sol = self.Solid_1.vol
@@ -455,7 +464,10 @@ class SlurryStream(Slurry):
 
             self.Liquid_1.updatePhase(mass_flow=mass_liq)
 
-            self.Solid_1.updatePhase(moments=self.moments, mass=mass_sol)
+            self.Solid_1.updatePhase(
+                moments=self.moments,
+                mass_flow=mass_sol,
+            )
             self.Solid_1.vol_flow = vol_phases[1]
 
         elif self.distrib is None:
@@ -503,7 +515,7 @@ class SlurryStream(Slurry):
                 vol_share = self.getFractions()
                 vol_phases = vol_share * self.vol
 
-                mass_liq, mass_sol = vol_phases * dens_phases  # [kg/s] each
+                mass_liq = vol_phases[0] * dens_liq  # [kg/s]
                 self.mass_slurry = np.dot(vol_phases, dens_phases)
                 self.mass_flow = self.mass_slurry
 
@@ -511,7 +523,7 @@ class SlurryStream(Slurry):
                 mass_share = self.getFractions(vol_basis=False)
                 mass_phases = self.mass_slurry * mass_share
 
-                mass_liq, mass_sol = mass_phases
+                mass_liq = mass_phases[0]  # [kg/s]
 
                 self.vol = np.dot(mass_phases, 1/dens_phases)
 
@@ -519,6 +531,8 @@ class SlurryStream(Slurry):
 
             self.Liquid_1.updatePhase(mass_flow=mass_liq)
 
+            # The total-population distribution [#/um] is the authoritative
+            # solid inventory; its third moment determines mass flow [kg/s].
             self.Solid_1.updatePhase(
                 x_distrib=self.x_distrib,
                 distrib=f_distr,

@@ -1,24 +1,18 @@
-"""Regression tests for solid mole amounts after post-construction updates.
+"""Robustness tests for solid amount reconciliation across public APIs.
 
-Issue #156: ``SolidPhase.updatePhase`` refreshes ``mass`` [kg] and ``vol``
-[m**3] but never ``moles`` [mol], and the ``SlurryStream.Phases`` setter assigns
-``Solid_1.mass_flow`` [kg/s] directly without refreshing ``Solid_1.mole_flow``
-[mol/s]. Both leave a mole-basis amount stale while the corresponding
-mass-basis amount is current, so downstream mole-basis balances read a
-quantity that no longer describes the phase.
-
-Fixtures use the shared ``tests/Flowsheet/data/compound_database.json`` thermo
-file and real ``LiquidStream``/``SolidPhase``/``SolidStream`` collaborators.
-Expected amounts are derived independently of PharmaPy from the mass-basis
-mixing rules and the kg-to-g conversion rather than by recomputing the
-production expressions.
+Solid mass, volume, and moles, together with their stream flow aliases, must
+describe the same inventory after explicit-amount, distribution, and slurry
+phase updates. Fixtures use the shared
+``tests/Flowsheet/data/compound_database.json`` thermo file and real phase and
+stream collaborators. Expected amounts are derived independently from the
+mass-basis mixing rules and the exact kg-to-g conversion.
 """
 
 import numpy as np
 import pytest
 
-from PharmaPy.MixedPhases import SlurryStream
-from PharmaPy.Phases import SolidPhase
+from PharmaPy.MixedPhases import Slurry, SlurryStream
+from PharmaPy.Phases import LiquidPhase, SolidPhase
 from PharmaPy.Streams import LiquidStream, SolidStream
 
 
@@ -117,8 +111,8 @@ def test_slurry_stream_phases_refresh_solid_mole_flow(thermo_path):
     """``SlurryStream.Phases`` must keep ``mole_flow`` on the assigned mass flow.
 
     The setter distributes the stream volumetric flow between the phases and
-    assigns ``Solid_1.mass_flow`` directly; the paired mole flow must be
-    reconciled by the setter rather than left to the caller.
+    derives a solid mass flow; the paired mole flow must be reconciled by the
+    setter rather than left to the caller.
     """
     vol_flow = 1.0e-3  # [m**3/s]
     kv = 1.0  # [-]
@@ -143,8 +137,34 @@ def test_slurry_stream_phases_refresh_solid_mole_flow(thermo_path):
     assert solid.mole_flow == pytest.approx(expected_mole_flow, rel=1e-10)
 
 
-def test_solid_stream_update_mass_refreshes_flow_aliases(thermo_path):
-    """A solid-stream mass update must refresh both flow-basis aliases."""
+def test_slurry_phases_refresh_solid_inventory(thermo_path):
+    """A moment-based batch slurry must reconcile solid amount bases."""
+    slurry_vol = 1.0e-3  # [m**3]
+    kv = 1.0  # [-]
+    mu_three = 0.2  # [m**3/m**3], volume-specific third moment
+    # Volume-specific moments [1/m**3, m/m**3, m**2/m**3, m**3/m**3].
+    moments = np.array([1.0e12, 1.0e6, 1.0e3, mu_three])
+
+    liquid = LiquidPhase(thermo_path, mass_frac=LIQUID_MASS_FRAC)
+    solid = SolidPhase(thermo_path, mass_frac=SOLID_MASS_FRAC, kv=kv)
+
+    slurry = Slurry(vol=slurry_vol, moments=moments)
+    slurry.Phases = (liquid, solid)
+
+    expected_solid_vol = kv * mu_three * slurry_vol  # [m**3]
+    expected_solid_mass = expected_solid_vol / INV_RHO_SOLID  # [kg]
+    expected_solid_moles = (expected_solid_mass * 1000
+                            * INV_MW_AV)  # [mol]
+
+    assert solid.vol == pytest.approx(expected_solid_vol, rel=1e-10)
+    assert solid.mass == pytest.approx(expected_solid_mass, rel=1e-10)
+    assert solid.moles == pytest.approx(expected_solid_moles, rel=1e-10)
+
+
+@pytest.mark.parametrize("amount_keyword", ("mass", "mass_flow"))
+def test_solid_stream_update_mass_refreshes_flow_aliases(
+        thermo_path, amount_keyword):
+    """Either mass-flow keyword must refresh every existing flow alias."""
     mass_flow_initial = 2.0  # [kg/s]
     mass_flow_updated = 5.0  # [kg/s]
 
@@ -153,12 +173,33 @@ def test_solid_stream_update_mass_refreshes_flow_aliases(thermo_path):
         mass_flow=mass_flow_initial,
         mass_frac=SOLID_MASS_FRAC,
     )
+    stream.vol_flow = 0.0  # [m**3/s], deliberately stale alias
 
-    stream.updatePhase(mass=mass_flow_updated)
+    stream.updatePhase(**{amount_keyword: mass_flow_updated})
 
     expected_mole_flow = mass_flow_updated * 1000 * INV_MW_AV  # [mol/s]
+    expected_vol_flow = mass_flow_updated * INV_RHO_SOLID  # [m**3/s]
     assert stream.mass_flow == pytest.approx(mass_flow_updated, rel=1e-12)
     assert stream.mole_flow == pytest.approx(expected_mole_flow, rel=1e-12)
+    assert stream.vol_flow == pytest.approx(expected_vol_flow, rel=1e-12)
+
+
+def test_solid_stream_update_rejects_conflicting_mass_keywords(thermo_path):
+    """The additive mass-flow alias must reject an ambiguous amount update."""
+    mass_flow_initial = 2.0  # [kg/s]
+    inherited_mass_flow = 3.0  # [kg/s]
+    aliased_mass_flow = 4.0  # [kg/s]
+    stream = SolidStream(
+        thermo_path,
+        mass_flow=mass_flow_initial,
+        mass_frac=SOLID_MASS_FRAC,
+    )
+
+    with pytest.raises(ValueError, match="either 'mass' or 'mass_flow'"):
+        stream.updatePhase(
+            mass=inherited_mass_flow,
+            mass_flow=aliased_mass_flow,
+        )
 
 
 def test_slurry_stream_distribution_refreshes_solid_mole_flow(thermo_path):
