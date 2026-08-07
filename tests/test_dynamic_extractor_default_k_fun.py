@@ -3,31 +3,10 @@
 import numpy as np
 import pytest
 
-from assimulo_helpers import import_module_with_assimulo_stub
+import PharmaPy.DynamicExtraction as dynamic_extraction
 
 
 pytestmark = pytest.mark.unit
-
-
-def _load_dynamic_extraction(monkeypatch):
-    """Import DynamicExtraction while stubbing only optional Assimulo symbols.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the shared optional-import helper.
-
-    Returns
-    -------
-    module
-        Imported ``PharmaPy.DynamicExtraction`` module.
-    """
-    return import_module_with_assimulo_stub(
-        monkeypatch,
-        "PharmaPy.DynamicExtraction",
-        solvers={"IDA": object, "Radau5DAE": object},
-        problem={"Implicit_Problem": object},
-    )
 
 
 class _ActivityPhase:
@@ -43,10 +22,12 @@ class _StopAfterConstruction(Exception):
     """Raised by the stub to stop initialization at a known point."""
 
 
-def test_default_k_fun_uses_selected_activity_model(monkeypatch):
+def test_default_k_fun_uses_selected_activity_model():
     """The default DynamicExtractor k_fun returns gamma_light/gamma_heavy."""
-    module = _load_dynamic_extraction(monkeypatch)
-    extractor = module.DynamicExtractor(num_stages=2, gamma_model="UNIFAC")
+    extractor = dynamic_extraction.DynamicExtractor(
+        num_stages=2,
+        gamma_model="UNIFAC",
+    )
     extractor.Liquid_1 = _ActivityPhase()
 
     x_light = np.array([[0.2, 0.8], [0.4, 0.6]])  # [-]
@@ -64,14 +45,15 @@ def test_default_k_fun_uses_selected_activity_model(monkeypatch):
     assert extractor.Liquid_1.calls[0][2] == pytest.approx(temp)
 
 
-def test_default_k_fun_rejects_unknown_activity_model(monkeypatch):
+def test_default_k_fun_rejects_unknown_activity_model():
     """DynamicExtractor rejects unknown default activity-model selectors."""
-    module = _load_dynamic_extraction(monkeypatch)
-
     # Lowercase ``uniquac`` is deliberate: activity-model selectors are
     # case-sensitive and must match the exact Phases.getActivityCoeff branch.
     with pytest.raises(ValueError, match="gamma_model must be one of"):
-        module.DynamicExtractor(num_stages=1, gamma_model="uniquac")
+        dynamic_extraction.DynamicExtractor(
+            num_stages=1,
+            gamma_model="uniquac",
+        )
 
 
 def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
@@ -82,7 +64,6 @@ def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
     objects, outlet construction, and broader stage-wise K_i behavior tracked
     separately in #123; the sentinel stops at the fixed boundary.
     """
-    module = _load_dynamic_extraction(monkeypatch)
     captured = {}
 
     class _BatchExtractor:
@@ -93,9 +74,12 @@ def test_initialize_model_passes_default_k_fun_to_batch_extractor(monkeypatch):
         def solve_unit(self):
             raise _StopAfterConstruction
 
-    monkeypatch.setattr(module, "BatchExtractor", _BatchExtractor)
+    monkeypatch.setattr(dynamic_extraction, "BatchExtractor", _BatchExtractor)
 
-    extractor = module.DynamicExtractor(num_stages=1, gamma_model="ideal")
+    extractor = dynamic_extraction.DynamicExtractor(
+        num_stages=1,
+        gamma_model="ideal",
+    )
     extractor.Liquid_1 = object()
 
     with pytest.raises(_StopAfterConstruction):

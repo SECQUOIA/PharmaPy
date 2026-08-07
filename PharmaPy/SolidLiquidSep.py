@@ -6,12 +6,15 @@ Created on Wed May 13 02:03:18 2020
 """
 
 import numpy as np
+from PharmaPy._assimulo import CVode, Explicit_Problem
 from PharmaPy.Commons import trapezoidal_rule, series_erfc
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Slurry, Cake
 from PharmaPy.general_interpolation import define_initial_state
 
-from PharmaPy.Commons import unpack_states, reorder_pde_outputs, eval_state_events, handle_events, unpack_discretized
+from PharmaPy.Commons import (unpack_states, reorder_pde_outputs,
+                              eval_state_events, handle_events,
+                              unpack_discretized, TerminateSimulation)
 from PharmaPy.Connections import get_inputs_new
 from PharmaPy.Results import DynamicResult
 from PharmaPy.NameAnalysis import get_dict_states
@@ -21,10 +24,6 @@ from matplotlib.ticker import AutoMinorLocator
 from matplotlib.animation import FuncAnimation
 from matplotlib.animation import FFMpegWriter
 import copy
-
-from assimulo.solvers import CVode
-from assimulo.problem import Explicit_Problem
-from assimulo.exception import TerminateSimulation
 
 from scipy.special import erfc
 
