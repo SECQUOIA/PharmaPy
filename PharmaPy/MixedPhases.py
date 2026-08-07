@@ -520,12 +520,19 @@ class SlurryStream(Slurry):
                 self.mass_flow = self.mass_slurry
 
             elif self.mass_slurry > 0:
-                mass_share = self.getFractions(vol_basis=False)
-                mass_phases = self.mass_slurry * mass_share
+                dens_liq = self.Liquid_1.getDensity()  # [kg/m**3]
+                dens_sol = self.Solid_1.getDensity()  # [kg/m**3]
+                dens_phases = np.array(
+                    [dens_liq, dens_sol]
+                )  # [kg/m**3], ordered liquid then solid
+                mass_share = self.getFractions(vol_basis=False)  # [-]
+                mass_phases = self.mass_slurry * mass_share  # [kg/s] each
+                vol_phases = mass_phases / dens_phases  # [m**3/s] each
 
                 mass_liq = mass_phases[0]  # [kg/s]
 
-                self.vol = np.dot(mass_phases, 1/dens_phases)
+                self.vol = vol_phases.sum()  # [m**3/s]
+                self.mass_flow = self.mass_slurry  # [kg/s]
 
             f_distr = self.vol * self.distrib
 

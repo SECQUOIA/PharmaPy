@@ -32,6 +32,13 @@ MW_A = 100.0  # [g/mol]
 MW_B = 50.0  # [g/mol]
 RHO_SOLID_A = 1230.0  # [kg/m**3]
 RHO_SOLID_B = 864.7  # [kg/m**3]
+LIQUID_DENSITIES = np.array([
+    1230.0,
+    864.7,
+    1200.0,
+    867.1,
+    887.6,
+])  # [kg/m**3], ordered as A, B, C, D, solvent
 
 # Mass-basis mixing rules, evaluated by hand for SOLID_MASS_FRAC:
 #   1 / mw_av   = sum(w_i / mw_i)   = 0.8/100 + 0.2/50    [mol/g]
@@ -40,6 +47,10 @@ INV_MW_AV = (SOLID_MASS_FRAC[0] / MW_A
              + SOLID_MASS_FRAC[1] / MW_B)  # [mol/g] = 0.012
 INV_RHO_SOLID = (SOLID_MASS_FRAC[0] / RHO_SOLID_A
                  + SOLID_MASS_FRAC[1] / RHO_SOLID_B)  # [m**3/kg]
+INV_RHO_LIQUID = np.dot(
+    LIQUID_MASS_FRAC,
+    1 / LIQUID_DENSITIES,
+)  # [m**3/kg]
 
 
 @pytest.fixture(scope="module")
@@ -229,3 +240,53 @@ def test_slurry_stream_distribution_refreshes_solid_mole_flow(thermo_path):
 
     assert solid.mass_flow == pytest.approx(expected_mass_flow, rel=1e-10)
     assert solid.mole_flow == pytest.approx(expected_mole_flow, rel=1e-10)
+
+
+def test_slurry_stream_distribution_accepts_mass_slurry_basis(thermo_path):
+    """Reconcile a distribution when only total slurry mass flow is known.
+
+    Parameters
+    ----------
+    thermo_path : str
+        Path to the shared pure-component thermodynamic database.
+    """
+    total_mass_flow = 1.0  # [kg/s]
+    kv = 0.5  # [-], non-unit volumetric shape factor
+    x_distrib = np.array([0.0, 100.0, 200.0, 300.0])  # [um]
+    # Volume-specific number distribution [#/m**3/um] with third moment
+    # 0.2 m**3/m**3 by the trapezoidal rule on the 100 um grid.
+    distrib = np.array([0.0, 1.0e9, 1.25e8, 0.0])  # [#/m**3/um]
+    third_moment = 0.2  # [m**3/m**3]
+
+    liquid = LiquidStream(thermo_path, mass_frac=LIQUID_MASS_FRAC)
+    solid = SolidStream(thermo_path, mass_frac=SOLID_MASS_FRAC, kv=kv)
+    stream = SlurryStream(x_distrib=x_distrib, distrib=distrib)
+    stream.mass_slurry = total_mass_flow  # [kg/s]
+
+    stream.Phases = (liquid, solid)
+
+    solid_volume_fraction = kv * third_moment  # [-]
+    liquid_density = 1 / INV_RHO_LIQUID  # [kg/m**3]
+    solid_density = 1 / INV_RHO_SOLID  # [kg/m**3]
+    slurry_density = (
+        (1 - solid_volume_fraction) * liquid_density
+        + solid_volume_fraction * solid_density
+    )  # [kg/m**3]
+    expected_vol_flow = total_mass_flow / slurry_density  # [m**3/s]
+    expected_solid_vol_flow = (
+        solid_volume_fraction * expected_vol_flow
+    )  # [m**3/s]
+    expected_solid_mass_flow = (
+        expected_solid_vol_flow * solid_density
+    )  # [kg/s]
+    expected_solid_mole_flow = (
+        expected_solid_mass_flow * 1000 * INV_MW_AV
+    )  # [mol/s]
+
+    assert stream.vol == pytest.approx(expected_vol_flow, rel=1e-10)
+    assert stream.mass_flow == pytest.approx(total_mass_flow, rel=1e-12)
+    assert solid.vol_flow == pytest.approx(expected_solid_vol_flow, rel=1e-10)
+    assert solid.mass_flow == pytest.approx(expected_solid_mass_flow,
+                                            rel=1e-10)
+    assert solid.mole_flow == pytest.approx(expected_solid_mole_flow,
+                                            rel=1e-10)
