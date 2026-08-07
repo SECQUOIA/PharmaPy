@@ -168,8 +168,11 @@ class RxnKinetics:
         ``stoich_matrix``. The passed names must match those
         in the pure-component json file
     keq_params : array-like, optional
-        equilibrium constant for each reaction at ``tref_hrxn`` [-]. When
-        provided, reverse reaction rates are included. The default is None.
+        equilibrium constant for each reaction, evaluated at ``tref_hrxn``.
+        Units are ``(mol/L)**(sum of product orders - sum of reactant
+        orders)``, so the constant is dimensionless only when those sums are
+        equal. When provided, reverse reaction rates are included. The
+        default is None.
     params_f : numpy array, optional
         parameters for the concentration-dependent term f\ :sub:`2`.
         If no custom model is provided through the 'kinetic_model'
