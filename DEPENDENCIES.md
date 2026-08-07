@@ -58,6 +58,9 @@ feature and environment. `pixi run docs` reproduces the same warning-as-error
 build that the Sphinx docs CI job and Read the Docs run, from the committed
 lock. The pip path (`pip install ".[docs]"`) is what CI and Read the Docs
 themselves use, so both surfaces must stay synchronized like the core ones.
+The Linux leg of the locked pixi CI job runs `pixi run docs` itself, so a
+divergence between the locked task and the pip-based build fails a check
+rather than waiting for a contributor to hit it.
 
 Upper caps exclude the next major of a rendering-relevant package until the
 built site has been checked against it; lower bounds keep a modern baseline
