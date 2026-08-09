@@ -84,13 +84,23 @@ def test_pfr_solve_steady_reads_inlet_mole_conc(data_path):
     assert reactor.Kinetics.num_rxns == 2
     assert reactor.tempProfSteady[-1] > reactor.Inlet.temp
 
-    # With the correct 4/D specific area the 1 inch tube is strongly coupled
-    # to the utility, so the profile equilibrates to it rather than merely
-    # staying below it: a bare `< temp_ht_steady` bound holds here by ~4e-12 K,
-    # which is inside the solver tolerance and would pass for the wrong reason.
+    # With the correct 4/D specific area the 1 inch tube is strongly coupled to
+    # the utility, so the profile equilibrates to it rather than merely staying
+    # below it. `solve_steady` builds `CVode(problem)` without explicit
+    # tolerances, so it integrates at Assimulo's defaults (atol = rtol = 1e-6),
+    # which sets the scale of the residual asserted here.
     assert reactor.tempProfSteady[-1] == pytest.approx(
         reactor.temp_ht_steady, abs=1e-6)
-    assert reactor.tempProfSteady[-1] <= reactor.temp_ht_steady
+
+    # Deliberately no bound on *which side* it equilibrates from. Both
+    # reactions in this fixture are exothermic (delta_hrxn = [-5e3, -2.5e3]
+    # J/mol) and the utility is cooling water, so once the reaction source
+    # outweighs heat removal the fluid crosses temp_ht_steady and relaxes back
+    # toward it from above: measured on this fixture, 35 of the 148 reported
+    # points sit above the utility temperature, peaking 1.4e-5 K above it, and
+    # the outlet lands 8.0e-8 K above it. A `<= temp_ht_steady` assertion
+    # encodes the wrong side and passes only where the residual happens to
+    # land negative.
 
 
 def test_steady_pfr_specific_area_matches_tube_geometry(data_path):
