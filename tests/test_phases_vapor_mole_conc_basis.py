@@ -1,10 +1,8 @@
-"""Composition basis of ``VaporPhase``/``VaporStream`` built from ``mole_conc``.
+"""Vapor-phase constructor composition and state-retention contracts.
 
-Covers issue #73: ``VaporPhase.__init__`` forwards its arguments to
-``LiquidPhase`` positionally, so ``mole_conc`` lands in ``LiquidPhase``'s
-``mass_conc`` slot and the molar concentrations are interpreted as mass
-concentrations. The fixture is a self-contained two-species thermo file, so the
-test needs no repository data fixture.
+The tests cover molar-concentration conversion, equivalent fraction inputs,
+stream forwarding, and constructor pressure used by downstream property
+calculations. The self-contained two-species fixture needs no repository data.
 """
 
 import json
@@ -14,6 +12,9 @@ import pytest
 
 from PharmaPy.Phases import VaporPhase
 from PharmaPy.Streams import VaporStream
+
+
+pytestmark = pytest.mark.unit
 
 
 # Minimal two-species thermo file. Values are arbitrary but well separated in
@@ -111,3 +112,21 @@ def test_vapor_phase_mole_conc_matches_equivalent_fractions(tmp_path):
     assert phase_from_conc.mw_av == pytest.approx(
         phase_from_mass_frac.mw_av
     )
+
+
+def test_vapor_phase_retains_pressure_for_default_dew_point(tmp_path):
+    path = tmp_path / "thermo_two_species.json"
+    path.write_text(json.dumps(THERMO_TWO_SPECIES))
+
+    # This pressure keeps both synthetic saturation temperatures subcritical.
+    pressure = 1.0e5  # [Pa]
+    mole_conc = np.array([2.0, 3.0])  # [mol/L]
+    moles = 1.0  # [mol]
+    phase = VaporPhase(
+        str(path), pres=pressure, moles=moles, mole_conc=mole_conc
+    )
+
+    dew_point_explicit = phase.getDewPoint(pres=pressure)  # [K]
+
+    assert phase.pres == pytest.approx(pressure)
+    assert phase.getDewPoint() == pytest.approx(dew_point_explicit)

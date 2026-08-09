@@ -586,6 +586,7 @@ class VaporPhase(ThermoPhysicalManager):
         self.mw_av = props.mw_av
 
         self.temp = float(temp)
+        self.pres = pres  # [Pa]
 
         self.y_upstream = None
         self._name = None
