@@ -275,6 +275,32 @@ class Drying:
 
         return dry_rate * mw
 
+    def _gas_mixture_molar_mass(self, y_gas):
+        """Calculate gas mixture molar mass from mass fractions.
+
+        Parameters
+        ----------
+        y_gas : ndarray
+            Gas-phase mass fractions, with species on the final axis [-].
+
+        Returns
+        -------
+        float or ndarray
+            Mixture molar mass for each gas composition [g/mol].
+
+        Notes
+        -----
+        For mass fractions ``w_i`` [-] and species molar masses ``MW_i``
+        [g/mol], the mixture molar mass is
+        ``1 / sum(w_i / MW_i)`` [g/mol].
+        """
+        species_molar_mass = np.asarray(self.Vapor_1.mw)  # [g/mol]
+        reciprocal_molar_mass = np.sum(
+            y_gas / species_molar_mass, axis=-1
+        )  # [mol/g]
+
+        return 1 / reciprocal_molar_mass
+
     def unit_model(self, time, states, sw=None):
         """Evaluate the drying model residual equations.
 
@@ -305,11 +331,9 @@ class Drying:
         dimensional check is ``k_perm`` [m**2] * ``k_ra`` [-] *
         ``dPg_dz`` [Pa/m] / ``visc_gas`` [Pa*s] = [m/s].
 
-        The gas-density path still uses the legacy mass-fraction weighted
-        molecular-weight surrogate [g/mol]; issue #28 owns replacing it with
-        the true mixture molecular weight. The ``x_liq`` supercritical slot
-        reset preserves the existing state layout; issue #42 owns replacing
-        the magic index with explicit metadata.
+        The ``x_liq`` supercritical slot reset preserves the existing state
+        layout; issue #42 owns replacing the magic index with explicit
+        metadata.
         """
 
         num_comp = self.Liquid_1.num_species  # [-]
@@ -334,7 +358,7 @@ class Drying:
         vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas  # [m/s]
 
         # ---------- Drying rate term
-        mw_avg_gas = np.dot(y_gas, self.Vapor_1.mw)  # legacy MW surrogate [g/mol]
+        mw_avg_gas = self._gas_mixture_molar_mass(y_gas)  # [g/mol]
         rho_gas = self.pres_gas / gas_ct / temp_gas * mw_avg_gas / 1000  # [kg/m**3]
         rho_liq_ = self.Liquid_1.rho_liq[self.idx_volatiles]  # [kg/m**3]
         self.rho_liq =  1 / np.sum((x_liq/ rho_liq_), axis=1)  # [kg/m**3]
@@ -518,11 +542,10 @@ class Drying:
         gas-convection discretization is preserved in this branch; ``dTg_dz``
         [kg*K/m**4] and ``conv_term`` [J*kg/m**6/s] are annotated as
         implemented so that the remaining dimensional debt is explicit without
-        expanding the #24 behavior change. The legacy gas molecular-weight
-        surrogate is documented as issue #28 rather than changed here.
+        expanding the #24 behavior change.
         """
 
-        mw_avg_gas = np.dot(y_gas, self.Vapor_1.mw)  # legacy MW surrogate [g/mol]
+        mw_avg_gas = self._gas_mixture_molar_mass(y_gas)  # [g/mol]
         # ----- Reading inputs
         temp_gas_inputs = inputs['temp']  # [K]
 
