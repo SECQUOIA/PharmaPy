@@ -5,7 +5,9 @@ import numpy as np
 # from autograd import numpy as np
 # from autograd import jacobian as jacauto
 from PharmaPy.Commons import (mid_fn, trapezoidal_rule, eval_state_events,
-                              handle_events, unpack_states, flatten_states)
+                              handle_events, unpack_states, flatten_states,
+                              TerminateSimulation)
+from PharmaPy._assimulo import IDA, Implicit_Problem
 from PharmaPy.Connections import get_inputs, get_inputs_new
 from PharmaPy.Streams import LiquidStream, VaporStream
 from PharmaPy.Phases import LiquidPhase, VaporPhase, classify_phases
@@ -16,10 +18,6 @@ from PharmaPy.Plotting import plot_function
 from scipy.optimize import fsolve
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
-
-from assimulo.problem import Implicit_Problem
-from assimulo.solvers import IDA
-from assimulo.exception import TerminateSimulation
 
 from pathlib import Path
 import copy

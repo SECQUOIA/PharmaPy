@@ -16,11 +16,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-pytest.importorskip("assimulo")
 import PharmaPy.Drying_Model as drying_module
 from PharmaPy.Drying_Model import Drying
 
-pytestmark = pytest.mark.assimulo
+pytestmark = pytest.mark.unit
 
 
 def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):

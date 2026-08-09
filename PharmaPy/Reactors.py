@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 
 
-from assimulo.solvers import CVode, LSODAR
-from assimulo.problem import Explicit_Problem
+from PharmaPy._assimulo import CVode, Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Commons import (reorder_sens, plot_sens, trapezoidal_rule,
@@ -1043,11 +1042,16 @@ class CSTR(_BaseReactor):
         h_inj = stream.getEnthalpy(inlet_temp, temp_ref=self.temp_ref,
                                    total_h=False, basis='mole')
 
-        h_in = (inlet_conc * h_inj).sum(axis=1) * 1000  # J/m**3
-        h_temp = (mole_conc * h_tempj).sum(axis=1) * 1000  # J/m**3
-        flow_term = inlet_flow * (h_in - h_temp)  # W
+        h_in = (inlet_conc * h_inj).sum(axis=1) * 1000  # [J/m**3]
 
-        # Balance terms (W) - convert vol to L
+        if 'vol' in self.states_uo:  # Semibatch: no outlet enthalpy stream
+            h_temp = (inlet_conc * h_tempj).sum(axis=1) * 1000  # [J/m**3]
+        else:
+            h_temp = (mole_conc * h_tempj).sum(axis=1) * 1000  # [J/m**3]
+
+        flow_term = inlet_flow * (h_in - h_temp)  # [W]
+
+        # Balance terms [W] - convert vol to L
         # source_term = -inner1d(deltah_rxn, rates) * vol * 1000
         # TODO: Check if this is correct
         # source_term = -np.dot(deltah_rxn, rates) * vol * 1000  # vol in L

@@ -11,6 +11,11 @@ environments defined in `pyproject.toml` (`pixi run -e assimulo ...`), the
 conda-forge environment in `environment.yml`, or a local source build of
 Assimulo.
 
+Unit-operation modules and their solver-free calculations remain importable
+without Assimulo. Attempting to construct an Assimulo-backed problem or solver
+without that optional dependency raises an installation error at the solver
+boundary.
+
 pixi is the recommended developer/CI environment manager: its `[tool.pixi]`
 configuration in `pyproject.toml` provides a `default` (core, Assimulo-free)
 and an `assimulo` (full backend) environment backed by a committed `pixi.lock`,

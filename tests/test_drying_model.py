@@ -1,4 +1,4 @@
-"""Assimulo-marked regressions for drying-rate unit contracts.
+"""Solver-free regressions for drying-rate unit contracts.
 
 The fixtures are intentionally small, made-up drying states. They isolate the
 molar-to-mass drying-rate conversion and the downstream material-balance terms
@@ -10,10 +10,9 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-pytest.importorskip("assimulo")
 from PharmaPy.Drying_Model import Drying
 
-pytestmark = pytest.mark.assimulo
+pytestmark = pytest.mark.unit
 
 
 def test_drying_rate_mass_basis_converts_molar_rates_with_component_mw():

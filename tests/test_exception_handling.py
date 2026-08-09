@@ -1,8 +1,8 @@
 """Regressions for narrowed exception handling in three package modules.
 
-The crystallizer test uses the shared Assimulo import helper because the core
-test lane intentionally excludes that optional solver. Its monkeypatching is
-limited to the optional import and problem-construction boundaries; the real
+The crystallizer tests import ``PharmaPy.Crystallizers`` directly: since the
+lazy Assimulo backend landed, that module imports without the optional solver.
+Monkeypatching is limited to the problem-construction boundary; the real
 ``BatchCryst.set_ode_problem`` routing remains under test.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from assimulo_helpers import import_module_with_assimulo_stub
+from PharmaPy import Crystallizers
 from PharmaPy.StatsModule import StatisticsClass
 from PharmaPy.ThermoModule import ParseDatabase
 
@@ -99,33 +99,29 @@ class _ExplicitProblemStub:
 
 
 def _import_crystallizers(monkeypatch):
-    """Import crystallizers with only optional Assimulo boundaries replaced.
+    """Return crystallizers with only the Assimulo problem boundary replaced.
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        Cleanup fixture for temporary module and problem-class substitutions.
+        Cleanup fixture for the temporary problem-class substitution.
 
     Returns
     -------
     module
-        Imported ``PharmaPy.Crystallizers`` module.
+        ``PharmaPy.Crystallizers`` module.
 
     Notes
     -----
-    Replacing ``Explicit_Problem`` keeps this regression in the core lane and
-    lets it assert the exact callbacks configured by the real
-    ``set_ode_problem`` method. Solver execution remains covered by the
-    Assimulo-marked integration lane.
+    ``PharmaPy._assimulo`` exposes ``Explicit_Problem`` as a factory that only
+    imports Assimulo when called, so no import-time stub is needed. Replacing
+    the module attribute keeps this regression in the core lane and lets it
+    assert the exact callbacks configured by the real ``set_ode_problem``
+    method. Solver execution remains covered by the Assimulo-marked
+    integration lane.
     """
-    module = import_module_with_assimulo_stub(
-        monkeypatch,
-        "PharmaPy.Crystallizers",
-        solvers={"CVode": object},
-        problem={"Explicit_Problem": _ExplicitProblemStub},
-    )
-    monkeypatch.setattr(module, "Explicit_Problem", _ExplicitProblemStub)
-    return module
+    monkeypatch.setattr(Crystallizers, "Explicit_Problem", _ExplicitProblemStub)
+    return Crystallizers
 
 
 def test_parse_database_converts_numeric_fields_to_float_arrays(tmp_path):
