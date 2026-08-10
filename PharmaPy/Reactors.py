@@ -321,9 +321,33 @@ class _BaseReactor:
         return events
 
     def heat_transfer(self, temp, temp_ht, vol):
+        """Return reactor heat transfer duty for supported heat-transfer modes.
+
+        Parameters
+        ----------
+        temp : float or numpy.ndarray
+            Reactor temperature [K].
+        temp_ht : float or numpy.ndarray
+            Heat-transfer utility temperature [K].
+        vol : float
+            Liquid volume in contact with the heat-transfer surface [m**3].
+
+        Returns
+        -------
+        heat_transf : float or numpy.ndarray
+            Heat-transfer duty [W]. Positive when the reactor loses heat to
+            the utility.
+
+        Raises
+        ------
+        NotImplementedError
+            If ``ht_mode`` is 'coil', which is documented as an option but
+            has no implementation.
+        """
         # Heat transfer area
         if self.ht_mode == 'coil':  # Half pipe heat transfer
-            pass
+            raise NotImplementedError(
+                "heat_transfer with ht_mode='coil' is not supported")
         else:
             area_ht = 4 / self.diam * vol + self.area_base  # m**2
             heat_transf = self.u_ht * area_ht * (temp - temp_ht)
@@ -458,19 +482,30 @@ class _BaseReactor:
         conc = states[:num_species]
         if self.isothermal:
             temp = self.Liquid_1.temp
-            jac_states = self.Kinetics.derivatives(conc, temp)
         else:
             temp = states[num_species]
             jac_states = np.zeros((num_states, num_states))
 
-            jac_r_kin = self.Kinetics.derivatives(conc, temp)
+        if self.Kinetics.keq_params is None:
+            deltah_rxn = None
+        else:
+            deltah_rxn = self.Liquid_1.getHeatOfRxn(
+                self.Kinetics.stoich_matrix, temp, self.mask_species,
+                self.Kinetics.delta_hrxn, self.Kinetics.tref_hrxn)
+
+        jac_r_kin = self.Kinetics.derivatives(
+            conc, temp, delta_hrxn=deltah_rxn)
+
+        if self.isothermal:
+            jac_states = jac_r_kin
+        else:
             jac_states[:num_states - 1, :num_states - 1] = jac_r_kin
 
         if wrt_states:
             return jac_states
         else:  # ---------- w.r.t params
             jac_theta_kin = self.Kinetics.derivatives(
-                conc, temp, dstates=False)
+                conc, temp, dstates=False, delta_hrxn=deltah_rxn)
 
             if self.isothermal:
                 jac_params = jac_theta_kin
@@ -976,7 +1011,8 @@ class CSTR(_BaseReactor):
         whether or not the paramest_wrapper method should return
         the sensitivity system along with the concentratio profiles.
         Use False if you want the parameter estimation platform to
-        estimate the sensitivity system using finite differences
+        estimate the sensitivity system using finite differences.
+        Direct sensitivity evaluation is not implemented for CSTR.
     """
 
     def __init__(self, mask_params=None,
@@ -1129,8 +1165,18 @@ class CSTR(_BaseReactor):
 
         check_modeling_objects(self)
 
+        if eval_sens:
+            raise NotImplementedError(
+                "CSTR sensitivity evaluation is not supported; construct "
+                "with return_sens=False to use finite-difference "
+                "sensitivities")
+
         self.params_control = params_control
         self.set_names()
+
+        if self.ht_mode == 'coil' and not self.isothermal:
+            raise NotImplementedError(
+                "CSTR heat transfer with ht_mode='coil' is not supported")
 
         self.num_concentr = len(self.Liquid_1.mole_conc)
         self.args_inputs = (self, self.num_concentr, 0)
@@ -1165,14 +1211,11 @@ class CSTR(_BaseReactor):
 
         # Create problem
         merged_params = self.Kinetics.concat_params()
-        if eval_sens:
-            pass
-        else:
-            def fobj(time, states): return self.unit_model(
-                time, states, merged_params)
+        def fobj(time, states): return self.unit_model(
+            time, states, merged_params)
 
-            problem = Explicit_Problem(fobj, states_init,
-                                       t0=self.elapsed_time)
+        problem = Explicit_Problem(fobj, states_init,
+                                   t0=self.elapsed_time)
 
         # Set solver
         solver = CVode(problem)
@@ -1284,7 +1327,8 @@ class SemibatchReactor(CSTR):
         whether or not the paramest_wrapper method should return
         the sensitivity system along with the concentratio profiles.
         Use False if you want the parameter estimation platform to
-        estimate the sensitivity system using finite differences
+        estimate the sensitivity system using finite differences.
+        Direct sensitivity evaluation is not implemented for SemibatchReactor.
     """
     
     def __init__(self, vol_tank,
@@ -1333,8 +1377,19 @@ class SemibatchReactor(CSTR):
 
         check_modeling_objects(self)
 
+        if eval_sens:
+            raise NotImplementedError(
+                "SemibatchReactor sensitivity evaluation is not supported; "
+                "construct with return_sens=False to use finite-difference "
+                "sensitivities")
+
         self.params_control = params_control
         self.set_names()
+
+        if self.ht_mode == 'coil' and not self.isothermal:
+            raise NotImplementedError(
+                "SemibatchReactor heat transfer with ht_mode='coil' is "
+                "not supported")
 
         if runtime is not None:
             final_time = runtime + self.elapsed_time
@@ -1357,14 +1412,11 @@ class SemibatchReactor(CSTR):
                 states_init = np.append(states_init, tht_init)
 
         merged_params = self.Kinetics.concat_params()
-        if eval_sens:
-            pass
-        else:
-            def fobj(time, states): return self.unit_model(
-                time, states, merged_params)
+        def fobj(time, states): return self.unit_model(
+            time, states, merged_params)
 
-            problem = Explicit_Problem(fobj, states_init,
-                                       t0=self.elapsed_time)
+        problem = Explicit_Problem(fobj, states_init,
+                                   t0=self.elapsed_time)
 
         # Set solver
         solver = CVode(problem)
@@ -1569,14 +1621,29 @@ class PlugFlowReactor(_BaseReactor):
         return dconc_dv
 
     def energy_steady(self, conc, temp):
+        """Steady-state energy balance derivative along reactor volume.
+
+        Parameters
+        ----------
+        conc : numpy.ndarray
+            Molar concentrations of the participating species [mol/L].
+        temp : float
+            Reactor temperature at the current volume coordinate [K].
+
+        Returns
+        -------
+        dtemp_dv : float
+            Temperature derivative with respect to reactor volume [K/m**3].
+        """
         _, cp_j = self.Liquid_1.getCpPure(temp)
 
         concentr = np.zeros_like(self.Liquid_1.mole_conc)
         concentr[self.mask_species] = conc
         concentr[~self.mask_species] = self.c_inert
 
-        # Volumetric heat capacity
-        cp_vol = np.dot(cp_j, concentr) * 1000  # W/K
+        # Volumetric heat capacity. cp_j is [J/mol/K] and concentr is [mol/L],
+        # so the product is [J/L/K]; the 1000 is the L -> m**3 conversion.
+        cp_vol = np.dot(cp_j, concentr) * 1000  # [J/m**3/K]
 
         # Heat of reaction
         delta_href = self.Kinetics.delta_hrxn
@@ -1592,18 +1659,27 @@ class PlugFlowReactor(_BaseReactor):
             deltah_rxn)  # [J/mol of normalized reaction extent]
 
         # Reaction heat source [W/m**3]
-        source_term = -(rate_basis_deltah_rxn * rates).sum(axis=1) \
-            * 1000  # [W/m**3]
+        # The normalized enthalpy is [J/mol of normalized reaction extent] and
+        # rates are [mol/L/s], so their dot product is [W/L]. The 1000 is the
+        # L -> m**3 conversion, matching the transient energy balance.
+        source_term = -np.dot(
+            rate_basis_deltah_rxn, rates) * 1000  # [W/m**3]
 
         if self.adiabatic:
-            heat_transfer = 0
-        else:  # W/m**3
-            a_prime = self.diam / 4  # m**2 / m**3
-            heat_transfer = self.u_ht * a_prime * (temp - self.Utility.temp)
+            heat_transfer = 0  # [W/m**3]
+        else:
+            # Wetted area per unit reactor volume for a cylindrical tube:
+            # (pi*D*L) / (pi*D**2/4 * L) = 4/D. Refs #33.
+            a_prime = 4 / self.diam  # [m**2/m**3]
+            # u_ht [W/m**2/K] * a_prime [m**2/m**3] * dT [K] -> [W/m**3]
+            heat_transfer = self.u_ht * a_prime * (
+                temp - self.temp_ht_steady)
 
+        # vol_flow [m**3/s] * cp_vol [J/m**3/K] -> [W/K]
         flow_term = self.Inlet.vol_flow * cp_vol
 
         # -------- Energy balance
+        # [W/m**3] / [W/K] -> [K/m**3], integrated over reactor volume
         dtemp_dv = (source_term - heat_transfer) / flow_term
 
         return dtemp_dv
@@ -1628,6 +1704,32 @@ class PlugFlowReactor(_BaseReactor):
         return deriv
 
     def solve_steady(self, vol_rxn, adiabatic=False):
+        """Integrate the steady-state PFR balances along reactor volume.
+
+        Parameters
+        ----------
+        vol_rxn : float
+            Reactor volume to integrate over [m**3]. The independent variable
+            of this solve is volume, not time.
+        adiabatic : bool (optional, default = False)
+            Whether to neglect wall heat transfer [-]. When False, the
+            utility inlet condition is sampled once into ``temp_ht_steady``
+            and the energy balance takes the heat-transfer branch.
+
+        Returns
+        -------
+        volPosition : numpy.ndarray
+            Volume coordinates of the returned profile [m**3].
+        states_solver : numpy.ndarray
+            Solution states at each volume coordinate: participating-species
+            molar concentrations [mol/L], followed by temperature [K] when
+            'temp' is among the unit states.
+
+        Notes
+        -----
+        This method overwrites the instance ``adiabatic`` attribute with the
+        argument value.
+        """
         self.adiabatic = adiabatic
         self.set_names()
 
@@ -1635,7 +1737,7 @@ class PlugFlowReactor(_BaseReactor):
             self.isothermal = False
             self.states_uo.append('temp')
 
-        c_inlet = self.Inlet.concentr
+        c_inlet = self.Inlet.mole_conc
 
         self.c_inert = c_inlet[~self.mask_species]
         c_partic = c_inlet[self.mask_species]
@@ -1646,6 +1748,11 @@ class PlugFlowReactor(_BaseReactor):
 
         if 'temp' in self.states_uo:
             states_init = np.append(states_init, self.Inlet.temp)
+
+        if 'temp' in self.states_uo and not self.adiabatic:
+            # The steady solve integrates over volume, not time, so use the
+            # inlet utility condition at the start of the volume profile.
+            self.temp_ht_steady = self.Utility.evaluate_inputs(0)['temp_in']
 
         problem = Explicit_Problem(self.unit_steady, states_init, t0=0)
         solver = CVode(problem)

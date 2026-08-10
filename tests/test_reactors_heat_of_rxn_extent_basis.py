@@ -237,9 +237,17 @@ class _RateBasisLiquid:
 
         Returns
         -------
-        numpy.ndarray, shape (n_temperatures, 2)
-            Reaction enthalpies [J/mol of reaction as written].
+        numpy.ndarray
+            Reaction enthalpies [J/mol of reaction as written]. The shape is
+            ``(2,)`` for a scalar temperature and ``(n_temperatures, 2)`` for
+            an array of temperatures.
         """
+        if np.asarray(temp).ndim == 0:
+            scalar_heat = (
+                STUB_HEATS_AS_WRITTEN.copy()
+            )  # [J/mol of reaction as written]
+            return scalar_heat
+
         num_temperatures = len(np.atleast_1d(temp))
         return np.tile(
             STUB_HEATS_AS_WRITTEN, (num_temperatures, 1)
@@ -278,12 +286,17 @@ class _RateBasisKinetics:
 
         Returns
         -------
-        numpy.ndarray, shape (n_states, 2)
-            Per-reaction normalized extent rates [mol/L/s].
+        numpy.ndarray
+            Per-reaction normalized extent rates [mol/L/s]. The shape is
+            ``(2,)`` for a single state and ``(n_states, 2)`` for multiple
+            states.
         """
         self.received_delta_hrxn = np.asarray(
             delta_hrxn
         )  # [J/mol of reaction as written]
+        if np.asarray(conc).ndim == 1:
+            return STUB_EXTENT_RATES.copy()  # [mol/L/s]
+
         num_states = np.atleast_2d(conc).shape[0]
         return np.tile(
             STUB_EXTENT_RATES, (num_states, 1)
@@ -502,9 +515,9 @@ def test_tank_reactors_use_normalized_heat_with_raw_equilibrium_handoff(
 def test_pfr_steady_energy_uses_normalized_heat_basis(pharmapy):
     """The steady PFR source uses the normalized per-reaction rate basis.
 
-    Issue #70 owns the scalar-shape behavior of this path. The two-dimensional
-    stub outputs preserve that provisional shape while independently checking
-    issue #22's heat basis.
+    The one-dimensional stub outputs exercise the scalar steady-state contract
+    established by issue #70 while independently checking issue #22's heat
+    basis.
     """
     reactors_module = pharmapy[2]
     reactor = reactors_module.PlugFlowReactor(
@@ -524,7 +537,7 @@ def test_pfr_steady_energy_uses_normalized_heat_basis(pharmapy):
     assert float(np.ravel(dtemp_dvol)[0]) == pytest.approx(
         expected_dtemp_dvol)
     np.testing.assert_allclose(
-        kinetics.received_delta_hrxn, [STUB_HEATS_AS_WRITTEN])
+        kinetics.received_delta_hrxn, STUB_HEATS_AS_WRITTEN)
 
 
 def test_pfr_dynamic_energy_uses_normalized_heat_basis(pharmapy):
