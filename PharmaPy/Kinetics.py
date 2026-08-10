@@ -178,8 +178,11 @@ class RxnKinetics:
         'stoichiometric_matrix'. The passed names must match those
         in the pure-component json file
     keq_params : array-like, optional
-        Equilibrium constants at ``tref_hrxn`` [-]. If provided, reversible
-        rates are evaluated as forward minus reverse terms.
+        Equilibrium constant for each reaction at ``tref_hrxn``. Units are
+        ``[mol/L]**(sum of product orders - sum of reactant orders)``, so the
+        constant is dimensionless only when those sums are equal. If provided,
+        reversible rates are evaluated as forward minus reverse terms. The
+        default is None.
     params_f : numpy array, optional
         parameters for the concentration-dependent term f\ :sub:`2`.
         If no custom model is provided through the 'kinetic_model'
@@ -201,9 +204,13 @@ class RxnKinetics:
         parameter estimation with datasets at different temperatures.
         The default is False.
     delta_hrxn : float or array-like, optional
-        Heat of reaction at ``tref_hrxn`` [J/mol_rxn]. The default is 0.
+        Heat of reaction at ``tref_hrxn`` for each reaction
+        [J/mol of reaction as written]. Values are defined on the basis of
+        the raw ``stoich_matrix`` rows rather than ``normalized_stoich``. A
+        positive value is endothermic. The default is 0.
     tref_hrxn : float, optional
-        Reference temperature for ``delta_hrxn`` [K]. The default is 298.15.
+        Reference temperature for ``delta_hrxn`` [K]. If None, it is set to
+        ``temp_ref``. The default is 298.15.
 
     kinetic_model : callable, optional  
         kinetic model to be used to compute f\ :sub:`2`. It must have
@@ -219,9 +226,27 @@ class RxnKinetics:
         Derivative of a user-defined concentration term with respect to its
         parameters. The default is None.
 
+    Attributes
+    ----------
+    stoich_normalization : numpy.ndarray, shape (n_rxns,)
+        Magnitude of the first reactant's coefficient in each raw reaction
+        [-]. Per-reaction rates from
+        ``get_rxn_rates(overall_rates=False)`` use the reaction extent formed
+        by dividing each raw reaction by this factor.
+    normalized_stoich : numpy.ndarray, shape (n_comp, n_rxns)
+        Stoichiometric matrix divided by ``stoich_normalization`` and
+        transposed for mapping reaction rates to species rates [-].
+
     Returns
     -------
     RxnKinetics object.
+
+    Notes
+    -----
+    Reactor energy balances convert raw-basis reaction enthalpies to the
+    normalized rate basis before multiplying them by per-reaction rates.
+    Supplying ``delta_hrxn`` values that were already divided by
+    ``stoich_normalization`` would therefore apply the normalization twice.
 
     """
     def __init__(self, path, k_params, ea_params, rxn_list=None,
@@ -282,7 +307,10 @@ class RxnKinetics:
         for ind in range(self.num_rxns):
             ref_stoich[ind] = stoich_matrix[ind, first_negative[ind]]
 
-        self.normalized_stoich = stoich_matrix.T / abs(ref_stoich)
+        # Magnitude of the first reactant coefficient in each raw reaction.
+        self.stoich_normalization = abs(ref_stoich)  # [-]
+        self.normalized_stoich = (
+            stoich_matrix.T / self.stoich_normalization)  # [-]
         self.stoich_matrix = stoich_matrix
 
         # ---------- Parameters
@@ -716,8 +744,10 @@ class RxnKinetics:
             False, return derivatives with respect to kinetic parameters.
             The default is True.
         delta_hrxn : array-like, optional
-            Runtime heat of reaction [J/mol_rxn] used to evaluate reversible
-            equilibrium constants. If omitted, ``self.delta_hrxn`` is used.
+            Runtime heat of reaction [J/mol of reaction as written] used to
+            evaluate reversible equilibrium constants. Values use the raw
+            ``stoich_matrix`` row basis. If omitted, ``self.delta_hrxn`` is
+            used.
 
         Returns
         -------
@@ -784,8 +814,9 @@ class RxnKinetics:
             If True, return the concentration Jacobian instead of rates. The
             default is False.
         delta_hrxn : array-like, optional
-            Runtime heat of reaction [J/mol_rxn] for reversible rate or
-            Jacobian evaluations.
+            Runtime heat of reaction [J/mol of reaction as written] for
+            reversible rate or Jacobian evaluations. Values use the raw
+            ``stoich_matrix`` row basis.
 
         Returns
         -------
