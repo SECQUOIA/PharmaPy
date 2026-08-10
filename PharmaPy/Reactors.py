@@ -1661,7 +1661,7 @@ class PlugFlowReactor(_BaseReactor):
         # Reaction heat source [W/m**3]
         # The normalized enthalpy is [J/mol of normalized reaction extent] and
         # rates are [mol/L/s], so their dot product is [W/L]. The 1000 is the
-        # L -> m**3 conversion, matching the transient energy balance.
+        # [L] -> [m**3] conversion, matching the transient energy balance.
         source_term = -np.dot(
             rate_basis_deltah_rxn, rates) * 1000  # [W/m**3]
 
