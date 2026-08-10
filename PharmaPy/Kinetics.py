@@ -179,7 +179,7 @@ class RxnKinetics:
         in the pure-component json file
     keq_params : array-like, optional
         Equilibrium constant for each reaction at ``tref_hrxn``. Units are
-        ``(mol/L)**(sum of product orders - sum of reactant orders)``, so the
+        ``[mol/L]**(sum of product orders - sum of reactant orders)``, so the
         constant is dimensionless only when those sums are equal. If provided,
         reversible rates are evaluated as forward minus reverse terms. The
         default is None.
