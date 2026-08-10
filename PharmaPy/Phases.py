@@ -561,7 +561,7 @@ class VaporPhase(ThermoPhysicalManager):
         Notes
         -----
         Provide exactly one of ``mass_frac``, ``mole_frac``, or
-        ``mole_conc``. Concentration inputs use PharmaPy's mol/L basis.
+        ``mole_conc``. Concentration inputs use PharmaPy's [mol/L] basis.
         """
 
         super().__init__(path_thermo)
