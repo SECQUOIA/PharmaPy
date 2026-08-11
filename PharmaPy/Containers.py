@@ -5,6 +5,8 @@ Created on Mon Apr 27 14:26:50 2020
 @author: dcasasor
 """
 
+from typing import Mapping, Optional, Sequence, Tuple
+
 from PharmaPy._assimulo import CVode, Explicit_Problem
 
 from PharmaPy.Phases import LiquidPhase, SolidPhase, classify_phases
@@ -792,10 +794,45 @@ class DynamicCollector:
 
         return dtemp_dt
 
-    def solve_unit(self, runtime=None, time_grid=None, verbose=True,
-                   sundials_opts=None):
+    def solve_unit(self, runtime: Optional[float] = None,
+                   time_grid: Optional[Sequence[float]] = None,
+                   verbose: bool = True,
+                   sundials_opts: Optional[Mapping[str, object]] = None
+                   ) -> Tuple[np.ndarray, np.ndarray]:
+        """Solve the collector model selected by its inlet phase type.
+
+        Parameters
+        ----------
+        runtime : float, optional
+            Integration duration measured from ``elapsed_time`` [s].
+        time_grid : sequence of float, optional
+            Requested integration times [s]. If supplied with ``runtime``, its
+            final value determines the liquid-mixer integration end time.
+        verbose : bool, optional
+            Whether the delegated solver should emit its normal progress
+            output.
+        sundials_opts : mapping of str to object, optional
+            CVode option names and values for liquid-mixer integration. The
+            crystallizer delegates solver configuration to ``SemibatchCryst``.
+
+        Returns
+        -------
+        time : numpy.ndarray
+            Integration times [s] with shape ``(n_time,)``.
+        states : numpy.ndarray
+            State trajectory with shape ``(n_time, n_states)``. Liquid-mixer
+            columns are mass fractions [-], holdup mass [kg], then
+            temperature [K]; crystallizer columns follow ``states_di`` from
+            the delegated crystallizer.
+
+        Notes
+        -----
+        Supply ``runtime`` or ``time_grid``. Crystallizer states are retained
+        on the delegated model rather than interpreted as liquid-only states.
+        """
         self.names_states_in = self.names_states_in[self.model_type]
         self.names_states_out = self.names_states_out[self.model_type]
+        self.is_cryst = self.model_type == 'crystallizer'
 
         if self.model_type == 'crystallizer':
 
@@ -880,10 +917,10 @@ class DynamicCollector:
             self.Phases = (liquid,)
 
             self.states_di = {
-                'mass': {'units': 'kg', 'dim': 1, 'type': 'diff'},
                 'mass_frac': {'units': '', 'dim': self.num_species,
                               'index': self.Liquid_1.name_species,
                               'type': 'diff'},
+                'mass': {'units': 'kg', 'dim': 1, 'type': 'diff'},
                 'temp': {'units': 'K', 'dim': 1, 'type': 'diff'}
                 }
 
@@ -922,13 +959,32 @@ class DynamicCollector:
 
         return time, states
 
-    def retrieve_results(self, time, states):
-        self.timeProf = np.array(time)
-        self.elapsed_time = time[-1]
+    def retrieve_results(self, time: Sequence[float],
+                         states: np.ndarray) -> None:
+        """Store a solved trajectory using the active model's state layout.
 
-        self.wConcProf = states[:, :self.num_species]
-        self.massProf = states[:, self.num_species]
-        self.tempProf = states[:, self.num_species + 1]
+        Parameters
+        ----------
+        time : sequence of float
+            Integration times [s] with shape ``(n_time,)``.
+        states : numpy.ndarray
+            State trajectory with shape ``(n_time, n_states)``. For a liquid
+            mixer the columns are mass fractions [-], holdup mass [kg], and
+            temperature [K]. Crystallizer columns follow the delegated
+            ``SemibatchCryst.states_di`` layout.
+
+        Notes
+        -----
+        Crystallizer trajectories begin with distribution states, so their
+        results and outputs are delegated without liquid-shaped slicing.
+        """
+        self.timeProf = np.array(time)  # [s]
+        self.elapsed_time = time[-1]  # [s]
+
+        if not self.is_cryst:
+            self.wConcProf = states[:, :self.num_species]  # [-]
+            self.massProf = states[:, self.num_species]  # [kg]
+            self.tempProf = states[:, self.num_species + 1]  # [K]
 
         if self.CrystInst is None:
             self.Liquid_1.updatePhase(mass_frac=self.wConcProf[-1],
