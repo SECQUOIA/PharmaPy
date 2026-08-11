@@ -506,17 +506,74 @@ class LiquidPhase(ThermoPhysicalManager):
 
 
 class VaporPhase(ThermoPhysicalManager):
+    """Thermodynamic state of a homogeneous vapor mixture.
+
+    Exactly one composition measure must define the mixture. Material amounts
+    use mass, volume, or molar bases and are kept mutually consistent with the
+    specified composition.
+    """
+
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass=0, vol=0, moles=0,
                  mass_frac=None, mole_frac=None, mole_conc=None,
                  check_input=True, verbose=True):
+        """Initialize a vapor-phase thermodynamic state.
+
+        Parameters
+        ----------
+        path_thermo : str, optional
+            Path to the species thermophysical-property JSON file.
+        temp : float, optional
+            Vapor temperature [K].
+        pres : float, optional
+            Vapor pressure [Pa].
+        mass : float, optional
+            Total vapor mass [kg].
+        vol : float, optional
+            Total vapor volume [m**3].
+        moles : float, optional
+            Total amount of vapor [mol].
+        mass_frac : array-like, optional
+            Species mass fractions with shape ``(num_species,)`` [-].
+        mole_frac : array-like, optional
+            Species mole fractions with shape ``(num_species,)`` [-].
+        mole_conc : array-like, optional
+            Species molar concentrations with shape ``(num_species,)``
+            [mol/L].
+        check_input : bool, optional
+            If ``True``, warn when mass, volume, and moles are all zero [-].
+        verbose : bool, optional
+            If ``True``, print composition-normalization warnings [-].
+
+        Raises
+        ------
+        ValueError
+            If no composition measure is provided.
+        RuntimeWarning
+            If more than one composition measure is provided.
+
+        Warns
+        -----
+        RuntimeWarning
+            If input checking is enabled and mass, volume, and moles are all
+            zero.
+
+        Notes
+        -----
+        Provide exactly one of ``mass_frac``, ``mole_frac``, or
+        ``mole_conc``. Concentration inputs use PharmaPy's [mol/L] basis.
+        """
 
         super().__init__(path_thermo)
 
         # Calculate amount of material and compositions using LiquidPhase
-        props = LiquidPhase(path_thermo, temp, pres, mass,
-                            vol, moles, mass_frac, mole_frac, mole_conc,
-                            check_input=check_input, verbose=verbose)
+        props = LiquidPhase(
+            path_thermo=path_thermo, temp=temp, pres=pres,
+            mass=mass, vol=vol, moles=moles,
+            mass_frac=mass_frac, mole_frac=mole_frac,
+            mole_conc=mole_conc,
+            check_input=check_input, verbose=verbose,
+        )
 
         self.mass = props.mass
         self.moles = props.moles
@@ -529,6 +586,7 @@ class VaporPhase(ThermoPhysicalManager):
         self.mw_av = props.mw_av
 
         self.temp = float(temp)
+        self.pres = pres  # [Pa]
 
         self.y_upstream = None
         self._name = None
@@ -868,9 +926,9 @@ class SolidPhase(ThermoPhysicalManager):
     grams per mole. Mole amounts are calculated from the finalized solid mass
     after converting it to grams during construction.
 
-    ``moles`` is set by the constructor only. Unlike ``LiquidPhase``,
-    ``updatePhase`` does not recompute it, so ``moles`` becomes stale when the
-    phase mass is updated.
+    ``moles`` is reconciled whenever construction or ``updatePhase`` changes
+    the solid mass, so mass-, volume-, and mole-basis amounts describe the
+    same physical inventory.
 
     """
     
@@ -943,8 +1001,7 @@ class SolidPhase(ThermoPhysicalManager):
 
         mw_av = np.dot(self.mole_frac, self.mw)  # [g/mol]
         self.mw_av = mw_av  # [g/mol]
-        mass_grams = self.mass * 1000  # [g]
-        self.moles = mass_grams / mw_av  # [mol]
+        self._reconcile_moles_from_mass()
 
         if mass_frac is not None:
             sum_fracs = sum(mass_frac)
@@ -966,6 +1023,18 @@ class SolidPhase(ThermoPhysicalManager):
     @name.setter
     def name(self, name):
         self._name = name
+
+    def _reconcile_moles_from_mass(self) -> None:
+        """Recalculate solid moles from the current mass.
+
+        Notes
+        -----
+        Solid mass [kg] is converted using the exact ``1000 g/kg`` SI factor
+        before division by the mixture-average molecular weight [g/mol]. The
+        resulting amount is stored in ``moles`` [mol].
+        """
+        mass_grams = self.mass * 1000  # [g]
+        self.moles = mass_grams / self.mw_av  # [mol]
 
     def updatePhase(self, x_distrib: Optional[np.ndarray] = None,
                     distrib: Optional[np.ndarray] = None,
@@ -1007,7 +1076,9 @@ class SolidPhase(ThermoPhysicalManager):
         supplied, it replaces the recalculated moments without another mass or
         volume update. Distribution updates recalculate orders zero through
         ``self.num_mom - 1``, preserving the configured moment-state size. The
-        constructor-only ``moles`` attribute is unchanged.
+        mole amount is recalculated whenever a distribution or explicit
+        mass changes the solid inventory. A moments-only update does not imply
+        an amount change and therefore leaves mass, volume, and moles intact.
         """
         if x_distrib is not None:
             self.x_distrib = x_distrib
@@ -1027,6 +1098,9 @@ class SolidPhase(ThermoPhysicalManager):
 
         if moments is not None:
             self.moments = moments
+
+        if distrib is not None or mass is not None:
+            self._reconcile_moles_from_mass()
 
     def convert_distribution(self, x_distrib=None, num_distr=None,
                              vol_distr=None, mass=0):
