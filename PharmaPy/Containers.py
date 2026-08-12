@@ -5,7 +5,7 @@ Created on Mon Apr 27 14:26:50 2020
 @author: dcasasor
 """
 
-from typing import Mapping, Optional, Sequence, Tuple
+from typing import Mapping, Optional, Sequence, Tuple, Union
 
 from PharmaPy._assimulo import CVode, Explicit_Problem
 
@@ -639,12 +639,30 @@ class Mixer:
 
 
 class DynamicCollector:
-    def __init__(self, temp_refer=298.15, tau=None, num_interp_points=3):
+    """Dynamic holdup model for liquid and crystallizing inlet streams.
+
+    The inlet phase type selects either a liquid-mixer balance or a delegated
+    semibatch crystallizer model. State labels and result retrieval therefore
+    follow the selected model's declared state layout.
+    """
+
+    def __init__(self, temp_refer: float = 298.15,
+                 tau: Optional[float] = None,
+                 num_interp_points: int = 3) -> None:
+        """Initialize an unconnected dynamic collector.
+
+        Parameters
+        ----------
+        temp_refer : float, optional
+            Reference temperature retained for API compatibility [K].
+        tau : float, optional
+            Residence-time configuration retained for flowsheet use [s].
+        num_interp_points : int, optional
+            Number of inlet interpolation points [-].
+        """
 
         self._Inlet = None
         self.num_interp_points = num_interp_points
-        # if self.inlet is not None:
-        #     classify_phases(self.inlet)
 
         self.tau = tau
         self.vol_offset = 0.75
@@ -664,7 +682,7 @@ class DynamicCollector:
         # Crystallizer instances
         self.KinCryst = None
         self.CrystInst = None
-        self.is_cryst = None
+        self.is_cryst = False
 
         self.kwargs_cryst = None
 
@@ -695,7 +713,15 @@ class DynamicCollector:
         return self._Inlet
 
     @Inlet.setter
-    def Inlet(self, inlet_object):
+    def Inlet(self, inlet_object: Union[LiquidStream, SlurryStream]) -> None:
+        """Assign an inlet and select its compatible collector model.
+
+        Parameters
+        ----------
+        inlet_object : LiquidStream or SlurryStream
+            Upstream liquid or crystallizing stream. Liquid composition uses
+            mass fractions [-]; slurry concentration uses [kg/m**3].
+        """
         module = inlet_object.__module__
 
         if module == 'PharmaPy.MixedPhases':
@@ -716,6 +742,7 @@ class DynamicCollector:
 
             states_in_dict = dict(zip(names_states_in, len_in))
 
+        self.is_cryst = self.model_type == 'crystallizer'
         self.num_species = len(self.name_species)
 
         self.states_in_dict = {'Inlet': states_in_dict}
@@ -829,10 +856,15 @@ class DynamicCollector:
         -----
         Supply ``runtime`` or ``time_grid``. Crystallizer states are retained
         on the delegated model rather than interpreted as liquid-only states.
+
+        Raises
+        ------
+        ValueError
+            If a liquid-mixer solve receives neither ``runtime`` nor
+            ``time_grid`` and therefore has no integration end time [s].
         """
         self.names_states_in = self.names_states_in[self.model_type]
         self.names_states_out = self.names_states_out[self.model_type]
-        self.is_cryst = self.model_type == 'crystallizer'
 
         if self.model_type == 'crystallizer':
 
@@ -891,7 +923,6 @@ class DynamicCollector:
             self.CrystInst = SemiCryst
 
             self.retrieve_results(time, states)
-            # self.Outlet = SemiCryst.Outlet
 
             vol_phase = self.Outlet.vol
             if isinstance(vol_phase, np.ndarray):
@@ -941,11 +972,15 @@ class DynamicCollector:
             if not verbose:
                 solver.verbosity = 50
 
-            if runtime is not None:
-                final_time = runtime + self.elapsed_time
-
             if time_grid is not None:
-                final_time = time_grid[-1]
+                final_time = time_grid[-1]  # [s]
+            elif runtime is not None:
+                final_time = runtime + self.elapsed_time  # [s]
+            else:
+                raise ValueError(
+                    "DynamicCollector.solve_unit requires 'runtime' [s] or "
+                    "'time_grid' [s]; neither was supplied."
+                )
 
             time, states = solver.simulate(final_time, ncp_list=time_grid)
 
@@ -982,19 +1017,18 @@ class DynamicCollector:
         self.elapsed_time = time[-1]  # [s]
 
         if not self.is_cryst:
-            self.wConcProf = states[:, :self.num_species]  # [-]
-            self.massProf = states[:, self.num_species]  # [kg]
-            self.tempProf = states[:, self.num_species + 1]  # [K]
+            dynamic_result = unpack_states(states, self.dim_states,
+                                           self.name_states)
+            self.wConcProf = dynamic_result['mass_frac']  # [-]
+            self.massProf = dynamic_result['mass']  # [kg]
+            self.tempProf = dynamic_result['temp']  # [K]
 
-        if self.CrystInst is None:
             self.Liquid_1.updatePhase(mass_frac=self.wConcProf[-1],
                                       mass=self.massProf[-1])
 
             self.Liquid_1.temp = self.tempProf[-1]
 
             self.Outlet = self.Liquid_1
-            dynamic_result = unpack_states(states, self.dim_states,
-                                           self.name_states)
 
             dynamic_result['time'] = np.asarray(time)
 

@@ -87,6 +87,28 @@ def euler_backend(monkeypatch):
     monkeypatch.setattr(containers, "CVode", _EulerSolver)
 
 
+def test_liquid_mixer_requires_an_integration_end(data_path, euler_backend):
+    """Reject a liquid solve with neither runtime nor requested times.
+
+    Parameters
+    ----------
+    data_path : dict of pathlib.Path
+        Repository test-data directories.
+    euler_backend : None
+        Fixture replacing the optional Assimulo integration boundary.
+    """
+    path = str(data_path["integration"] / "pfr_test_pure_comp.json")
+    inlet = LiquidStream(path, temp=INLET_TEMP, mass_flow=INLET_MASS_FLOW,
+                         mass_frac=INLET_MASS_FRAC)
+    collector = DynamicCollector()
+    collector.Inlet = inlet
+
+    message = (r"DynamicCollector\.solve_unit requires 'runtime' \[s\] or "
+               r"'time_grid' \[s\]; neither was supplied\.")
+    with pytest.raises(ValueError, match=message):
+        collector.solve_unit()
+
+
 def test_liquid_mixer_result_labels_match_state_vector(data_path,
                                                        euler_backend):
     """``result`` must label holdup mass [kg] and composition [-] correctly.
@@ -238,6 +260,34 @@ def slurry_inlet(data_path):
     inlet.time_upstream = None
 
     return inlet
+
+
+def test_inlet_assignment_sets_collector_model_mode(data_path, slurry_inlet):
+    """Derive and refresh collector mode whenever an inlet is assigned.
+
+    Parameters
+    ----------
+    data_path : dict of pathlib.Path
+        Repository test-data directories.
+    slurry_inlet : SlurryStream
+        Real crystallizing inlet with composition [-], flow [m**3/s],
+        temperature [K], and distribution [#/m**3/um] states.
+    """
+    collector = DynamicCollector()
+
+    assert collector.is_cryst is False
+
+    collector.Inlet = slurry_inlet
+
+    assert collector.is_cryst is True
+
+    path = str(data_path["integration"] / "pfr_test_pure_comp.json")
+    liquid_inlet = LiquidStream(path, temp=INLET_TEMP,
+                                mass_flow=INLET_MASS_FLOW,
+                                mass_frac=INLET_MASS_FRAC)
+    collector.Inlet = liquid_inlet
+
+    assert collector.is_cryst is False
 
 
 def test_crystallizer_collector_delegates_plotting(slurry_inlet, monkeypatch):
