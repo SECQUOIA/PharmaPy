@@ -9,10 +9,13 @@ worked while that accidental narrowing happened to match its volatile count.
 
 Expected latent heats are derived here with a scalar loop over one temperature
 at a time, independent of the vectorised two-dimensional fancy indexing under
-test, which is where the defect lived. The Drying fixture is synthetic and
-calls ``energy_balance`` directly, following the sibling drying tests; its
-carrier latent heat carries a deliberately non-zero sentinel so that any
-consumption of the non-condensable column is numerically obvious.
+test, which is where the defect lived. The phase fixture carries three species
+of which two stay subcritical at the probe temperatures, so the converted
+column axis has length two and a reversed or mis-assigned column is caught by
+value rather than only by shape. The Drying fixture is synthetic and calls
+``energy_balance`` directly, following the sibling drying tests; its carrier
+latent heat carries a deliberately non-zero sentinel so that any consumption
+of the non-condensable column is numerically obvious.
 """
 
 import json
@@ -28,9 +31,10 @@ from PharmaPy.Phases import VaporPhase
 pytestmark = pytest.mark.unit
 
 
-# Two species whose critical temperatures straddle the probe temperatures, so
-# one species is supercritical while the other still condenses.
-THERMO_TWO_SPECIES = {
+# Three species whose critical temperatures straddle the probe temperatures:
+# "light" is supercritical there while "heavy" and "medium" still condense.
+# Molar masses are kept distinct so a mis-assigned column changes the value.
+THERMO_THREE_SPECIES = {
     "light": {
         "mw": 18.0,
         "t_crit": 650.0,
@@ -51,18 +55,35 @@ THERMO_TWO_SPECIES = {
         "delta_hvap": 60000.0,
         "tref_hvap": 350.0,
     },
+    "medium": {
+        "mw": 46.0,
+        "t_crit": 720.0,
+        "rho_liq": 850.0,
+        "cp_liq": [110.0],
+        "cp_vapor": [60.0],
+        "p_vap": [8.0, 1650.0, -40.0],
+        "delta_hvap": 50000.0,
+        "tref_hvap": 350.0,
+    },
 }
 
-MOLAR_MASS = np.array([18.0, 100.0])  # [g/mol]
-T_CRIT = np.array([650.0, 700.0])  # [K]
-DELTA_HVAP_REF = np.array([40000.0, 60000.0])  # [J/mol] at TREF_HVAP
-TREF_HVAP = np.array([350.0, 350.0])  # [K]
+MOLAR_MASS = np.array([18.0, 100.0, 46.0])  # [g/mol]
+T_CRIT = np.array([650.0, 700.0, 720.0])  # [K]
+DELTA_HVAP_REF = np.array([40000.0, 60000.0, 50000.0])  # [J/mol] at TREF_HVAP
+TREF_HVAP = np.array([350.0, 350.0, 350.0])  # [K]
+NUM_SPECIES = len(MOLAR_MASS)  # [-]
 
 # Exponent of the Watson correlation used by VaporPhase.getHeatVaporization to
 # extrapolate the tabulated latent heat away from its reference temperature.
 WATSON_EXPONENT = 0.38  # [-]
 
 G_PER_KG = 1000.0  # [g/kg], molar mass is tabulated in g/mol
+
+# Every value lies above t_crit of "light" and below t_crit of "heavy", so one
+# species is supercritical and two are subcritical. Four temperatures against
+# three species against two subcritical species keeps all three axis lengths
+# different, so a transposed or mis-sliced result cannot match by coincidence.
+SUPERCRIT_TEMPS = np.array([660.0, 665.0, 670.0, 675.0])  # [K]
 
 
 def _latent_heat_mole_reference(temp_scalar):
@@ -84,8 +105,8 @@ def _latent_heat_mole_reference(temp_scalar):
         supercritical at ``temp_scalar`` are zero, because a supercritical
         species cannot condense.
     """
-    latent_heat = np.zeros(len(MOLAR_MASS))  # [J/mol]
-    for species in range(len(MOLAR_MASS)):
+    latent_heat = np.zeros(NUM_SPECIES)  # [J/mol]
+    for species in range(NUM_SPECIES):
         if temp_scalar < T_CRIT[species]:
             reduced = ((T_CRIT[species] - temp_scalar)
                        / (T_CRIT[species] - TREF_HVAP[species]))  # [-]
@@ -97,39 +118,34 @@ def _latent_heat_mole_reference(temp_scalar):
 
 @pytest.fixture
 def vapor_phase(tmp_path):
-    """Two-species ``VaporPhase`` built from the straddling-t_crit fixture."""
-    path = tmp_path / "thermo_two_species.json"
-    path.write_text(json.dumps(THERMO_TWO_SPECIES))
+    """Three-species ``VaporPhase`` built from the straddling-t_crit fixture."""
+    path = tmp_path / "thermo_three_species.json"
+    path.write_text(json.dumps(THERMO_THREE_SPECIES))
 
     return VaporPhase(str(path), temp=350.0, moles=1.0,
-                      mole_frac=np.array([0.5, 0.5]), check_input=False)
+                      mole_frac=np.full(NUM_SPECIES, 1.0 / NUM_SPECIES),
+                      check_input=False)
 
 
 def test_multitemperature_mass_basis_keeps_supercritical_columns(vapor_phase):
-    """A supercritical species keeps a zero column instead of being dropped.
+    """A supercritical species keeps a zero column instead of being dropped."""
+    latent_mass = vapor_phase.getHeatVaporization(SUPERCRIT_TEMPS, basis="mass")
+    latent_mole = vapor_phase.getHeatVaporization(SUPERCRIT_TEMPS, basis="mole")
 
-    Three temperatures against two species keep the temperature and species
-    axes different lengths, so a transposed or mis-sliced result cannot match
-    by coincidence.
-    """
-    # All three lie above t_crit of "light" and below t_crit of "heavy".
-    temps = np.array([660.0, 670.0, 680.0])  # [K]
-
-    latent_mass = vapor_phase.getHeatVaporization(temps, basis="mass")
-    latent_mole = vapor_phase.getHeatVaporization(temps, basis="mole")
-
-    assert latent_mass.shape == (len(temps), len(MOLAR_MASS))
+    assert latent_mass.shape == (len(SUPERCRIT_TEMPS), NUM_SPECIES)
     assert latent_mass.shape == latent_mole.shape
 
-    expected_mole = np.vstack([_latent_heat_mole_reference(t) for t in temps])
+    expected_mole = np.vstack(
+        [_latent_heat_mole_reference(t) for t in SUPERCRIT_TEMPS])  # [J/mol]
     expected_mass = expected_mole / MOLAR_MASS * G_PER_KG  # [J/kg]
 
     np.testing.assert_allclose(latent_mole, expected_mole, rtol=1e-12)
     np.testing.assert_allclose(latent_mass, expected_mass, rtol=1e-12)
 
-    # "light" is supercritical at both temperatures and cannot condense.
-    np.testing.assert_array_equal(latent_mass[:, 0], np.zeros(len(temps)))
-    assert np.all(latent_mass[:, 1] > 0.0)
+    # "light" is supercritical at every probe temperature and cannot condense.
+    np.testing.assert_array_equal(latent_mass[:, 0],
+                                  np.zeros(len(SUPERCRIT_TEMPS)))
+    assert np.all(latent_mass[:, 1:] > 0.0)
 
 
 def test_single_temperature_mass_basis_keeps_supercritical_columns(vapor_phase):
@@ -138,7 +154,7 @@ def test_single_temperature_mass_basis_keeps_supercritical_columns(vapor_phase):
 
     latent_mass = vapor_phase.getHeatVaporization(temp, basis="mass")
 
-    assert latent_mass.shape == (len(MOLAR_MASS),)
+    assert latent_mass.shape == (NUM_SPECIES,)
 
     expected_mass = (_latent_heat_mole_reference(temp)
                      / MOLAR_MASS * G_PER_KG)  # [J/kg]
@@ -151,11 +167,11 @@ def test_getenthalpy_mass_basis_weights_full_species_axis(vapor_phase):
 
     This is the failure reported in issue #101: the mass-basis latent heat
     reached ``np.dot`` with fewer columns than the mass-fraction vector had
-    entries. The temperature count has to equal the species count here, since
-    ``getEnthalpy`` separately compares ``temp`` against ``t_crit``
+    entries. The temperature count has to equal the species count here,
+    because ``getEnthalpy`` separately compares ``temp`` against ``t_crit``
     elementwise and cannot yet accept a differing number of temperatures.
     """
-    temps = np.array([660.0, 680.0])  # [K]
+    temps = np.array([660.0, 665.0, 670.0])  # [K], one per species
 
     enthalpy_mass = vapor_phase.getEnthalpy(temp=temps, basis="mass")
 
@@ -164,7 +180,7 @@ def test_getenthalpy_mass_basis_weights_full_species_axis(vapor_phase):
 
 
 @pytest.mark.parametrize("temps", [
-    np.array([400.0, 420.0, 440.0]),  # [K], every species subcritical
+    np.array([400.0, 420.0, 440.0, 460.0]),  # [K], every species subcritical
     np.array([400.0]),  # [K], single-element array
 ])
 def test_all_subcritical_mass_basis_is_unchanged(vapor_phase, temps):
@@ -178,7 +194,7 @@ def test_all_subcritical_mass_basis_is_unchanged(vapor_phase, temps):
     latent_mole = vapor_phase.getHeatVaporization(temps, basis="mole")
 
     # Pre-fix expression, evaluated on the same molar intermediate.
-    every_species = np.arange(len(MOLAR_MASS))
+    every_species = np.arange(NUM_SPECIES)
     previous = (np.atleast_2d(latent_mole)[:, every_species]
                 / MOLAR_MASS[every_species] * G_PER_KG)  # [J/kg]
 
