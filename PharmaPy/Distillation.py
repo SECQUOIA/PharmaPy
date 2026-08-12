@@ -914,10 +914,10 @@ class DistillationColumn(_BaseDistillation):
 
         path = self.Inlet.path_data
         self.OutletDistillate = LiquidStream(path, temp=dist_result['T'][0],
-                                             mole_conc=dist_result['x_dist'],
+                                             mole_frac=dist_result['x_dist'],
                                              mole_flow=dist_result['dist_flowrate'])
         self.OutletBottom = LiquidStream(path, temp=dist_result['T'][-1],
-                                         mole_conc=dist_result['x_bot'],
+                                         mole_frac=dist_result['x_bot'],
                                          mole_flow=dist_result['bot_flowrate'])
         self.Outlet = self.OutletBottom
 
