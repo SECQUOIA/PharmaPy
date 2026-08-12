@@ -30,7 +30,12 @@ def test_condensed_energy_uses_single_latent_heat_factor(monkeypatch):
     dryer.Vapor_1 = SimpleNamespace(
         mw=np.array([28.0, 28.0, 28.0]),  # [g/mol]
         getCp=lambda temp, mass_frac, basis: np.full(4, 1000.0),  # [J/kg/K]
-        getHeatVaporization=lambda temp, basis: np.array([2.0e6, 1.0e6]),  # [J/kg]
+        # One row per node and one column per species. The non-condensable
+        # carrier (index 1) cannot condense, so its latent heat is zero.
+        getHeatVaporization=lambda temp, basis: np.tile(
+            np.array([2.0e6, 0.0, 1.0e6]),
+            (len(np.atleast_1d(temp)), 1),
+        ),  # [J/kg]
     )
     dryer.Liquid_1 = SimpleNamespace(
         getCp=lambda temp, mass_frac, basis: np.full(4, 2000.0),  # [J/kg/K]
