@@ -1,18 +1,16 @@
-"""Drying mixture molar-mass regressions for issue #28.
+"""Drying gas mixture molar-mass regression tests.
 
-``y_gas`` is stored on a mass basis, so the mean molar mass of the drying gas is
-the reciprocal-sum average ``1 / sum(w_i / MW_i)`` [g/mol], not the mass-weighted
-arithmetic average ``sum(w_i * MW_i)``. The same wrong average is used twice: for
-the ideal-gas density handed to both balances, and for the mass-basis specific
-gas constant ``R / MW`` inside the gas energy balance.
+``y_gas`` is stored on a mass basis, so the mixture molar mass is
+``sum(w_i) / sum(w_i / MW_i)`` [g/mol]. For normalized mass fractions, this
+reduces to ``1 / sum(w_i / MW_i)`` rather than the mass-weighted arithmetic
+average ``sum(w_i * MW_i)``. The tests cover the density and energy-balance
+consumers, pure-species limits, mass-/mole-basis equivalence, and invariance to
+common scaling of the differential composition state.
 
-The fixtures follow the compact synthetic convention already used by
-``test_drying_gas_balance.py`` and ``test_drying_latent_heat_factor.py``: the
-end-to-end ``Drying.solve_unit`` transient stays deferred while the open Drying
-correctness issues are unresolved, so these tests pin the two local molar-mass
-contracts instead. ``Vapor_1`` carries the real
-``ThermoPhysicalManager.frac_to_frac`` conversion so a fix routed through mole
-fractions is exercised against production code rather than a stand-in.
+The fixtures follow the compact synthetic convention used by the other drying
+regressions. ``Vapor_1`` carries the real
+``ThermoPhysicalManager.frac_to_frac`` conversion as an independent production
+cross-check of the direct mass-basis calculation.
 """
 
 import types
@@ -81,7 +79,7 @@ def _expected_gas_density():
 
 
 def _make_vapor():
-    """Build the vapor collaborator shared by both tests.
+    """Build the vapor collaborator shared by the regression fixtures.
 
     Returns
     -------
@@ -97,8 +95,8 @@ def _make_vapor():
         getHeatVaporization=lambda temp, basis: np.array(
             [2.40e6, 9.20e5]),  # water and ethanol [J/kg]
     )
-    # Real production conversion, so a fix routed through mole fractions is
-    # exercised against library code rather than a hand-written stand-in.
+    # The real production conversion independently cross-checks the direct
+    # mass-basis calculation instead of repeating it in a test stand-in.
     vapor.frac_to_frac = types.MethodType(
         ThermoPhysicalManager.frac_to_frac, vapor)
 
@@ -258,5 +256,37 @@ def test_gas_mixture_molar_mass_matches_mole_fraction_conversion():
     np.testing.assert_allclose(
         mass_basis_molar_mass,
         mole_basis_molar_mass,
+        rtol=1e-12,
+    )
+
+
+def test_gas_mixture_molar_mass_is_invariant_to_composition_sum_drift():
+    """Common scale drift does not change mixture molar mass [g/mol]."""
+    dryer = drying_model.Drying(number_nodes=3, supercrit_names=["nitrogen"])
+    dryer.Vapor_1 = _make_vapor()
+
+    # Node-wise scales represent -1 %, +1 %, and +5 % drift in the freely
+    # integrated gas composition sum while preserving each composition [-].
+    composition_scales = np.array([0.99, 1.01, 1.05])  # [-]
+    drifted_mass_fractions = (
+        Y_GAS * composition_scales[:, np.newaxis]
+    )  # [-]
+
+    drifted_molar_mass = dryer._gas_mixture_molar_mass(
+        drifted_mass_fractions
+    )  # [g/mol]
+    gas_mole_fractions = dryer.Vapor_1.frac_to_frac(
+        mass_frac=drifted_mass_fractions
+    )  # [-]
+    mole_basis_molar_mass = np.dot(gas_mole_fractions, MW_GAS)  # [g/mol]
+
+    np.testing.assert_allclose(
+        drifted_molar_mass,
+        mole_basis_molar_mass,
+        rtol=1e-12,
+    )
+    np.testing.assert_allclose(
+        drifted_molar_mass,
+        _mixture_molar_mass(),
         rtol=1e-12,
     )

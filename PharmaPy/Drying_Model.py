@@ -290,16 +290,19 @@ class Drying:
 
         Notes
         -----
-        For mass fractions ``w_i`` [-] and species molar masses ``MW_i``
-        [g/mol], the mixture molar mass is
-        ``1 / sum(w_i / MW_i)`` [g/mol].
+        For nonzero mass-fraction weights ``w_i`` [-] and species molar masses
+        ``MW_i`` [g/mol], the mixture molar mass is
+        ``sum(w_i) / sum(w_i / MW_i)`` [g/mol]. The numerator makes the result
+        invariant to common scaling of the composition state and equals one
+        for normalized mass fractions.
         """
         species_molar_mass = np.asarray(self.Vapor_1.mw)  # [g/mol]
+        total_mass_fraction = np.sum(y_gas, axis=-1)  # [-]
         reciprocal_molar_mass = np.sum(
             y_gas / species_molar_mass, axis=-1
         )  # [mol/g]
 
-        return 1 / reciprocal_molar_mass
+        return total_mass_fraction / reciprocal_molar_mass
 
     def unit_model(self, time, states, sw=None):
         """Evaluate the drying model residual equations.
@@ -325,15 +328,12 @@ class Drying:
         Notes
         -----
         The Darcy gas velocity is a superficial velocity [m/s] throttled by
-        relative permeability ``k_ra`` [-]. The relative-permeability Darcy
-        form is part of the #81 fix: the removed cake-resistance expression
-        bypassed ``k_ra`` and scaled by mean saturation instead. Its
-        dimensional check is ``k_perm`` [m**2] * ``k_ra`` [-] *
-        ``dPg_dz`` [Pa/m] / ``visc_gas`` [Pa*s] = [m/s].
+        relative permeability ``k_ra`` [-]. Its dimensional check is
+        ``k_perm`` [m**2] * ``k_ra`` [-] * ``dPg_dz`` [Pa/m] /
+        ``visc_gas`` [Pa*s] = [m/s].
 
         The ``x_liq`` supercritical slot reset preserves the existing state
-        layout; issue #42 owns replacing the magic index with explicit
-        metadata.
+        layout.
         """
 
         num_comp = self.Liquid_1.num_species  # [-]
@@ -525,8 +525,7 @@ class Drying:
         -------
         list of ndarray
             ``dTcond_dt`` by spatial node [K/s] and the legacy gas-temperature
-            solver channel ``dTg_dt`` when ``return_terms`` is False. Issue #37
-            owns the gas-convection dimensional correction.
+            solver channel ``dTg_dt`` when ``return_terms`` is False.
         tuple of ndarray
             When ``return_terms`` is True, returns the diagnostic terms
             ``(convec_term, drying, heat_cond, heat_loss_emp)`` instead.
@@ -541,8 +540,7 @@ class Drying:
         ``dry_rate`` gives the full latent power [J/m**3/s]. The existing
         gas-convection discretization is preserved in this branch; ``dTg_dz``
         [kg*K/m**4] and ``conv_term`` [J*kg/m**6/s] are annotated as
-        implemented so that the remaining dimensional debt is explicit without
-        expanding the #24 behavior change.
+        implemented so that their current physical basis is explicit.
         """
 
         mw_avg_gas = self._gas_mixture_molar_mass(y_gas)  # [g/mol]
