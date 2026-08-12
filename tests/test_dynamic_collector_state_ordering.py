@@ -153,6 +153,12 @@ def test_liquid_mixer_result_labels_match_state_vector(data_path,
     np.testing.assert_allclose(collector.outputs["mass_frac"],
                                result.mass_frac, rtol=1e-10)
 
+    # Profile attributes use the same metadata-derived state mapping.
+    np.testing.assert_allclose(collector.wConcProf, result.mass_frac,
+                               rtol=1e-10)
+    np.testing.assert_allclose(collector.massProf, result.mass, rtol=1e-10)
+    np.testing.assert_allclose(collector.tempProf, result.temp, rtol=1e-10)
+
 
 # --- Crystallizer-mode plotting dispatch -----------------------------------
 
