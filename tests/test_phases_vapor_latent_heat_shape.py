@@ -31,9 +31,38 @@ from PharmaPy.Phases import VaporPhase
 pytestmark = pytest.mark.unit
 
 
-# Three species whose critical temperatures straddle the probe temperatures:
-# "light" is supercritical there while "heavy" and "medium" still condense.
-# Molar masses are kept distinct so a mis-assigned column changes the value.
+# Synthetic three-species pure-component table, in the JSON layout that
+# ThermoPhysicalManager reads. Every value here is a construction-only test
+# assumption chosen to exercise the supercritical branch; none is taken from a
+# measured or published dataset for a real substance.
+#
+# The critical temperatures straddle the probe temperatures, so "light" is
+# supercritical there while "heavy" and "medium" still condense. Molar masses
+# are kept distinct so that a mis-assigned species column changes the value
+# rather than cancelling out.
+#
+# Schema, one entry per species, with the unit of every field:
+#
+# ``mw``         : molar mass [g/mol].
+# ``t_crit``     : critical temperature [K]; a species is treated as
+#                  supercritical, and so non-condensable, above it.
+# ``rho_liq``    : saturated liquid density [kg/m**3]. Required by the
+#                  constructor; not exercised by these tests.
+# ``cp_liq``     : polynomial coefficients of the liquid molar heat capacity
+#                  [J/mol/K], ordered from the constant term upward, so that
+#                  ``cp = sum_i c_i * T**i`` with ``T`` in [K]. A single
+#                  coefficient is a temperature-independent heat capacity.
+# ``cp_vapor``   : same polynomial form for the vapor molar heat capacity
+#                  [J/mol/K]; used for species above ``t_crit``.
+# ``p_vap``      : Antoine coefficients ``[A, B, C]`` for
+#                  ``log10(p) = A - B / (T + C)`` as implemented in
+#                  ``VaporPhase.AntoineEquation``, giving ``p`` in [Pa] with
+#                  ``T`` in [K]; ``A`` is [-], ``B`` is [K], ``C`` is [K].
+#                  Required by the constructor; no test here evaluates a vapor
+#                  pressure.
+# ``delta_hvap`` : latent heat of vaporization [J/mol], tabulated at
+#                  ``tref_hvap`` and extrapolated by the Watson correlation.
+# ``tref_hvap``  : reference temperature of ``delta_hvap`` [K].
 THERMO_THREE_SPECIES = {
     "light": {
         "mw": 18.0,
@@ -311,4 +340,98 @@ def test_energy_balance_uses_only_volatile_latent_heat_columns(monkeypatch):
     leaked = -(dry_rate * np.array([volatile_latent_heat[0], carrier_sentinel,
                                     volatile_latent_heat[1]])
                ).sum(axis=1) / heat_capacity  # [K/s]
+    assert np.all(np.abs(dTcond_dt) < np.abs(leaked) / 2)
+
+
+def test_energy_balance_handles_single_node_one_dimensional_latent_heat(
+        monkeypatch):
+    """A one-node cake gets a 1-D latent-heat vector and still selects volatiles.
+
+    ``getHeatVaporization`` returns ``(num_species, )`` rather than
+    ``(num_nodes, num_species)`` when it is handed a single temperature, which
+    is what a one-node cake produces. ``energy_balance`` must restore the node
+    axis before selecting volatile columns; indexing the 1-D vector with
+    ``[:, idx_volatiles]`` raises instead.
+
+    The multi-node sibling test above cannot cover this: every other
+    ``energy_balance`` fixture in the suite uses three or four nodes, so the
+    1-D return shape is never produced there.
+    """
+    num_nodes = 1  # [-]
+    dryer = Drying(number_nodes=num_nodes, supercrit_names=["nitrogen"])
+    dryer.idx_volatiles = np.array([0, 2])  # species indices [-]
+    dryer.idx_supercrit = np.array([1])  # species indices [-]
+    dryer.porosity = 0.5  # [-]
+    dryer.rho_sol = 1000.0  # [kg/m**3]
+    dryer.cp_sol = 1000.0  # [J/kg/K]
+    dryer.rho_liq = np.full(num_nodes, 800.0)  # [kg/m**3]
+    dryer.h_T_j = 0.0  # [W/m**2/K], isolates the latent term
+    dryer.a_V = 1.0  # [m**2/m**3]
+    dryer.h_T_loss = 0.0  # [W/m**2/K]
+    dryer.cake_height = 1.0  # [m]
+    dryer.T_ambient = 298.15  # [K]
+    dryer.dz = np.ones(num_nodes)  # [m]
+
+    volatile_latent_heat = np.array([2.0e6, 1.0e6])  # [J/kg], species 0 and 2
+    # Species 1 is the non-condensable carrier; the sentinel makes any use of
+    # that column numerically obvious. The real correlation returns zero here.
+    carrier_sentinel = 7.0e6  # [J/kg]
+    # One temperature in, so the provider returns a flat per-species vector.
+    latent_heat_1d = np.array([volatile_latent_heat[0], carrier_sentinel,
+                               volatile_latent_heat[1]])  # [J/kg]
+    observed_ndim = []
+
+    def latent_heat_stub(temp, basis):
+        """Return the 1-D per-species vector a single temperature produces."""
+        assert np.atleast_1d(temp).size == 1
+        observed_ndim.append(latent_heat_1d.ndim)
+        return latent_heat_1d
+
+    dryer.Vapor_1 = SimpleNamespace(
+        mw=np.array([28.0, 28.0, 28.0]),  # [g/mol]
+        getCp=lambda temp, mass_frac, basis: np.full(num_nodes, 1000.0),
+        getHeatVaporization=latent_heat_stub,
+    )
+    dryer.Liquid_1 = SimpleNamespace(
+        getCp=lambda temp, mass_frac, basis: np.full(num_nodes, 2000.0),
+    )
+
+    monkeypatch.setattr(
+        drying_module,
+        "high_resolution_fvm",
+        lambda values, boundary_cond: np.zeros(values.size + 1),  # [K]
+    )
+
+    dry_rate = np.array([[0.036, 0.5, 0.184]])  # [kg/m**3/s], carrier non-zero
+
+    _, dTcond_dt = dryer.energy_balance(
+        time=0.0,
+        temp_gas=np.full(num_nodes, 295.0),  # [K]
+        temp_sol=np.array([299.0]),  # [K]
+        satur=np.full(num_nodes, 0.5),  # [-]
+        y_gas=np.tile(np.array([0.10, 0.80, 0.10]), (num_nodes, 1)),  # [-]
+        x_liq=np.tile(np.array([0.0, 1.0]), (num_nodes, 1)),  # [-]
+        u_gas=np.zeros(num_nodes),  # [m/s]
+        rho_gas=np.ones(num_nodes),  # [kg/m**3]
+        dry_rate=dry_rate,
+        inputs={"temp": 295.0},  # [K]
+    )
+
+    # The collaborator really did hand back a 1-D vector, so the normalization
+    # in energy_balance is what this test exercises.
+    assert observed_ndim == [1]
+
+    assert np.shape(dTcond_dt) == (num_nodes,)
+
+    # Only the volatile species contribute to the latent power [J/m**3/s].
+    expected_latent_power = (dry_rate[:, [0, 2]]
+                             * volatile_latent_heat).sum(axis=1)
+    # Solid and liquid heat capacity per unit cake volume [J/m**3/K].
+    heat_capacity = (1000.0 * (1 - 0.5) * 1000.0
+                     + 0.5 * 0.5 * 2000.0 * 800.0)
+    np.testing.assert_allclose(dTcond_dt,
+                               -expected_latent_power / heat_capacity)
+
+    # Consuming the carrier column would roughly triple the magnitude here.
+    leaked = -(dry_rate * latent_heat_1d).sum(axis=1) / heat_capacity  # [K/s]
     assert np.all(np.abs(dTcond_dt) < np.abs(leaked) / 2)
