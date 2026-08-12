@@ -506,17 +506,74 @@ class LiquidPhase(ThermoPhysicalManager):
 
 
 class VaporPhase(ThermoPhysicalManager):
+    """Thermodynamic state of a homogeneous vapor mixture.
+
+    Exactly one composition measure must define the mixture. Material amounts
+    use mass, volume, or molar bases and are kept mutually consistent with the
+    specified composition.
+    """
+
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass=0, vol=0, moles=0,
                  mass_frac=None, mole_frac=None, mole_conc=None,
                  check_input=True, verbose=True):
+        """Initialize a vapor-phase thermodynamic state.
+
+        Parameters
+        ----------
+        path_thermo : str, optional
+            Path to the species thermophysical-property JSON file.
+        temp : float, optional
+            Vapor temperature [K].
+        pres : float, optional
+            Vapor pressure [Pa].
+        mass : float, optional
+            Total vapor mass [kg].
+        vol : float, optional
+            Total vapor volume [m**3].
+        moles : float, optional
+            Total amount of vapor [mol].
+        mass_frac : array-like, optional
+            Species mass fractions with shape ``(num_species,)`` [-].
+        mole_frac : array-like, optional
+            Species mole fractions with shape ``(num_species,)`` [-].
+        mole_conc : array-like, optional
+            Species molar concentrations with shape ``(num_species,)``
+            [mol/L].
+        check_input : bool, optional
+            If ``True``, warn when mass, volume, and moles are all zero [-].
+        verbose : bool, optional
+            If ``True``, print composition-normalization warnings [-].
+
+        Raises
+        ------
+        ValueError
+            If no composition measure is provided.
+        RuntimeWarning
+            If more than one composition measure is provided.
+
+        Warns
+        -----
+        RuntimeWarning
+            If input checking is enabled and mass, volume, and moles are all
+            zero.
+
+        Notes
+        -----
+        Provide exactly one of ``mass_frac``, ``mole_frac``, or
+        ``mole_conc``. Concentration inputs use PharmaPy's [mol/L] basis.
+        """
 
         super().__init__(path_thermo)
 
         # Calculate amount of material and compositions using LiquidPhase
-        props = LiquidPhase(path_thermo, temp, pres, mass,
-                            vol, moles, mass_frac, mole_frac, mole_conc,
-                            check_input=check_input, verbose=verbose)
+        props = LiquidPhase(
+            path_thermo=path_thermo, temp=temp, pres=pres,
+            mass=mass, vol=vol, moles=moles,
+            mass_frac=mass_frac, mole_frac=mole_frac,
+            mole_conc=mole_conc,
+            check_input=check_input, verbose=verbose,
+        )
 
         self.mass = props.mass
         self.moles = props.moles
@@ -529,6 +586,7 @@ class VaporPhase(ThermoPhysicalManager):
         self.mw_av = props.mw_av
 
         self.temp = float(temp)
+        self.pres = pres  # [Pa]
 
         self.y_upstream = None
         self._name = None
