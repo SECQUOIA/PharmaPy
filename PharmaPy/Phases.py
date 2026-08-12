@@ -712,9 +712,11 @@ class VaporPhase(ThermoPhysicalManager):
         Raises
         ------
         ValueError
-            If a species is subcritical at one requested temperature and
-            supercritical at another, which makes the Watson temperature
-            ratio negative.
+            If the Watson temperature ratio is negative, either because a
+            species is subcritical at one requested temperature and
+            supercritical at another, or because the tabulated
+            ``tref_hvap`` of a subcritical species lies above its
+            ``t_crit``.
 
         Notes
         -----
@@ -743,9 +745,9 @@ class VaporPhase(ThermoPhysicalManager):
         deltahvap = np.zeros(delta_shape)
 
         if num_temp > 1:
-            deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # J/mole
+            deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # [J/mol]
         else:
-            deltahvap[idx] = (watson * self.delta_hvap[idx])  # J/mole
+            deltahvap[idx] = (watson * self.delta_hvap[idx])  # [J/mol]
 
         if basis == 'mass':
             # Convert the populated subcritical entries in place so that

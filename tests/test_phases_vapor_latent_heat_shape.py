@@ -173,10 +173,28 @@ def test_getenthalpy_mass_basis_weights_full_species_axis(vapor_phase):
     """
     temps = np.array([660.0, 665.0, 670.0])  # [K], one per species
 
-    enthalpy_mass = vapor_phase.getEnthalpy(temp=temps, basis="mass")
+    enthalpy_mass = vapor_phase.getEnthalpy(temp=temps, basis="mass")  # [J/kg]
+    enthalpy_mole = vapor_phase.getEnthalpy(temp=temps, basis="mole")  # [J/mol]
 
     assert enthalpy_mass.shape == (len(temps),)
     assert np.all(np.isfinite(enthalpy_mass))
+
+    # A correctly shaped but wrongly weighted mixture would still be finite, so
+    # pin the value: the two bases must describe the same mixture, related only
+    # by its average molar mass. The single-temperature sibling test in
+    # test_phases_vapor_enthalpy.py asserts this same relation.
+    np.testing.assert_allclose(
+        enthalpy_mass, enthalpy_mole * G_PER_KG / vapor_phase.mw_av,
+        rtol=1e-12)
+
+    # The latent contribution specifically must be weighted by mass fraction on
+    # a mass basis and by mole fraction on a mole basis.
+    latent_mass = vapor_phase.getHeatVaporization(temps, basis="mass")  # [J/kg]
+    latent_mole = vapor_phase.getHeatVaporization(temps, basis="mole")  # [J/mol]
+    np.testing.assert_allclose(
+        latent_mass.dot(vapor_phase.mass_frac),
+        latent_mole.dot(vapor_phase.mole_frac) * G_PER_KG / vapor_phase.mw_av,
+        rtol=1e-12)
 
 
 @pytest.mark.parametrize("temps", [
