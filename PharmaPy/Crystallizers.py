@@ -2031,9 +2031,13 @@ class MSMPR(_BaseCryst):
         :meth:`SemibatchCryst.material_balances`, whose states are on a
         total basis. :meth:`energy_balances` multiplies it by ``vol`` to
         obtain a heat rate in [J/s].
+
+        The kinetic mass-transfer rate uses the crystal density [kg/m**3],
+        while the liquid-volume correction normalizes ``mass_conc`` by the
+        tank liquid density [kg/m**3].
         """
 
-        rho_sol = rhos[0][1]
+        rho_liq, rho_sol = rhos[0]  # [kg/m**3], liquid and solid tank densities
 
         input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
 
@@ -2063,7 +2067,7 @@ class MSMPR(_BaseCryst):
 
         # [kg/m**3/s] both terms
         flow_term = tau_inv * (input_conc*phi_in[0] - c_tank*phi)
-        transf_term = transf * (self.kron_jtg - c_tank / rho_sol)
+        transf_term = transf * (self.kron_jtg - c_tank / rho_liq)
         dcomp_dt = 1 / phi * (flow_term - transf_term)
 
         if self.basis == 'mass_frac':
