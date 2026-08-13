@@ -681,8 +681,49 @@ class VaporPhase(ThermoPhysicalManager):
         return cpMix
 
     def getHeatVaporization(self, temp, basis='mass'):
-        # if idx is None:
-        #     idx = np.arange(len(self.t_crit))
+        """Calculate the latent heat of vaporization of each species.
+
+        Species that are supercritical at every requested temperature
+        cannot condense. Their latent heat is reported as zero rather
+        than omitted, so the component axis of the returned array stays
+        aligned with the mass- or mole-fraction vectors that callers
+        weight it with.
+
+        Parameters
+        ----------
+        temp : float or array-like
+            Temperature at which the latent heat is evaluated [K]. An
+            array-like input is read as several independent
+            temperatures, such as the spatial nodes of a distributed
+            model, not as a per-species temperature.
+        basis : {'mass', 'mole'}, optional
+            Basis of the returned latent heat. The default is 'mass'.
+
+        Returns
+        -------
+        ndarray
+            Latent heat of vaporization per species, in [J/kg] for
+            ``basis='mass'`` and [J/mol] for ``basis='mole'``. The shape
+            is ``(num_species, )`` for a scalar or single-element
+            ``temp`` and ``(num_temperatures, num_species)`` otherwise.
+            Columns of species that are supercritical at every
+            requested temperature are zero.
+
+        Raises
+        ------
+        ValueError
+            If the Watson temperature ratio is negative, either because a
+            species is subcritical at one requested temperature and
+            supercritical at another, or because the tabulated
+            ``tref_hvap`` of a subcritical species lies above its
+            ``t_crit``.
+
+        Notes
+        -----
+        The latent heat is extrapolated from ``delta_hvap`` at
+        ``tref_hvap`` with the Watson correlation,
+        ``dh(T) = dh(Tref) * ((Tc - T) / (Tc - Tref))**0.38``.
+        """
 
         temp = np.atleast_1d(temp)
         num_comp = len(self.t_crit)
@@ -704,15 +745,20 @@ class VaporPhase(ThermoPhysicalManager):
         deltahvap = np.zeros(delta_shape)
 
         if num_temp > 1:
-            deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # J/mole
+            deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # [J/mol]
         else:
-            deltahvap[idx] = (watson * self.delta_hvap[idx])  # J/mole
+            deltahvap[idx] = (watson * self.delta_hvap[idx])  # [J/mol]
 
         if basis == 'mass':
+            # Convert the populated subcritical entries in place so that
+            # the species axis keeps its full width. Supercritical
+            # species stay at zero latent heat instead of being dropped,
+            # which would misalign the result with a fraction vector.
             if num_temp > 1:
-                deltahvap = deltahvap[:, idx] / self.mw[idx] * 1000  # J/kg
+                deltahvap[:, idx] = (deltahvap[:, idx] / self.mw[idx]
+                                     * 1000)  # [J/kg]
             else:
-                deltahvap = deltahvap[idx] / self.mw[idx] * 1000  # J/kg
+                deltahvap[idx] = deltahvap[idx] / self.mw[idx] * 1000  # [J/kg]
 
         return deltahvap
 
