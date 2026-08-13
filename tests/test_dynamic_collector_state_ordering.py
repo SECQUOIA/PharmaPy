@@ -306,6 +306,12 @@ def test_crystallizer_collector_delegates_plotting(slurry_inlet):
     collector = DynamicCollector()
     collector.Inlet = slurry_inlet
     collector.CrystInst = _RecordingSemibatchCryst()
+    # Plausible stale liquid profiles ensure a wrong local-plot branch reaches
+    # the delegation assertions instead of failing on a missing attribute.
+    collector.timeProf = np.array([0.0, CRYST_RUNTIME])  # [s]
+    collector.wConcProf = np.tile(SOLID_MASS_FRAC, (2, 1))  # [-]
+    collector.massProf = np.array([1.0, 2.0])  # [kg]
+    collector.tempProf = np.array([310.0, 311.0])  # [K]
 
     assert collector.model_type == 'crystallizer'
 
