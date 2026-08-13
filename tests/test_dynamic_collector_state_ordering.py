@@ -1,14 +1,15 @@
 """Regression tests for DynamicCollector result bookkeeping (issue #75).
 
-These tests drive the real ``DynamicCollector.solve_unit`` public path with real
-inlet objects and real thermodynamic data, and stub only one expensive optional
-collaborator per test so the checks stay in the core (non-Assimulo) lane.
+The liquid tests drive the real ``DynamicCollector.solve_unit`` public path
+with real inlet objects and real thermodynamic data, and stub only the optional
+Assimulo integration boundary so the checks stay in the core lane.
 
 The liquid-mixer test stubs the Assimulo integrator with a single explicit-Euler
 step taken from the model's own right-hand side and initial state, so the
 returned trajectory carries the production state layout rather than an assumed
-one. The crystallizer test stubs the delegated ``SemibatchCryst`` sub-model and
-asserts only how the collector dispatches plotting.
+one. The crystallizer tests attach a recording sub-model directly to
+``CrystInst`` and exercise the collector's real result-retrieval and plotting
+dispatch methods without replacing the production ``SemibatchCryst`` class.
 """
 
 import numpy as np
@@ -160,12 +161,10 @@ def test_liquid_mixer_result_labels_match_state_vector(data_path,
     np.testing.assert_allclose(collector.tempProf, result.temp, rtol=1e-10)
 
 
-# --- Crystallizer-mode plotting dispatch -----------------------------------
+# --- Crystallizer-mode result and plotting dispatch ------------------------
 
 SLURRY_VOL_FLOW = 1e-4  # [m**3/s]
 SOLID_MASS_FRAC = np.array([0.0, 0.0, 1.0, 0.0])  # [-], solid is species C
-TARGET_INDEX = 2  # index of species C in pfr_test_pure_comp.json
-CRYST_SCALE = 1e-9  # [-], distribution scaling used by SemibatchCryst
 CRYST_RUNTIME = 10.0  # [s]
 NUM_CRYST_BINS = 15  # [-]
 
@@ -296,7 +295,7 @@ def test_inlet_assignment_sets_collector_model_mode(data_path, slurry_inlet):
     assert collector.is_cryst is False
 
 
-def test_crystallizer_collector_delegates_plotting(slurry_inlet, monkeypatch):
+def test_crystallizer_collector_delegates_plotting(slurry_inlet):
     """A crystallizing collector must plot through its crystallizer sub-model.
 
     ``plot_local`` reads liquid-shaped slices of the state vector, which for a
@@ -304,15 +303,9 @@ def test_crystallizer_collector_delegates_plotting(slurry_inlet, monkeypatch):
     solve, ``plot_profiles`` must therefore delegate to the sub-model's own
     plotter instead.
     """
-    monkeypatch.setattr(containers, "SemibatchCryst", _RecordingSemibatchCryst)
-
     collector = DynamicCollector()
     collector.Inlet = slurry_inlet
-    collector.KinCryst = object()
-    collector.kwargs_cryst = {'target_ind': TARGET_INDEX, 'target_comp': 'C',
-                              'scale': CRYST_SCALE}
-
-    collector.solve_unit(runtime=CRYST_RUNTIME)
+    collector.CrystInst = _RecordingSemibatchCryst()
 
     assert collector.model_type == 'crystallizer'
 
@@ -323,8 +316,7 @@ def test_crystallizer_collector_delegates_plotting(slurry_inlet, monkeypatch):
     assert axes is _RecordingSemibatchCryst.axes
 
 
-def test_crystallizer_results_skip_liquid_profile_slicing(slurry_inlet,
-                                                          monkeypatch):
+def test_crystallizer_results_skip_liquid_profile_slicing(slurry_inlet):
     """Crystallizer retrieval must not overwrite liquid-profile attributes.
 
     Parameters
@@ -332,22 +324,17 @@ def test_crystallizer_results_skip_liquid_profile_slicing(slurry_inlet,
     slurry_inlet : SlurryStream
         Real crystallizing inlet with composition [-], flow [m**3/s],
         temperature [K], and distribution [#/m**3/um] states.
-    monkeypatch : pytest.MonkeyPatch
-        Fixture used to replace only the solver-backed crystallizer boundary.
     """
-    monkeypatch.setattr(containers, "SemibatchCryst", _RecordingSemibatchCryst)
-
     collector = DynamicCollector()
     collector.Inlet = slurry_inlet
-    collector.KinCryst = object()
-    collector.kwargs_cryst = {'target_ind': TARGET_INDEX, 'target_comp': 'C',
-                              'scale': CRYST_SCALE}
+    collector.CrystInst = _RecordingSemibatchCryst()
     liquid_profile_sentinel = object()
     collector.wConcProf = liquid_profile_sentinel
     collector.massProf = liquid_profile_sentinel
     collector.tempProf = liquid_profile_sentinel
 
-    collector.solve_unit(runtime=CRYST_RUNTIME)
+    time, states = collector.CrystInst.solve_unit(runtime=CRYST_RUNTIME)
+    collector.retrieve_results(time, states)
 
     assert collector.wConcProf is liquid_profile_sentinel
     assert collector.massProf is liquid_profile_sentinel
