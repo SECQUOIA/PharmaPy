@@ -3,7 +3,7 @@
 
 # import numpy as np
 # from autograd import numpy as np
-from typing import Optional, Sequence, Union
+from typing import Optional, Union
 
 import numpy as np
 from PharmaPy.ThermoModule import ThermoPhysicalManager
@@ -764,30 +764,31 @@ class VaporPhase(ThermoPhysicalManager):
 
     def getEnthalpy(
             self,
-            temp: Optional[Union[float, Sequence[float], np.ndarray]] = None,
+            temp: Optional[Union[float, np.ndarray]] = None,
             temp_ref: float = 298.15,
-            mass_frac: Optional[Union[Sequence[float], np.ndarray]] = None,
-            mole_frac: Optional[Union[Sequence[float], np.ndarray]] = None,
+            mass_frac: Optional[np.ndarray] = None,
+            mole_frac: Optional[np.ndarray] = None,
             total_h: bool = True,
             basis: str = 'mass') -> Union[float, np.ndarray]:
         """Calculate vapor-phase enthalpy relative to a liquid reference.
 
         Parameters
         ----------
-        temp : float or array-like
+        temp : float or ndarray, optional
             Temperature at which to calculate enthalpy [K]. The phase
-            temperature is used when ``temp`` is ``None``.
+            temperature is used when ``temp`` is ``None``. The supported
+            forms are a scalar or a one-element array.
         temp_ref : float, optional
             Liquid-reference temperature for the sensible-enthalpy integral
             [K]. The default is 298.15 K.
-        mass_frac : array-like, optional
-            Vapor-phase species mass fractions [-], with the species axis in
-            the phase's component order. The phase composition is used when
-            neither fraction vector is supplied.
-        mole_frac : array-like, optional
-            Vapor-phase species mole fractions [-], with the species axis in
-            the phase's component order. The phase composition is used when
-            neither fraction vector is supplied.
+        mass_frac : ndarray, optional
+            One-dimensional vapor-phase species mass fractions [-], ordered
+            according to the phase's components. The phase composition is
+            used when neither fraction vector is supplied.
+        mole_frac : ndarray, optional
+            One-dimensional vapor-phase species mole fractions [-], ordered
+            according to the phase's components. The phase composition is
+            used when neither fraction vector is supplied.
         total_h : bool, optional
             If ``True``, return fraction-weighted mixture enthalpy. If
             ``False``, return individual species enthalpies. The default is
@@ -799,11 +800,10 @@ class VaporPhase(ThermoPhysicalManager):
         -------
         float or ndarray
             Vapor-phase enthalpy on the selected basis: [J/kg] for
-            ``basis='mass'`` and [J/mol] for ``basis='mole'``. Mixture
-            enthalpy is scalar for one temperature or has shape
-            ``(num_temperatures,)``. Individual species enthalpy has shape
-            ``(num_temperatures, num_species)`` and preserves the phase's
-            component order.
+            ``basis='mass'`` and [J/mol] for ``basis='mole'``. For the
+            supported single-temperature forms, mixture enthalpy is scalar
+            and individual species enthalpy has shape ``(1, num_species)`` in
+            the phase's component order.
 
         Raises
         ------
@@ -816,6 +816,12 @@ class VaporPhase(ThermoPhysicalManager):
         Supercritical species contribute vapor sensible heat and no latent
         heat. Subcritical species contribute liquid sensible heat plus latent
         heat of vaporization.
+
+        Inputs containing more than one temperature are not supported. The
+        supercritical/subcritical split currently compares the temperature and
+        species axes directly, so even equal-length arrays that happen to
+        broadcast do not define a valid multi-temperature calculation. This
+        broader temperature-axis contract is tracked in issue #178.
         """
         if mass_frac is None and mole_frac is None:
             mass_frac = self.mass_frac
