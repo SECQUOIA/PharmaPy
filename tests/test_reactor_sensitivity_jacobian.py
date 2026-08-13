@@ -6,6 +6,7 @@ solver backend is installed.
 """
 
 import importlib.util
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -37,6 +38,12 @@ def _build_nonisothermal_reactor(data_path):
         [mol/L for the first three entries; K for the last two].
     params : numpy.ndarray
         Concatenated kinetic parameters [parameter-dependent units].
+
+    Notes
+    -----
+    The explicit floating-point stoichiometric matrix avoids the fractional-
+    order truncation tracked by issue #44. Once #44 is fixed, this fixture can
+    use integer stoichiometry while retaining the expected fractional order.
     """
     thermo_path = str(
         data_path["integration"] / "pfr_test_pure_comp.json")
@@ -55,11 +62,12 @@ def _build_nonisothermal_reactor(data_path):
     rate_constant = 40 / 60  # [1/s], converted exactly from 40 1/min
     activation_energy = 2.0e3  # [J/mol]
     reaction_enthalpy = -5.0e3  # [J/mol of reaction as written]
+    stoich_matrix = np.array([[-1.0, -1.0, 1.0]])  # [-]
     reaction_orders = np.array(
         [[0.5, 1.0]])  # [-], fractional A order exercises the zero boundary
     kinetics = RxnKinetics(
         thermo_path,
-        stoich_matrix=[[-1, -1, 1]],
+        stoich_matrix=stoich_matrix,
         k_params=[rate_constant],
         ea_params=[activation_energy],
         partic_species=["A", "B", "C"],
@@ -252,6 +260,9 @@ def test_nonisothermal_state_jacobian_covers_species_and_thermal_blocks(
     reactor, states, params = _build_nonisothermal_reactor(data_path)
     time = 0.0  # [s]
 
+    expected_orders = np.array([[0.5, 1.0, 0.0]])  # [-]
+    np.testing.assert_array_equal(reactor.Kinetics.params_f, expected_orders)
+
     actual = reactor.get_jacobians(
         time, states, None, None, params, wrt_states=True
     )  # [mixed rate/state units]
@@ -266,6 +277,11 @@ def test_nonisothermal_state_jacobian_covers_species_and_thermal_blocks(
 
     reactor_temp_index = reactor.Kinetics.num_species
     jacket_temp_index = reactor_temp_index + 1
+    species_state_block = actual[
+        :reactor_temp_index, :reactor_temp_index
+    ]  # [1/s]
+    assert np.all(np.any(species_state_block[:, :2] != 0, axis=0))
+    np.testing.assert_array_equal(species_state_block[:, 2], 0)
     assert np.any(actual[:reactor_temp_index, reactor_temp_index] != 0)
     assert np.any(actual[reactor_temp_index, :reactor_temp_index] != 0)
     assert actual[reactor_temp_index, jacket_temp_index] > 0
@@ -306,9 +322,71 @@ def test_nonisothermal_parameter_sensitivity_includes_energy_row(data_path):
 
 
 @pytest.mark.unit
+def test_nonisothermal_sensitivity_rhs_couples_state_jacobian(data_path):
+    """Assert ``df/dy @ S + df/dtheta`` with asymmetric sensitivities."""
+    reactor, states, params = _build_nonisothermal_reactor(data_path)
+    time = 0.0  # [s]
+    sensitivities = np.arange(
+        1.0, states.size * params.size + 1.0
+    ).reshape(states.size, params.size)  # [state units / parameter units]
+
+    actual = reactor.get_jacobians(
+        time, states, None, sensitivities, params, wrt_states=False
+    )  # [state units / parameter units / s]
+
+    original_params = reactor.Kinetics.concat_params().copy(
+    )  # [parameter-dependent units]
+    try:
+        expected_states = _five_point_jacobian(
+            _balances_at_states, states, args=(reactor, time, params)
+        )  # [mixed rate/state units]
+        expected_params = _five_point_jacobian(
+            _balances_at_params, params, args=(reactor, time, states)
+        )  # [state units / parameter units / s]
+    finally:
+        reactor.Kinetics.set_params(original_params)
+        reactor.unit_model(time, states, params=original_params)
+
+    expected = (
+        expected_states.dot(sensitivities) + expected_params
+    )  # [state units / parameter units / s]
+    _assert_jacobians_agree(actual, expected)
+
+
+@pytest.mark.unit
+def test_nonisothermal_state_jacobian_stays_in_concentration_domain(
+        data_path):
+    """Exercise the one-sided boundary through the shipped kinetic model."""
+    reactor, states, params = _build_nonisothermal_reactor(data_path)
+    fractional_order = 1.5  # [-]
+    params[-2] = fractional_order
+    reactor.Kinetics.set_params(params)
+    production_model = reactor.Kinetics.kinetic_model
+    recording_model = Mock(wraps=production_model)
+    reactor.Kinetics.kinetic_model = recording_model
+    states[0] = 0.0  # [mol/L], depleted reactant boundary
+    time = 0.0  # [s]
+
+    jacobian = reactor.get_jacobians(
+        time, states, None, None, params, wrt_states=True
+    )  # [mixed rate/state units]
+
+    evaluated_concentrations = [
+        np.asarray(call.args[0]) for call in recording_model.call_args_list
+    ]  # [mol/L]
+    minimum_valid_concentration = 0.0  # [mol/L]
+    assert evaluated_concentrations
+    assert all(
+        np.all(concentrations >= minimum_valid_concentration)
+        for concentrations in evaluated_concentrations
+    )
+    assert np.all(np.isfinite(jacobian))
+
+
+@pytest.mark.unit
 def test_nonisothermal_state_jacobian_is_finite_at_zero_concentration(
         data_path):
-    """Use a one-sided concentration perturbation at the physical boundary."""
+    """Keep a valid unclipped custom power law finite at the boundary."""
     reactor, states, params = _build_nonisothermal_reactor(data_path)
     fractional_order = 1.5  # [-], defined power law with zero derivative at zero
     params[-2] = fractional_order

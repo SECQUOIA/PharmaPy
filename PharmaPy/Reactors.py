@@ -591,6 +591,11 @@ class _BaseReactor:
         heat capacity, vessel heat transfer, and jacket dynamics without
         duplicating those balance equations. The original kinetic parameters
         and nominal reactor state are restored before returning.
+
+        An explicit stencil is used instead of CVodeS' internal difference
+        quotients so concentration perturbations can remain in the physical
+        nonnegative domain and the same formulation can supply the state
+        Jacobian required by ``problem.jac``.
         """
         state_values = np.asarray(states, dtype=float)  # [mol/L; K]
         original_params = self.Kinetics.concat_params().copy(
@@ -669,9 +674,9 @@ class _BaseReactor:
             raise ValueError("sens must be provided when wrt_states is False")
 
         # ---------- w.r.t. states
-        num_species = self.Kinetics.num_species
-        conc = states[:num_species]
         if self.isothermal:
+            num_species = self.Kinetics.num_species
+            conc = states[:num_species]
             temp = self.Liquid_1.temp
         else:
             jac_states, jac_params = self._get_nonisothermal_jacobians(
