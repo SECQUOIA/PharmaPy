@@ -513,8 +513,9 @@ class Drying:
 
         Notes
         -----
-        ``latent_heat`` is requested on a mass basis [J/kg], so multiplying by
-        ``dry_rate`` gives the full latent power [J/m**3/s]. The existing
+        ``latent_heat`` is requested on a mass basis [J/kg] and spans every
+        species, so its volatile columns are paired with the matching
+        ``dry_rate`` columns to give the latent power [J/m**3/s]. The existing
         gas-convection discretization is preserved in this branch; ``dTg_dz``
         [kg*K/m**4] and ``conv_term`` [J*kg/m**6/s] are annotated as
         implemented so that the remaining dimensional debt is explicit without
@@ -565,8 +566,14 @@ class Drying:
         # ----- Condensed phases equations
         dens_liq = self.rho_liq  # [kg/m**3]
         heat_loss_cond = np.zeros_like(temp_sol)  # [J/m**3/s]
+        # getHeatVaporization returns one column per species, and drops to
+        # 1-D for a single node, so restore the node axis before pairing
+        # each volatile's drying rate with that same volatile's latent
+        # heat. The non-condensable carrier columns are zero and excluded.
+        latent_heat_volatiles = np.atleast_2d(
+            latent_heat)[:, self.idx_volatiles]  # [J/kg]
         drying_terms = (
-            dry_rate[:, self.idx_volatiles] * latent_heat
+            dry_rate[:, self.idx_volatiles] * latent_heat_volatiles
         ).sum(axis=1)  # [J/m**3/s]
         denom_cond = self.rho_sol * (1 - self.porosity) * self.cp_sol + \
             self.porosity * satur * cpl_mix * dens_liq  # [J/m**3/K]
