@@ -801,9 +801,10 @@ class VaporPhase(ThermoPhysicalManager):
         float or ndarray
             Vapor-phase enthalpy on the selected basis: [J/kg] for
             ``basis='mass'`` and [J/mol] for ``basis='mole'``. For the
-            supported single-temperature forms, mixture enthalpy is scalar
-            and individual species enthalpy has shape ``(1, num_species)`` in
-            the phase's component order.
+            supported single-temperature forms, when the requested
+            temperature differs from every species critical temperature,
+            mixture enthalpy is scalar and individual species enthalpy has
+            shape ``(1, num_species)`` in the phase's component order.
 
         Raises
         ------
@@ -817,11 +818,18 @@ class VaporPhase(ThermoPhysicalManager):
         heat. Subcritical species contribute liquid sensible heat plus latent
         heat of vaporization.
 
-        Inputs containing more than one temperature are not supported. The
-        supercritical/subcritical split currently compares the temperature and
-        species axes directly, so even equal-length arrays that happen to
-        broadcast do not define a valid multi-temperature calculation. This
-        broader temperature-axis contract is tracked in issue #178.
+        Arrays containing more than one temperature are outside the supported
+        public contract, but this boundary is not yet validated. The current
+        implementation accepts an array only when its length equals the number
+        of species; every other length raises from the elementwise
+        ``temp > t_crit`` comparison. That comparison pairs a temperature
+        index with a species index, so the split is meaningful only while each
+        species keeps one classification over the requested temperatures.
+
+        A temperature exactly equal to a species critical temperature is
+        omitted from both strict comparison subsets. The broader
+        temperature-axis validation and criticality classification contract is
+        tracked in issue #178.
         """
         if mass_frac is None and mole_frac is None:
             mass_frac = self.mass_frac

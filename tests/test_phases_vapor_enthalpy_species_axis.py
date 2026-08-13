@@ -2,9 +2,10 @@
 
 Regression coverage for issue #177.  When a vapor phase contains both
 supercritical and subcritical species, ``total_h=False`` must return one column
-per species in the phase's original order.  The expected sensible and latent
-enthalpies below are calculated directly from constant heat capacities and the
-Watson correlation rather than through the implementation under test.
+per species in the phase's original order for scalar and one-element-array
+temperature inputs.  The expected sensible and latent enthalpies below are
+calculated directly from constant heat capacities and the Watson correlation
+rather than through the implementation under test.
 """
 
 import json
@@ -158,8 +159,14 @@ def _expected_molar_enthalpy(num_species: int) -> np.ndarray:
     return expected_enthalpy
 
 
+@pytest.mark.parametrize(
+    "temperature",
+    [PROBE_TEMPERATURE, np.array([PROBE_TEMPERATURE])],
+    ids=["scalar", "one_element_array"],
+)
 @pytest.mark.parametrize("basis", ["mole", "mass"])
-def test_equal_subsets_return_one_ordered_species_row(tmp_path, basis):
+def test_equal_subsets_return_one_ordered_species_row(
+        tmp_path, basis, temperature):
     """An equal split cannot silently turn species into temperature rows.
 
     Parameters
@@ -168,6 +175,8 @@ def test_equal_subsets_return_one_ordered_species_row(tmp_path, basis):
         Temporary directory for the synthetic component table.
     basis : {'mole', 'mass'}
         Physical basis of the requested and expected enthalpy.
+    temperature : float or ndarray
+        Scalar or one-element-array evaluation temperature [K].
     """
     num_species = 2
     phase = _make_vapor_phase(tmp_path, num_species)
@@ -179,15 +188,21 @@ def test_equal_subsets_return_one_ordered_species_row(tmp_path, basis):
     )  # [J/mol] or [J/kg], selected by basis
 
     observed = phase.getEnthalpy(
-        temp=PROBE_TEMPERATURE, total_h=False, basis=basis
+        temp=temperature, total_h=False, basis=basis
     )  # [J/mol] or [J/kg], selected by basis
 
     assert observed.shape == (1, num_species)
     np.testing.assert_allclose(observed[0], expected, rtol=1e-12)
 
 
+@pytest.mark.parametrize(
+    "temperature",
+    [PROBE_TEMPERATURE, np.array([PROBE_TEMPERATURE])],
+    ids=["scalar", "one_element_array"],
+)
 @pytest.mark.parametrize("basis", ["mole", "mass"])
-def test_unequal_subsets_keep_every_species_column(tmp_path, basis):
+def test_unequal_subsets_keep_every_species_column(
+        tmp_path, basis, temperature):
     """One supercritical and two subcritical species remain aligned.
 
     Parameters
@@ -196,6 +211,8 @@ def test_unequal_subsets_keep_every_species_column(tmp_path, basis):
         Temporary directory for the synthetic component table.
     basis : {'mole', 'mass'}
         Physical basis of the requested and expected enthalpy.
+    temperature : float or ndarray
+        Scalar or one-element-array evaluation temperature [K].
     """
     num_species = 3
     phase = _make_vapor_phase(tmp_path, num_species)
@@ -207,15 +224,21 @@ def test_unequal_subsets_keep_every_species_column(tmp_path, basis):
     )  # [J/mol] or [J/kg], selected by basis
 
     observed = phase.getEnthalpy(
-        temp=PROBE_TEMPERATURE, total_h=False, basis=basis
+        temp=temperature, total_h=False, basis=basis
     )  # [J/mol] or [J/kg], selected by basis
 
     assert observed.shape == (1, num_species)
     np.testing.assert_allclose(observed[0], expected, rtol=1e-12)
 
 
+@pytest.mark.parametrize(
+    "temperature",
+    [PROBE_TEMPERATURE, np.array([PROBE_TEMPERATURE])],
+    ids=["scalar", "one_element_array"],
+)
 @pytest.mark.parametrize("basis", ["mole", "mass"])
-def test_total_enthalpy_sibling_remains_fraction_weighted(tmp_path, basis):
+def test_total_enthalpy_sibling_remains_fraction_weighted(
+        tmp_path, basis, temperature):
     """The existing mixture branch keeps its fraction-weighted value.
 
     Parameters
@@ -224,6 +247,8 @@ def test_total_enthalpy_sibling_remains_fraction_weighted(tmp_path, basis):
         Temporary directory for the synthetic component table.
     basis : {'mole', 'mass'}
         Physical basis of the requested and expected enthalpy.
+    temperature : float or ndarray
+        Scalar or one-element-array evaluation temperature [K].
     """
     num_species = 3
     phase = _make_vapor_phase(tmp_path, num_species)
@@ -238,7 +263,7 @@ def test_total_enthalpy_sibling_remains_fraction_weighted(tmp_path, basis):
         expected_total = np.dot(phase.mass_frac, expected_mass)  # [J/kg]
 
     observed_total = phase.getEnthalpy(
-        temp=PROBE_TEMPERATURE, total_h=True, basis=basis
+        temp=temperature, total_h=True, basis=basis
     )  # [J/mol] or [J/kg], selected by basis
 
     assert observed_total == pytest.approx(expected_total, rel=1e-12)
