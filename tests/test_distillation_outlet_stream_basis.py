@@ -46,8 +46,13 @@ THERMO_TWO_SPECIES = {
     },
 }
 
-MW = np.array([32.0, 100.0])  # [g/mol]
-RHO_MASS = np.array([800.0, 1250.0])  # [kg/m**3]
+_SPECIES = ("light", "heavy")
+MW = np.array(
+    [THERMO_TWO_SPECIES[name]["mw"] for name in _SPECIES]
+)  # [g/mol]
+RHO_MASS = np.array(
+    [THERMO_TWO_SPECIES[name]["rho_liq"] for name in _SPECIES]
+)  # [kg/m**3]
 RHO_MOLE = RHO_MASS / MW  # [mol/L], equals [25.0, 12.5]
 
 COLUMN_PRESSURE = 101325.0  # [Pa]
@@ -183,11 +188,12 @@ def test_steady_outlets_use_fraction_basis_for_balance_composition(tmp_path):
     np.testing.assert_allclose(
         column.OutletBottom.mass_conc, expected_bot_conc * MW, rtol=1e-12)
 
-    # A liquid mixture of these species has a molar density between the pure
-    # values 12.5 and 25.0 mol/L, so a unit sum is a fraction vector in
+    # Under ideal volume mixing, mixture molar density is bounded by the pure
+    # species values. A unit sum therefore identifies a fraction vector in
     # concentration clothing.
-    assert column.OutletDistillate.mole_conc.sum() > min(RHO_MOLE)
-    assert column.OutletBottom.mole_conc.sum() > min(RHO_MOLE)
+    for outlet in (column.OutletDistillate, column.OutletBottom):
+        total_conc = outlet.mole_conc.sum()  # [mol/L]
+        assert np.min(RHO_MOLE) <= total_conc <= np.max(RHO_MOLE)
 
 
 def test_steady_outlets_preserve_balance_fractions_and_flows(tmp_path):
