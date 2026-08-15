@@ -231,6 +231,32 @@ MOLE_SOLUTES = {"api": 0.4, "impurity": 0.6}  # [mol/L]
 # Solute loadings shared by the mass-basis tests, keyed by species name.
 MASS_SOLUTES = {"api": 60.0, "impurity": 40.0}  # [kg/m**3]
 
+# Relative tolerance for every comparison in this module.
+#
+# Both sides of each comparison evaluate the same governing equation on the
+# same fixture constants in IEEE-754 double precision: the expected value here
+# from `mw / rho_liq` and the volume-balance identity, the actual value inside
+# PharmaPy from `1 / (rho_liq / mw)` and the same identity. The only admissible
+# difference is therefore accumulated rounding over a chain of roughly ten
+# elementary operations, whose worst case is a few units in the last place.
+#
+# The budget is set at 100 machine epsilons (~2.2e-14), about an order of
+# magnitude above that worst case. It is deliberately a stated roundoff budget
+# rather than a value fitted to an observed error: at the current fixture the
+# two derivations happen to agree bit-for-bit (`mw / rho` and `1 / (rho / mw)`
+# round identically for these particular constants), so every comparison in
+# this module currently consumes none of the budget and even `rtol=0` would
+# pass. That coincidence is a property of these numbers, not a guarantee, so
+# the tolerance exists as headroom for future fixture edits. It is still four
+# to seven orders of magnitude tighter than the NumPy (1e-7) and pytest (1e-6)
+# defaults it replaces, so a genuine numerical regression is caught.
+ROUNDOFF_RTOL = 100 * np.finfo(float).eps  # [-]
+
+# No expected value in this module is zero, so no absolute floor is needed and
+# an exact zero keeps the relative bound above authoritative. Raising this
+# would silently weaken every comparison.
+ROUNDOFF_ATOL = 0.0  # [-]
+
 
 def test_conc_to_frac_returns_filled_conc_for_first_species_solvent(tmp_path):
     path = _write_thermo(tmp_path, SOLVENT_FIRST_ORDER, "solvent_first.json")
@@ -251,26 +277,47 @@ def test_conc_to_frac_returns_filled_conc_for_first_species_solvent(tmp_path):
     )  # [-]
 
     # Only the solute entries are read; the solvent slot is back-calculated.
-    conc_in = np.array([0.0, MOLE_SOLUTES["api"], MOLE_SOLUTES["impurity"]])
+    conc_in = np.array(
+        [0.0, MOLE_SOLUTES["api"], MOLE_SOLUTES["impurity"]]
+    )  # [mol/L]
 
+    # mass_frac [-], mole_frac [-], conc_out [mol/L]
     mass_frac, mole_frac, conc_out = phase.conc_to_frac(
         conc_in.copy(), solvent_ind=0
     )
-    np.testing.assert_allclose(conc_out, expected_conc)
-    np.testing.assert_allclose(mole_frac, expected_mole_frac)
-    np.testing.assert_allclose(mass_frac, expected_mass_frac)
+    np.testing.assert_allclose(
+        conc_out, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
+    np.testing.assert_allclose(
+        mole_frac, expected_mole_frac, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
+    np.testing.assert_allclose(
+        mass_frac, expected_mass_frac, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
 
+    # mole_frac_only [-], conc_mole_basis [mol/L]
     mole_frac_only, conc_mole_basis = phase.conc_to_frac(
         conc_in.copy(), solvent_ind=0, basis="mole"
     )
-    np.testing.assert_allclose(mole_frac_only, expected_mole_frac)
-    np.testing.assert_allclose(conc_mole_basis, expected_conc)
+    np.testing.assert_allclose(
+        mole_frac_only, expected_mole_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        conc_mole_basis, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
 
+    # mass_frac_only [-], conc_mass_basis [mol/L]
     mass_frac_only, conc_mass_basis = phase.conc_to_frac(
         conc_in.copy(), solvent_ind=0, basis="mass"
     )
-    np.testing.assert_allclose(mass_frac_only, expected_mass_frac)
-    np.testing.assert_allclose(conc_mass_basis, expected_conc)
+    np.testing.assert_allclose(
+        mass_frac_only, expected_mass_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        conc_mass_basis, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
 
 
 def test_mass_conc_to_frac_returns_filled_conc_for_first_species_solvent(
@@ -291,26 +338,47 @@ def test_mass_conc_to_frac_returns_filled_conc_for_first_species_solvent(
         (expected_mass_frac / mw) / np.dot(expected_mass_frac, 1 / mw)
     )  # [-]
 
-    conc_in = np.array([0.0, MASS_SOLUTES["api"], MASS_SOLUTES["impurity"]])
+    conc_in = np.array(
+        [0.0, MASS_SOLUTES["api"], MASS_SOLUTES["impurity"]]
+    )  # [kg/m**3]
 
+    # mass_frac [-], mole_frac [-], conc_out [kg/m**3]
     mass_frac, mole_frac, conc_out = phase.mass_conc_to_frac(
         conc_in.copy(), solvent_ind=0
     )
-    np.testing.assert_allclose(conc_out, expected_conc)
-    np.testing.assert_allclose(mass_frac, expected_mass_frac)
-    np.testing.assert_allclose(mole_frac, expected_mole_frac)
+    np.testing.assert_allclose(
+        conc_out, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
+    np.testing.assert_allclose(
+        mass_frac, expected_mass_frac, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
+    np.testing.assert_allclose(
+        mole_frac, expected_mole_frac, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
 
+    # mass_frac_only [-], conc_mass_basis [kg/m**3]
     mass_frac_only, conc_mass_basis = phase.mass_conc_to_frac(
         conc_in.copy(), solvent_ind=0, basis="mass"
     )
-    np.testing.assert_allclose(mass_frac_only, expected_mass_frac)
-    np.testing.assert_allclose(conc_mass_basis, expected_conc)
+    np.testing.assert_allclose(
+        mass_frac_only, expected_mass_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        conc_mass_basis, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
 
+    # mole_frac_only [-], conc_mole_basis [kg/m**3]
     mole_frac_only, conc_mole_basis = phase.mass_conc_to_frac(
         conc_in.copy(), solvent_ind=0, basis="mole"
     )
-    np.testing.assert_allclose(mole_frac_only, expected_mole_frac)
-    np.testing.assert_allclose(conc_mole_basis, expected_conc)
+    np.testing.assert_allclose(
+        mole_frac_only, expected_mole_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        conc_mole_basis, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
 
 
 def test_liquid_phase_mole_conc_constructor_with_first_species_solvent(
@@ -337,11 +405,24 @@ def test_liquid_phase_mole_conc_constructor_with_first_species_solvent(
         name_solv="water",
     )
 
-    np.testing.assert_allclose(phase.mole_conc, expected_conc)
-    np.testing.assert_allclose(phase.mole_frac, expected_mole_frac)
-    np.testing.assert_allclose(phase.mass_frac, expected_mass_frac)
-    np.testing.assert_allclose(phase.mass_conc, expected_conc * mw)
-    assert phase.mw_av == pytest.approx(expected_mw_av)
+    np.testing.assert_allclose(
+        phase.mole_conc, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
+    np.testing.assert_allclose(
+        phase.mole_frac, expected_mole_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        phase.mass_frac, expected_mass_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        phase.mass_conc, expected_conc * mw,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    assert phase.mw_av == pytest.approx(
+        expected_mw_av, rel=ROUNDOFF_RTOL, abs=ROUNDOFF_ATOL
+    )
 
 
 @pytest.mark.parametrize("as_list", [False, True], ids=["ndarray", "list"])
@@ -376,9 +457,17 @@ def test_liquid_phase_update_mole_conc_with_first_species_solvent(
         mass=1.0,  # [kg]
     )
 
-    np.testing.assert_allclose(phase.mole_conc, expected_conc)
-    np.testing.assert_allclose(phase.mole_frac, expected_mole_frac)
-    np.testing.assert_allclose(phase.mass_conc, expected_conc * mw)
+    np.testing.assert_allclose(
+        phase.mole_conc, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
+    np.testing.assert_allclose(
+        phase.mole_frac, expected_mole_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        phase.mass_conc, expected_conc * mw,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
 
 
 @pytest.mark.parametrize("as_list", [False, True], ids=["ndarray", "list"])
@@ -406,9 +495,17 @@ def test_liquid_phase_update_mass_conc_with_first_species_solvent(
         mass=1.0,  # [kg]
     )
 
-    np.testing.assert_allclose(phase.mass_conc, expected_conc)
-    np.testing.assert_allclose(phase.mass_frac, expected_mass_frac)
-    np.testing.assert_allclose(phase.mole_conc, expected_conc / mw)
+    np.testing.assert_allclose(
+        phase.mass_conc, expected_conc, rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
+    np.testing.assert_allclose(
+        phase.mass_frac, expected_mass_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        phase.mole_conc, expected_conc / mw,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
 
 
 def test_liquid_stream_first_species_solvent(tmp_path):
@@ -441,11 +538,21 @@ def test_liquid_stream_first_species_solvent(tmp_path):
     )
 
     assert stream.ind_solv == 0
-    np.testing.assert_allclose(stream.mole_conc, expected_initial)
-    np.testing.assert_allclose(stream.mole_frac, expected_mole_frac)
-    assert stream.mw_av == pytest.approx(expected_mw_av)
+    np.testing.assert_allclose(
+        stream.mole_conc, expected_initial,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    np.testing.assert_allclose(
+        stream.mole_frac, expected_mole_frac,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    assert stream.mw_av == pytest.approx(
+        expected_mw_av, rel=ROUNDOFF_RTOL, abs=ROUNDOFF_ATOL
+    )
     # The flow rate must survive the positional handoff unchanged.
-    assert stream.mass_flow == pytest.approx(mass_flow)
+    assert stream.mass_flow == pytest.approx(
+        mass_flow, rel=ROUNDOFF_RTOL, abs=ROUNDOFF_ATOL
+    )
 
     # Update with a different, asymmetric loading so a stale composition
     # cannot pass by matching the constructor result.
@@ -461,11 +568,17 @@ def test_liquid_stream_first_species_solvent(tmp_path):
         mass_flow=mass_flow,
     )
 
-    np.testing.assert_allclose(stream.mole_conc, expected_updated)
     np.testing.assert_allclose(
-        stream.mole_frac, expected_updated / expected_updated.sum()
+        stream.mole_conc, expected_updated,
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
     )
-    assert stream.mass_flow == pytest.approx(mass_flow)
+    np.testing.assert_allclose(
+        stream.mole_frac, expected_updated / expected_updated.sum(),
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
+    assert stream.mass_flow == pytest.approx(
+        mass_flow, rel=ROUNDOFF_RTOL, abs=ROUNDOFF_ATOL
+    )
 
     # The two loadings must differ, or the update assertion is vacuous.
     assert not np.allclose(expected_initial, expected_updated)
@@ -509,15 +622,20 @@ def test_first_species_solvent_matches_reordered_species(tmp_path):
                    for name in SOLVENT_FIRST_ORDER]
 
     np.testing.assert_allclose(
-        phase_first.mole_conc, phase_second.mole_conc[permutation]
+        phase_first.mole_conc, phase_second.mole_conc[permutation],
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
     )
     np.testing.assert_allclose(
-        phase_first.mole_frac, phase_second.mole_frac[permutation]
+        phase_first.mole_frac, phase_second.mole_frac[permutation],
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
     )
     np.testing.assert_allclose(
-        phase_first.mass_frac, phase_second.mass_frac[permutation]
+        phase_first.mass_frac, phase_second.mass_frac[permutation],
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
     )
-    assert phase_first.mw_av == pytest.approx(phase_second.mw_av)
+    assert phase_first.mw_av == pytest.approx(
+        phase_second.mw_av, rel=ROUNDOFF_RTOL, abs=ROUNDOFF_ATOL
+    )
 
     # The permutation must actually reorder; otherwise the comparison above
     # would hold for the wrong reason.
@@ -534,12 +652,19 @@ def test_absent_solvent_still_returns_fractions_only(tmp_path):
     assert phase.ind_solv is None
 
     conc = np.array([50.0, 0.4, 0.6])  # [mol/L]
-    mass_frac, mole_frac = phase.conc_to_frac(conc.copy())
-    np.testing.assert_allclose(mole_frac, conc / conc.sum())
+    mass_frac, mole_frac = phase.conc_to_frac(conc.copy())  # [-], [-]
+    np.testing.assert_allclose(
+        mole_frac, conc / conc.sum(), rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL
+    )
 
     mass_conc = np.array([900.0, 60.0, 40.0])  # [kg/m**3]
-    mass_frac_only, mole_frac_only = phase.mass_conc_to_frac(mass_conc.copy())
-    np.testing.assert_allclose(mass_frac_only, mass_conc / mass_conc.sum())
+    mass_frac_only, mole_frac_only = phase.mass_conc_to_frac(
+        mass_conc.copy()
+    )  # [-], [-]
+    np.testing.assert_allclose(
+        mass_frac_only, mass_conc / mass_conc.sum(),
+        rtol=ROUNDOFF_RTOL, atol=ROUNDOFF_ATOL,
+    )
 
     # Single-value returns for an explicit basis must stay unwrapped.
     assert isinstance(
