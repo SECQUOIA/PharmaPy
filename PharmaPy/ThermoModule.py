@@ -466,10 +466,12 @@ class ThermoPhysicalManager:
         Parameters
         ----------
         conc : array-like
-            Species molar concentrations with shape ``(num_species,)`` or
-            ``(num_points, num_species)`` [mol/L]. When ``solvent_ind`` is
+            Species molar concentrations [mol/L]. Shape ``(num_species,)``
+            is always accepted; ``(num_points, num_species)`` is accepted
+            only when ``solvent_ind`` is ``None``. When ``solvent_ind`` is
             given, the value at that index is ignored on input and replaced
-            by the concentration that closes the mixture volume balance.
+            by the concentration that closes the mixture volume balance, and
+            that back-calculation supports one-dimensional input only.
         solvent_ind : int, optional
             Positional index of the solvent species [-]. Index ``0`` is a
             valid solvent index, so this argument is compared with ``None``
@@ -493,6 +495,14 @@ class ThermoPhysicalManager:
             Species molar concentrations with the solvent entry filled in
             [mol/L]. Appended to the returned tuple only when ``solvent_ind``
             is not ``None``.
+
+        Raises
+        ------
+        IndexError
+            If ``conc`` is two-dimensional and ``solvent_ind`` is not
+            ``None``. The solvent mask is built with ``numpy.ones_like``, so
+            for a two-dimensional argument it selects along the point axis
+            instead of the species axis.
 
         Notes
         -----
@@ -558,10 +568,12 @@ class ThermoPhysicalManager:
         Parameters
         ----------
         conc : array-like
-            Species mass concentrations with shape ``(num_species,)`` or
-            ``(num_points, num_species)`` [kg/m**3]. When ``solvent_ind`` is
+            Species mass concentrations [kg/m**3]. Shape ``(num_species,)``
+            is always accepted; ``(num_points, num_species)`` is accepted
+            only when ``solvent_ind`` is ``None``. When ``solvent_ind`` is
             given, the value at that index is ignored on input and replaced
-            by the concentration that closes the mixture volume balance.
+            by the concentration that closes the mixture volume balance, and
+            that back-calculation supports one-dimensional input only.
         solvent_ind : int, optional
             Positional index of the solvent species [-]. Index ``0`` is a
             valid solvent index, so this argument is compared with ``None``
@@ -585,6 +597,12 @@ class ThermoPhysicalManager:
             Species mass concentrations with the solvent entry filled in
             [kg/m**3]. Appended to the returned tuple only when
             ``solvent_ind`` is not ``None``.
+
+        Raises
+        ------
+        IndexError
+            If ``conc`` is two-dimensional and ``solvent_ind`` is not
+            ``None``, for the same reason as in :meth:`conc_to_frac`.
 
         Notes
         -----

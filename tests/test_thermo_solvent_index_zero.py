@@ -5,6 +5,9 @@ and `LiquidPhase.updatePhase` select their return arity from the solvent index.
 A truthiness test cannot distinguish the valid index ``0`` from an absent
 solvent, so these tests pin the behavior for a solvent declared as the first
 species and check it against the same mixture with the species order permuted.
+`LiquidStream` is exercised as well, because it is the entry point the
+repository's flowsheets use and it reaches the converters through a positional
+delegation to `LiquidPhase.updatePhase`.
 
 The self-contained three-species fixture needs no repository data. Molecular
 masses and liquid densities are deliberately distinct so that an index or axis
@@ -17,6 +20,7 @@ import numpy as np
 import pytest
 
 from PharmaPy.Phases import LiquidPhase
+from PharmaPy.Streams import LiquidStream
 
 
 pytestmark = pytest.mark.unit
@@ -340,7 +344,19 @@ def test_liquid_phase_mole_conc_constructor_with_first_species_solvent(
     assert phase.mw_av == pytest.approx(expected_mw_av)
 
 
-def test_liquid_phase_update_mole_conc_with_first_species_solvent(tmp_path):
+@pytest.mark.parametrize("as_list", [False, True], ids=["ndarray", "list"])
+def test_liquid_phase_update_mole_conc_with_first_species_solvent(
+    tmp_path, as_list
+):
+    """Both argument types must return the back-calculated solvent entry.
+
+    The converter writes the solvent concentration into the array produced by
+    ``numpy.asarray``. That array is the caller's own object for an
+    ``ndarray`` argument but a private copy for a list, so only the list case
+    depends on the filled concentration actually being returned. Without the
+    fix the list case silently keeps the unfilled solvent entry, which is the
+    stale-composition impact reported in issue #57.
+    """
     path = _write_thermo(tmp_path, SOLVENT_FIRST_ORDER, "solvent_first.json")
     phase = LiquidPhase(
         path, mass=1.0, mole_frac=np.array([0.98, 0.01, 0.01]),
@@ -353,10 +369,10 @@ def test_liquid_phase_update_mole_conc_with_first_species_solvent(tmp_path):
     expected_mole_frac = expected_conc / expected_conc.sum()  # [-]
     mw = _molar_masses(SOLVENT_FIRST_ORDER)  # [g/mol]
 
+    conc_in = [0.0, MOLE_SOLUTES["api"], MOLE_SOLUTES["impurity"]]  # [mol/L]
+
     phase.updatePhase(
-        mole_conc=np.array(
-            [0.0, MOLE_SOLUTES["api"], MOLE_SOLUTES["impurity"]]
-        ),
+        mole_conc=conc_in if as_list else np.array(conc_in),
         mass=1.0,  # [kg]
     )
 
@@ -365,7 +381,10 @@ def test_liquid_phase_update_mole_conc_with_first_species_solvent(tmp_path):
     np.testing.assert_allclose(phase.mass_conc, expected_conc * mw)
 
 
-def test_liquid_phase_update_mass_conc_with_first_species_solvent(tmp_path):
+@pytest.mark.parametrize("as_list", [False, True], ids=["ndarray", "list"])
+def test_liquid_phase_update_mass_conc_with_first_species_solvent(
+    tmp_path, as_list
+):
     path = _write_thermo(tmp_path, SOLVENT_FIRST_ORDER, "solvent_first.json")
     phase = LiquidPhase(
         path, mass=1.0, mole_frac=np.array([0.98, 0.01, 0.01]),
@@ -378,16 +397,78 @@ def test_liquid_phase_update_mass_conc_with_first_species_solvent(tmp_path):
     expected_mass_frac = expected_conc / expected_conc.sum()  # [-]
     mw = _molar_masses(SOLVENT_FIRST_ORDER)  # [g/mol]
 
+    conc_in = [
+        0.0, MASS_SOLUTES["api"], MASS_SOLUTES["impurity"]
+    ]  # [kg/m**3]
+
     phase.updatePhase(
-        mass_conc=np.array(
-            [0.0, MASS_SOLUTES["api"], MASS_SOLUTES["impurity"]]
-        ),
+        mass_conc=conc_in if as_list else np.array(conc_in),
         mass=1.0,  # [kg]
     )
 
     np.testing.assert_allclose(phase.mass_conc, expected_conc)
     np.testing.assert_allclose(phase.mass_frac, expected_mass_frac)
     np.testing.assert_allclose(phase.mole_conc, expected_conc / mw)
+
+
+def test_liquid_stream_first_species_solvent(tmp_path):
+    """`LiquidStream` is the entry point the repository's flowsheets use.
+
+    It inherits the corrected converters through `LiquidPhase` and forwards
+    to `LiquidPhase.updatePhase` positionally, mapping ``concentr`` to
+    ``mole_conc`` and ``vol_flow``/``mass_flow``/``mole_flow`` to
+    ``vol``/``mass``/``moles``. Asserting concentrations here pins that
+    handoff as well as the solvent-index behavior, since an argument-order
+    mistake would move the flow rate into a composition slot.
+    """
+    path = _write_thermo(tmp_path, SOLVENT_FIRST_ORDER, "solvent_first.json")
+
+    expected_initial = _expected_mole_conc(
+        SOLVENT_FIRST_ORDER, "water", MOLE_SOLUTES
+    )  # [mol/L]
+    mw = _molar_masses(SOLVENT_FIRST_ORDER)  # [g/mol]
+    expected_mole_frac = expected_initial / expected_initial.sum()  # [-]
+    expected_mw_av = np.dot(expected_mole_frac, mw)  # [g/mol]
+    mass_flow = 1.0  # [kg/s]
+
+    stream = LiquidStream(
+        path,
+        mass_flow=mass_flow,
+        mole_conc=np.array(
+            [0.0, MOLE_SOLUTES["api"], MOLE_SOLUTES["impurity"]]
+        ),
+        name_solv="water",
+    )
+
+    assert stream.ind_solv == 0
+    np.testing.assert_allclose(stream.mole_conc, expected_initial)
+    np.testing.assert_allclose(stream.mole_frac, expected_mole_frac)
+    assert stream.mw_av == pytest.approx(expected_mw_av)
+    # The flow rate must survive the positional handoff unchanged.
+    assert stream.mass_flow == pytest.approx(mass_flow)
+
+    # Update with a different, asymmetric loading so a stale composition
+    # cannot pass by matching the constructor result.
+    updated_solutes = {"api": 0.8, "impurity": 0.2}  # [mol/L]
+    expected_updated = _expected_mole_conc(
+        SOLVENT_FIRST_ORDER, "water", updated_solutes
+    )  # [mol/L]
+
+    stream.updatePhase(
+        concentr=np.array(
+            [0.0, updated_solutes["api"], updated_solutes["impurity"]]
+        ),
+        mass_flow=mass_flow,
+    )
+
+    np.testing.assert_allclose(stream.mole_conc, expected_updated)
+    np.testing.assert_allclose(
+        stream.mole_frac, expected_updated / expected_updated.sum()
+    )
+    assert stream.mass_flow == pytest.approx(mass_flow)
+
+    # The two loadings must differ, or the update assertion is vacuous.
+    assert not np.allclose(expected_initial, expected_updated)
 
 
 def test_first_species_solvent_matches_reordered_species(tmp_path):
