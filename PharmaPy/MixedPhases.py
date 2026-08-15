@@ -5,6 +5,8 @@ Created on Tue Jun 16 15:43:14 2020
 @author: dcasasor
 """
 
+from collections.abc import Sequence
+
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Interpolation import NewtonInterpolation
 from PharmaPy.Commons import trapezoidal_rule
@@ -12,9 +14,6 @@ from PharmaPy.Commons import trapezoidal_rule
 import numpy as np
 from scipy.optimize import newton
 from scipy.interpolate import CubicSpline
-
-eps = np.finfo(float).eps
-
 
 def Interpolation(t_data, y_data, time):
     idx_time = np.argmin(abs(time - t_data))
@@ -97,7 +96,29 @@ class Slurry:
         return self._Phases
 
     @Phases.setter
-    def Phases(self, phases_list):
+    def Phases(self, phases_list: Sequence[object]) -> None:
+        """Attach component phases and synchronize the slurry state.
+
+        Parameters
+        ----------
+        phases_list : sequence of object
+            Liquid and solid phase collaborators. For moment-based input,
+            ``moments[3]`` is the volume-normalized third moment
+            [m**3/m**3], and the solid phase supplies its volumetric shape
+            factor ``kv`` [-].
+
+        Raises
+        ------
+        ValueError
+            If volume-specific moments are supplied for a zero-volume slurry.
+
+        Notes
+        -----
+        The physical solid volume fraction is ``kv * moments[3]`` [-].
+        For moment-based input, the solid mass [kg] is derived from that
+        physical volume [m**3] and the solid mixture density [kg/m**3], then
+        reconciled with the solid mole amount [mol].
+        """
         if isinstance(phases_list, (list, tuple)):
             phases_list = list(phases_list)
 
@@ -115,8 +136,15 @@ class Slurry:
             if self.vol == 0:
                 raise ValueError('If the moments are provided, Slurry volume needs to be larger than 0.')
 
-            vol_liq = self.vol * (1 - self.moments[3])
-            self.Solid_1.updatePhase(moments=self.moments * self.vol)
+            solid_vol_frac = self.Solid_1.kv * self.moments[3]  # [-]
+            vol_sol = self.vol * solid_vol_frac  # [m**3]
+            vol_liq = self.vol * (1 - solid_vol_frac)  # [m**3]
+            dens_sol = self.Solid_1.getDensity()  # [kg/m**3]
+            mass_sol = vol_sol * dens_sol  # [kg]
+            self.Solid_1.updatePhase(
+                moments=self.moments * self.vol,
+                mass=mass_sol,
+            )
             self.Liquid_1.updatePhase(vol=vol_liq)
         elif self.distrib is None:
             vol_sol = self.Solid_1.vol
@@ -328,11 +356,13 @@ class Slurry:
         # Mixture
         if volfracs is None:
             volfracs = self.getFractions()
+        volfracs = np.array(volfracs, copy=True)
 
         if density is None:
             density = self.getDensity()
+        density = np.asarray(density)
 
-        self.epsilon = volfracs
+        self.epsilon = volfracs.copy()
         self.densities = density
 
         if times_vliq:
@@ -386,7 +416,30 @@ class SlurryStream(Slurry):
         return self._Phases
 
     @Phases.setter
-    def Phases(self, phases_list):
+    def Phases(self, phases_list: Sequence[object]) -> None:
+        """Attach component phases and synchronize the slurry-stream state.
+
+        Parameters
+        ----------
+        phases_list : sequence of object
+            Liquid and solid phase collaborators. For moment-based input,
+            ``moments[3]`` is the volume-normalized third moment [m**3/m**3],
+            and the solid phase supplies its volumetric shape factor ``kv``
+            [-].
+
+        Raises
+        ------
+        ValueError
+            If volume-specific moments are supplied for a zero-volume slurry
+            stream.
+
+        Notes
+        -----
+        This override obtains phase volume shares from
+        :meth:`Slurry.getFractions`, which applies ``kv`` when converting the
+        third moment to a solid volume fraction [-]. Solid-stream mass and
+        mole flow are reconciled through :meth:`SolidStream.updatePhase`.
+        """
         if isinstance(phases_list, tuple):
             phases_list = list(phases_list)
 
@@ -405,14 +458,16 @@ class SlurryStream(Slurry):
             vol_share = self.getFractions()
             vol_phases = vol_share * self.vol
 
-            mass_liq, mass_sol = vol_phases * dens_phases
+            mass_liq, mass_sol = vol_phases * dens_phases  # [kg/s] each
             self.mass_slurry = np.dot(vol_phases, dens_phases)
             self.mass_flow = self.mass_slurry
 
             self.Liquid_1.updatePhase(mass_flow=mass_liq)
 
-            self.Solid_1.updatePhase(moments=self.moments)
-            self.Solid_1.mass_flow = mass_sol
+            self.Solid_1.updatePhase(
+                moments=self.moments,
+                mass_flow=mass_sol,
+            )
             self.Solid_1.vol_flow = vol_phases[1]
 
         elif self.distrib is None:
@@ -460,24 +515,35 @@ class SlurryStream(Slurry):
                 vol_share = self.getFractions()
                 vol_phases = vol_share * self.vol
 
-                mass_liq, mass_sol = vol_phases * dens_phases
+                mass_liq = vol_phases[0] * dens_liq  # [kg/s]
                 self.mass_slurry = np.dot(vol_phases, dens_phases)
                 self.mass_flow = self.mass_slurry
 
             elif self.mass_slurry > 0:
-                mass_share = self.getFractions(vol_basis=False)
-                mass_phases = self.mass_slurry * mass_share
+                dens_liq = self.Liquid_1.getDensity()  # [kg/m**3]
+                dens_sol = self.Solid_1.getDensity()  # [kg/m**3]
+                dens_phases = np.array(
+                    [dens_liq, dens_sol]
+                )  # [kg/m**3], ordered liquid then solid
+                mass_share = self.getFractions(vol_basis=False)  # [-]
+                mass_phases = self.mass_slurry * mass_share  # [kg/s] each
+                vol_phases = mass_phases / dens_phases  # [m**3/s] each
 
-                mass_liq, mass_sol = mass_phases
+                mass_liq = mass_phases[0]  # [kg/s]
 
-                self.vol = np.dot(mass_phases, 1/dens_phases)
+                self.vol = vol_phases.sum()  # [m**3/s]
+                self.mass_flow = self.mass_slurry  # [kg/s]
 
             f_distr = self.vol * self.distrib
 
             self.Liquid_1.updatePhase(mass_flow=mass_liq)
 
-            self.Solid_1.updatePhase(x_distrib=self.x_distrib, distrib=f_distr)
-            self.Solid_1.mass_flow = mass_sol
+            # The total-population distribution [#/um] is the authoritative
+            # solid inventory; its third moment determines mass flow [kg/s].
+            self.Solid_1.updatePhase(
+                x_distrib=self.x_distrib,
+                distrib=f_distr,
+            )
             self.Solid_1.vol_flow = vol_phases[1]
 
         self.num_species = self.Liquid_1.num_species
@@ -558,43 +624,92 @@ class Cake:
         return self._Phases
 
     @Phases.setter
-    def Phases(self, phases_list):
+    def Phases(self, phases_list: Sequence[object]) -> None:
+        """Attach component phases and compute packed-cake properties.
+
+        Parameters
+        ----------
+        phases_list : sequence of object
+            Liquid and solid phase collaborators. The solid third moment is
+            the unscaled particle-volume moment [m**3], while ``kv`` is its
+            volumetric shape factor [-].
+
+        Notes
+        -----
+        The physical solid volume is ``kv * moments[3]`` [m**3]. Dividing by
+        the packed solid fraction ``1 - porosity`` [-] gives cake volume
+        [m**3].
+        """
         self._Phases = list(phases_list)
 
         classify_phases(self)
 
-        self.porosity = self.Solid_1.getPorosity()
-        self.cake_vol = self.Solid_1.moments[3] / (1 - self.porosity)
+        self.porosity = self.Solid_1.getPorosity()  # [-]
+        solid_vol = self.Solid_1.kv * self.Solid_1.moments[3]  # [m**3]
+        self.cake_vol = solid_vol / (1 - self.porosity)  # [m**3]
         self.alpha = self.get_alpha()
 
         self.num_species = self.Liquid_1.num_species
 
-    def get_alpha(self):
-        csd = self.Solid_1.distrib
-        porosity = self.porosity
-        rho_sol = self.Solid_1.getDensity()
-        x_grid = self.Solid_1.x_distrib * 1e-6
+    def get_alpha(self) -> np.floating:
+        """Calculate the volume-weighted specific cake resistance.
 
-        kv = 0.524  # converting number based CSD to volume based:
+        Returns
+        -------
+        numpy.floating
+            Specific cake resistance on a solid-mass basis [m/kg].
 
-        del_x_dist = np.diff(x_grid)
-        node_x_dist = (x_grid[:-1] + x_grid[1:]) / 2
-        node_CSD = (csd[:-1] + csd[1:]) / 2
+        Notes
+        -----
+        Crystal sizes are stored in micrometres and converted to metres for
+        the resistance calculation. The number-based CSD may use any common
+        number basis because only normalized bin weights are used.
 
-        # Volume of crystals in each bin
-        vol_cry = node_CSD * del_x_dist * (kv * node_x_dist**3)
-        frac_vol_cry = vol_cry / (np.sum(vol_cry) + eps)
+        Each bin is weighted by ``n_i * delta_x_i * kv * x_i**3``. The solid
+        phase supplies the scalar volumetric shape factor ``kv`` [-]. For any
+        nonzero scalar value, it cancels exactly when these weights are divided
+        by their sum, so the returned resistance is independent of ``kv``.
 
-        csd = vol_cry
+        The local resistance follows the Carman--Kozeny form
+        ``180 * (1 - porosity) / (porosity**3 * rho_s * x_i**2)`` and assumes
+        a positive size grid, nonzero ``kv``, and ``0 < porosity < 1``.
+        The dimensionless coefficient 180 follows Carman (1937), Equation 10,
+        with the measured Kozeny constant ``k = 5`` for packed granular beds.
 
-        # numerator = trapezoidal_rule(x_grid, csd * alpha_x)
-        # alpha = numerator / (self.Solid_1.moments[0] + eps)
+        References
+        ----------
+        Carman, P. C. (1937). Fluid flow through granular beds. *Transactions
+        of the Institution of Chemical Engineers*, 15, 150-166,
+        https://doi.org/10.1016/S0263-8762(97)80003-2.
+        """
+        csd = self.Solid_1.distrib  # [common number basis/um]
+        porosity = self.porosity  # [-]
+        solid_density = self.Solid_1.getDensity()  # [kg/m**3]
+        micrometer_to_meter = 1e-6  # [m/um], exact unit conversion
+        size_grid = self.Solid_1.x_distrib * micrometer_to_meter  # [m]
+        shape_factor = self.Solid_1.kv  # [-]
 
-        # Calculate irreducible saturation in weighted csd (volume based)
-        vol_frac = vol_cry/ np.sum(vol_cry)
-        x_grid = node_x_dist
-        alpha_x = 180 * (1 - porosity) / porosity**3 / x_grid**2 / rho_sol
-        alpha = np.sum(alpha_x * vol_frac)
+        bin_widths = np.diff(size_grid)  # [m]
+        node_sizes = (size_grid[:-1] + size_grid[1:]) / 2  # [m]
+        node_csd = (csd[:-1] + csd[1:]) / 2  # [common number basis/um]
+
+        # The arbitrary common scale of these proportional-volume weights
+        # cancels during normalization together with the scalar shape factor.
+        volume_weights = (
+            node_csd * bin_widths * (shape_factor * node_sizes**3)
+        )  # [common proportional-volume basis]
+        volume_fractions = volume_weights / np.sum(volume_weights)  # [-]
+
+        # Carman--Kozeny coefficient from Carman (1937), Equation 10, with
+        # the measured Kozeny constant k = 5.
+        ck_coeff = 180  # [-]
+        local_resistance = (
+            ck_coeff * (1 - porosity)
+            / porosity**3
+            / node_sizes**2
+            / solid_density
+        )  # [m/kg]
+        alpha = np.sum(local_resistance * volume_fractions)  # [m/kg]
 
         return alpha
 

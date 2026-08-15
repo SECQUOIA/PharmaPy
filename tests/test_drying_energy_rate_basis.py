@@ -16,11 +16,10 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-pytest.importorskip("assimulo")
 import PharmaPy.Drying_Model as drying_module
 from PharmaPy.Drying_Model import Drying
 
-pytestmark = pytest.mark.assimulo
+pytestmark = pytest.mark.unit
 
 
 def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
@@ -62,9 +61,14 @@ def test_unit_model_uses_mass_drying_rate_in_energy_terms(monkeypatch):
             1200.0,
             1500.0,
         ]),  # [J/kg/K]
-        # One latent heat value per volatile component; the node count is
-        # intentionally different so this cannot be read as per-node data.
-        getHeatVaporization=lambda temp, basis: np.array([2.0e6, 1.0e6]),  # [J/kg]
+        # One row per node and one column per species, matching the
+        # getHeatVaporization contract. The non-condensable carrier (index 1)
+        # cannot condense, so its latent heat is zero; energy_balance selects
+        # the volatile columns before pairing them with the drying rates.
+        getHeatVaporization=lambda temp, basis: np.tile(
+            np.array([2.0e6, 0.0, 1.0e6]),
+            (len(np.atleast_1d(temp)), 1),
+        ),  # [J/kg]
     )
     dryer.get_inputs = lambda time: {
         "Inlet": {

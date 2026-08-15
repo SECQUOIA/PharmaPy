@@ -1,13 +1,10 @@
 import numpy as np
 import pytest
 
-
-pytest.importorskip("assimulo")
-
 from PharmaPy.Evaporators import ContinuousEvaporator
 
 
-pytestmark = [pytest.mark.assimulo, pytest.mark.unit]
+pytestmark = pytest.mark.unit
 
 
 class _EnthalpySource:

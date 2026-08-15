@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Apr 18 10:57:33 2022
+"""Assimulo reactor tests whose imports also guard the lazy boundary.
 
-@author: dcasasor
+Originally created by dcasasor on April 18, 2022.
 """
 
 import unittest
@@ -13,6 +12,12 @@ from pathlib import Path
 from  numpy import genfromtxt, savetxt, allclose, vstack
 import pytest
 
+from PharmaPy.Reactors import PlugFlowReactor
+from PharmaPy.Streams import LiquidStream
+from PharmaPy.Phases import LiquidPhase
+from PharmaPy.Kinetics import RxnKinetics
+from PharmaPy.Utilities import CoolingWater
+
 HAS_ASSIMULO = importlib.util.find_spec("assimulo") is not None
 pytestmark = [
     pytest.mark.assimulo,
@@ -22,13 +27,6 @@ pytestmark = [
         reason="assimulo is not installed; solver-backed integration tests skipped",
     ),
 ]
-
-if HAS_ASSIMULO:
-    from PharmaPy.Reactors import PlugFlowReactor
-    from PharmaPy.Streams import LiquidStream
-    from PharmaPy.Phases import LiquidPhase
-    from PharmaPy.Kinetics import RxnKinetics
-    from PharmaPy.Utilities import CoolingWater
 
 
 class PlugFlowReactorTests(unittest.TestCase):

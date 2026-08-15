@@ -3,6 +3,8 @@
 
 # import numpy as np
 # from autograd import numpy as np
+from typing import Optional
+
 import numpy as np
 from PharmaPy.ThermoModule import ThermoPhysicalManager
 from PharmaPy.Commons import trapezoidal_rule
@@ -504,17 +506,74 @@ class LiquidPhase(ThermoPhysicalManager):
 
 
 class VaporPhase(ThermoPhysicalManager):
+    """Thermodynamic state of a homogeneous vapor mixture.
+
+    Exactly one composition measure must define the mixture. Material amounts
+    use mass, volume, or molar bases and are kept mutually consistent with the
+    specified composition.
+    """
+
     def __init__(self, path_thermo=None, temp=298.15, pres=101325,
                  mass=0, vol=0, moles=0,
                  mass_frac=None, mole_frac=None, mole_conc=None,
                  check_input=True, verbose=True):
+        """Initialize a vapor-phase thermodynamic state.
+
+        Parameters
+        ----------
+        path_thermo : str, optional
+            Path to the species thermophysical-property JSON file.
+        temp : float, optional
+            Vapor temperature [K].
+        pres : float, optional
+            Vapor pressure [Pa].
+        mass : float, optional
+            Total vapor mass [kg].
+        vol : float, optional
+            Total vapor volume [m**3].
+        moles : float, optional
+            Total amount of vapor [mol].
+        mass_frac : array-like, optional
+            Species mass fractions with shape ``(num_species,)`` [-].
+        mole_frac : array-like, optional
+            Species mole fractions with shape ``(num_species,)`` [-].
+        mole_conc : array-like, optional
+            Species molar concentrations with shape ``(num_species,)``
+            [mol/L].
+        check_input : bool, optional
+            If ``True``, warn when mass, volume, and moles are all zero [-].
+        verbose : bool, optional
+            If ``True``, print composition-normalization warnings [-].
+
+        Raises
+        ------
+        ValueError
+            If no composition measure is provided.
+        RuntimeWarning
+            If more than one composition measure is provided.
+
+        Warns
+        -----
+        RuntimeWarning
+            If input checking is enabled and mass, volume, and moles are all
+            zero.
+
+        Notes
+        -----
+        Provide exactly one of ``mass_frac``, ``mole_frac``, or
+        ``mole_conc``. Concentration inputs use PharmaPy's [mol/L] basis.
+        """
 
         super().__init__(path_thermo)
 
         # Calculate amount of material and compositions using LiquidPhase
-        props = LiquidPhase(path_thermo, temp, pres, mass,
-                            vol, moles, mass_frac, mole_frac, mole_conc,
-                            check_input=check_input, verbose=verbose)
+        props = LiquidPhase(
+            path_thermo=path_thermo, temp=temp, pres=pres,
+            mass=mass, vol=vol, moles=moles,
+            mass_frac=mass_frac, mole_frac=mole_frac,
+            mole_conc=mole_conc,
+            check_input=check_input, verbose=verbose,
+        )
 
         self.mass = props.mass
         self.moles = props.moles
@@ -527,6 +586,7 @@ class VaporPhase(ThermoPhysicalManager):
         self.mw_av = props.mw_av
 
         self.temp = float(temp)
+        self.pres = pres  # [Pa]
 
         self.y_upstream = None
         self._name = None
@@ -621,8 +681,49 @@ class VaporPhase(ThermoPhysicalManager):
         return cpMix
 
     def getHeatVaporization(self, temp, basis='mass'):
-        # if idx is None:
-        #     idx = np.arange(len(self.t_crit))
+        """Calculate the latent heat of vaporization of each species.
+
+        Species that are supercritical at every requested temperature
+        cannot condense. Their latent heat is reported as zero rather
+        than omitted, so the component axis of the returned array stays
+        aligned with the mass- or mole-fraction vectors that callers
+        weight it with.
+
+        Parameters
+        ----------
+        temp : float or array-like
+            Temperature at which the latent heat is evaluated [K]. An
+            array-like input is read as several independent
+            temperatures, such as the spatial nodes of a distributed
+            model, not as a per-species temperature.
+        basis : {'mass', 'mole'}, optional
+            Basis of the returned latent heat. The default is 'mass'.
+
+        Returns
+        -------
+        ndarray
+            Latent heat of vaporization per species, in [J/kg] for
+            ``basis='mass'`` and [J/mol] for ``basis='mole'``. The shape
+            is ``(num_species, )`` for a scalar or single-element
+            ``temp`` and ``(num_temperatures, num_species)`` otherwise.
+            Columns of species that are supercritical at every
+            requested temperature are zero.
+
+        Raises
+        ------
+        ValueError
+            If the Watson temperature ratio is negative, either because a
+            species is subcritical at one requested temperature and
+            supercritical at another, or because the tabulated
+            ``tref_hvap`` of a subcritical species lies above its
+            ``t_crit``.
+
+        Notes
+        -----
+        The latent heat is extrapolated from ``delta_hvap`` at
+        ``tref_hvap`` with the Watson correlation,
+        ``dh(T) = dh(Tref) * ((Tc - T) / (Tc - Tref))**0.38``.
+        """
 
         temp = np.atleast_1d(temp)
         num_comp = len(self.t_crit)
@@ -644,15 +745,20 @@ class VaporPhase(ThermoPhysicalManager):
         deltahvap = np.zeros(delta_shape)
 
         if num_temp > 1:
-            deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # J/mole
+            deltahvap[:, idx] = (watson * self.delta_hvap[idx])  # [J/mol]
         else:
-            deltahvap[idx] = (watson * self.delta_hvap[idx])  # J/mole
+            deltahvap[idx] = (watson * self.delta_hvap[idx])  # [J/mol]
 
         if basis == 'mass':
+            # Convert the populated subcritical entries in place so that
+            # the species axis keeps its full width. Supercritical
+            # species stay at zero latent heat instead of being dropped,
+            # which would misalign the result with a fraction vector.
             if num_temp > 1:
-                deltahvap = deltahvap[:, idx] / self.mw[idx] * 1000  # J/kg
+                deltahvap[:, idx] = (deltahvap[:, idx] / self.mw[idx]
+                                     * 1000)  # [J/kg]
             else:
-                deltahvap = deltahvap[idx] / self.mw[idx] * 1000  # J/kg
+                deltahvap[idx] = deltahvap[idx] / self.mw[idx] * 1000  # [J/kg]
 
         return deltahvap
 
@@ -826,16 +932,22 @@ class SolidPhase(ThermoPhysicalManager):
         Fraction of the species participating in the solid phase in mass basis.
         The default is None.
     moments : array, optional
-        Array of size N, containing the distribution moments in um**n, 
-        for n = 0,...,N - 1. The default is None.
+        Total-population distribution moments with shape ``(num_moments,)``.
+        Moment order ``n`` has units [m**n], with order zero a crystal count
+        [-]. The default is None.
     num_mom : integer, optional
-        Maximum order of moments describing solid phase. The default is 4.
+        Number of moments describing the solid phase [-]. This sizes the
+        classical moment-method state vector. The default is 4 (orders 0--3).
     x_distrib : array, optional
         Array of size N, containing the internal grid
         size coordinate of the solids [um]. The default is None
     distrib : array, optional
-        Array of size N, constaining the initial distribution of crystals
-        [#/m**3/um]. The default is None.
+        Initial crystal-size distribution with shape ``(num_sizes,)``. When
+        ``mass == 0``, this must be a number-based total-population
+        distribution [#/um] and is stored directly. When ``mass > 0``, the
+        values are normalized as dimensionless bin weights [-] on the
+        ``distrib_type`` basis, then converted to [#/um] consistently with the
+        specified solid mass. The default is None.
     distrib_type : string, optional
         Type of distribution of crystals. The option is 'mass_frac' 
         or 'vol_perc'. The default is 'vol_perc'.
@@ -854,6 +966,16 @@ class SolidPhase(ThermoPhysicalManager):
     -------
     None.
 
+    Notes
+    -----
+    Solid mass is stored in kilograms, while molecular weight is stored in
+    grams per mole. Mole amounts are calculated from the finalized solid mass
+    after converting it to grams during construction.
+
+    ``moles`` is reconciled whenever construction or ``updatePhase`` changes
+    the solid mass, so mass-, volume-, and mole-basis amounts describe the
+    same physical inventory.
+
     """
     
     def __init__(self, path_thermo, temp=298.15, temp_ref=298.15, pres=101325,
@@ -866,6 +988,7 @@ class SolidPhase(ThermoPhysicalManager):
         super().__init__(path_thermo)
         self.kv = kv
         self.distrib_type = distrib_type
+        self.num_mom = num_mom  # [-]
 
         self.cp_solid = np.atleast_2d(self.cp_solid)
 
@@ -899,7 +1022,6 @@ class SolidPhase(ThermoPhysicalManager):
             self.distrib = self.getDistribution(x_distrib, distrib)
 
             self.num_distrib = len(distrib)
-            self.num_mom = num_mom
 
             mom_idx = np.arange(self.num_mom)
             self.moments = self.getMoments(mom_num=mom_idx)
@@ -923,8 +1045,9 @@ class SolidPhase(ThermoPhysicalManager):
             else:
                 self.vol = self.mass / dens
 
-        mw_av = np.dot(self.mole_frac, self.mw)
-        self.moles = mass / mw_av
+        mw_av = np.dot(self.mole_frac, self.mw)  # [g/mol]
+        self.mw_av = mw_av  # [g/mol]
+        self._reconcile_moles_from_mass()
 
         if mass_frac is not None:
             sum_fracs = sum(mass_frac)
@@ -947,18 +1070,73 @@ class SolidPhase(ThermoPhysicalManager):
     def name(self, name):
         self._name = name
 
-    def updatePhase(self, x_distrib=None, distrib=None, mass=None,
-                    moments=None):
+    def _reconcile_moles_from_mass(self) -> None:
+        """Recalculate solid moles from the current mass.
+
+        Notes
+        -----
+        Solid mass [kg] is converted using the exact ``1000 g/kg`` SI factor
+        before division by the mixture-average molecular weight [g/mol]. The
+        resulting amount is stored in ``moles`` [mol].
+        """
+        mass_grams = self.mass * 1000  # [g]
+        self.moles = mass_grams / self.mw_av  # [mol]
+
+    def updatePhase(self, x_distrib: Optional[np.ndarray] = None,
+                    distrib: Optional[np.ndarray] = None,
+                    mass: Optional[float] = None,
+                    moments: Optional[np.ndarray] = None) -> None:
+        """Update the solid size distribution, mass, or moments.
+
+        Parameters
+        ----------
+        x_distrib : numpy.ndarray, optional
+            Crystal-size grid with shape ``(num_sizes,)`` [um]. When supplied,
+            it replaces the stored grid before distribution moments are
+            recalculated. It does not refresh the stored bin widths ``dx``;
+            that pre-existing synchronization defect is tracked in issue #162.
+        distrib : numpy.ndarray, optional
+            Number-based crystal-size distribution on the total-population
+            basis with shape ``(num_sizes,)`` [#/um]. It is assigned directly,
+            without the constructor's mass-based normalization or conversion.
+            Its third moment [m**3] is converted to physical solid volume with
+            the volumetric shape factor ``kv``.
+        mass : float, optional
+            Solid mass [kg]. When supplied, it determines the stored volume
+            from the solid mixture density [kg/m**3].
+        moments : numpy.ndarray, optional
+            Crystal-size-distribution moments with shape ``(num_moments,)``.
+            Moment order ``n`` has units [m**n] on the total-population basis;
+            order zero is a crystal count [-].
+
+        Notes
+        -----
+        On the required total-population basis, the distribution-derived third
+        moment ``mu_3`` has units [m**3], and volume follows
+        ``V_solid = kv * mu_3`` [m**3]. By contrast, construction with
+        ``mass > 0`` interprets ``distrib`` as normalized bin weights and
+        converts them according to ``distrib_type`` before moments are taken.
+
+        If ``mass`` is supplied in the same call, the explicit mass and its
+        density-derived volume take precedence. If ``moments`` is also
+        supplied, it replaces the recalculated moments without another mass or
+        volume update. Distribution updates recalculate orders zero through
+        ``self.num_mom - 1``, preserving the configured moment-state size. The
+        mole amount is recalculated whenever a distribution or explicit
+        mass changes the solid inventory. A moments-only update does not imply
+        an amount change and therefore leaves mass, volume, and moles intact.
+        """
         if x_distrib is not None:
             self.x_distrib = x_distrib
 
         if distrib is not None:
             self.distrib = distrib
-            self.moments = self.getMoments()
+            moment_orders = np.arange(self.num_mom)  # [-]
+            self.moments = self.getMoments(mom_num=moment_orders)
             self.num_distrib = len(distrib)
 
-            self.vol = self.moments[3]
-            self.mass = self.moments[3] * self.getDensity()
+            self.vol = self.moments[3] * self.kv  # [m**3]
+            self.mass = self.vol * self.getDensity()  # [kg]
 
         if mass is not None:
             self.mass = mass
@@ -966,6 +1144,9 @@ class SolidPhase(ThermoPhysicalManager):
 
         if moments is not None:
             self.moments = moments
+
+        if distrib is not None or mass is not None:
+            self._reconcile_moles_from_mass()
 
     def convert_distribution(self, x_distrib=None, num_distr=None,
                              vol_distr=None, mass=0):

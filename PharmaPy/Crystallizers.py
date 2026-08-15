@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
 
 
-# import autograd.numpy as np
-
-
-from assimulo.solvers import CVode
-from assimulo.problem import Explicit_Problem
+from PharmaPy._assimulo import CVode, Explicit_Problem
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.Streams import LiquidStream, SolidStream
@@ -32,19 +28,9 @@ from matplotlib.colors import LightSource
 from scipy.optimize import newton
 
 import copy
+import inspect
 import string
-
-# try:
-#     from jax import jacfwd
-#     import jax.numpy as jnp
-#     # from autograd import jacobian as autojac
-#     # from autograd import make_jvp
-# except:
-#     print()
-#     print(
-#         'JAX is not available to perform automatic differentiation. '
-#         'Install JAX if supported by your operating system (Linux, Mac).')
-#     print()
+import warnings
 
 import numpy as np
 
@@ -52,77 +38,118 @@ eps = np.finfo(float).eps
 gas_ct = 8.314  # J/mol/K
 
 
+def _caller_stacklevel() -> int:
+    """Return the ``warnings.warn`` stacklevel of the nearest external caller.
+
+    A fixed ``stacklevel`` cannot be correct for a class hierarchy of varying
+    depth: ``BatchCryst`` and ``MSMPR`` call ``_BaseCryst.__init__`` directly,
+    while ``SemibatchCryst`` subclasses ``MSMPR`` and so sits one frame deeper.
+    Counting frames instead keeps a warning raised inside this module pointed at
+    the user code that constructed the unit operation.
+
+    Returns
+    -------
+    int
+        Stacklevel [-] identifying the first frame executing outside this
+        module, counted from the caller of this helper. Falls back to ``1``
+        when every frame belongs to this module.
+
+    Notes
+    -----
+    Frames are matched on the module globals rather than on ``__file__`` so the
+    comparison is unaffected by relative or absolute import paths.
+    """
+    frame = inspect.currentframe()
+    if frame is None:  # pragma: no cover - no frame support on this runtime
+        return 1
+
+    module_globals = globals()
+    level = 0
+    frame = frame.f_back  # caller of this helper, i.e. stacklevel 1
+    while frame is not None:
+        level += 1
+        if frame.f_globals is not module_globals:
+            return level
+        frame = frame.f_back
+
+    return 1
+
+
 class _BaseCryst:
-    """ Construct a Crystallizer Object
+    """Store shared configuration for crystallizer balance models.
 
-    Parameters
-    ----------
-    mask_params : list of bool (optional, default = None)
-        Binary list of which parameters to exclude from the kinetics
-        computations
-    method : str
-        Choice of the numerical method. Options are: 'moments', '1D-FVM'
-    target_comp : str, list of strings
-        Name of the crystallizing compound(s) from .json file.
-    scale : float
-        Scaling factor by which crystal size distribution will be
-        multiplied.
-    vol_tank : TODO - Remove, it comes from Phases module.
-    controls : dict of dicts(funcs) (optional, default = None)
-        Dictionary with keys representing the state(e.g.'Temp') which is
-        controlled and the value indicating the function to use
-        while computing the variable. Functions are of the form
-        f(time) = state_value
-    adiabatic : bool (optional, default=True)
-        Boolean value indicating whether the heat transfer of
-        the crystallization is considered.
-    rad_zero : float (optional, default=TODO)
-        TODO Size of the first bin of the CSD discretization [m]
-    reset_states : bool (optional, default = False)
-        Boolean value indicating whether the states should be reset
-        before simulation
-    h_conv : float (optional, default = TODO) (maybe remove?)
-        TODO
-    vol_ht : float (optional, default = TODO)
-        TODO Volume of the cooling jacket [m^3]
-    basis : str (optional, default = T0DO)
-        TODO Options :'massfrac', 'massconc'
-    jac_type : str
-        TODO Options: 'AD'
-    state_events : lsit of dict(s)
-        list of dictionaries, each one containing the specification of a
-        state event
-    param_wrapper : callable (optional, default = None)
-        function with the signature
-
-            param_wrapper(states, sens)
-
-        Useful when the parameter estimation problem is a function of the
-        states y -h(y)- rather than y itself.
-
-        'states' is a DynamicResult object and 'sens' is a dictionary
-        that contains N_y number of sensitivity arrays, representing
-        time-depending sensitivities. Each array in sens has dimensions
-        num_times x num_params. 'param_wrapper' has to return two outputs,
-        one array containing h(y) and list of arrays containing
-        sens(h(y))
+    Subclasses provide batch, semibatch, and continuous material and energy
+    balances. The base class retains the selected concentration basis and
+    numerical discretization and configures sensitivity callbacks when a
+    solver problem is built. Automatic-differentiation callbacks are not
+    currently implemented, so requests for them use finite differences.
     """
     np = np
-    # @decor_states
-    
+
     def __init__(self, mask_params,
                  method, target_comp, scale, vol_tank, controls,
                  adiabatic, rad_zero,
                  reset_states,
                  h_conv, vol_ht, basis, jac_type,
                  state_events, param_wrapper):
+        """Initialize crystallizer model and numerical configuration.
 
+        Parameters
+        ----------
+        mask_params : sequence of bool or None
+            Mask selecting active kinetic parameters [-].
+        method : {'moments', '1D-FVM'}
+            Crystal-size-distribution discretization method.
+        target_comp : str or sequence of str
+            Component name or names represented by the crystallizing solid.
+        scale : float
+            Crystal-size-distribution scaling factor [-].
+        vol_tank : float or None
+            Initial vessel volume [m**3], or None to obtain it from the phase.
+        controls : dict or None
+            Controlled-state callables. Each callable must return the units of
+            its controlled state, such as temperature [K].
+        adiabatic : bool
+            If True, exclude utility heat transfer while retaining the vessel
+            energy balance.
+        rad_zero : float
+            Lower boundary of the first crystal-size bin [m].
+        reset_states : bool
+            If True, reset model states before a subsequent simulation.
+        h_conv : float
+            Vessel-side convective heat-transfer coefficient [W/m**2/K].
+        vol_ht : float or None
+            Cooling-jacket volume [m**3]. Retained for constructor
+            compatibility; current subclasses derive jacket volume internally.
+        basis : {'mass_conc', 'mass_frac'}
+            Composition basis, respectively [kg/m**3] or [kg/kg].
+        jac_type : {'finite_diff', 'analytical', 'AD', None}
+            Sensitivity Jacobian mode. ``'AD'`` currently warns and selects
+            ``'finite_diff'`` because AD callbacks are unavailable.
+        state_events : sequence of dict or None
+            State-event specifications; event values use the units of their
+            associated model states.
+        param_wrapper : callable or None
+            Transformation accepting a ``DynamicResult`` and sensitivities
+            with shape ``(num_times, num_params)`` in state units per parameter
+            unit, and returning transformed states and sensitivities on the
+            same declared basis.
+
+        Warns
+        -----
+        RuntimeWarning
+            If ``jac_type='AD'`` is requested; finite-difference sensitivity
+            Jacobians are configured instead.
+        """
         if jac_type == 'AD':
-            try:
-                import jax.numpy as np
-                _BaseCryst.np = np
-            except:
-                pass
+            warnings.warn(
+                "Automatic-differentiation Jacobian callbacks are not "
+                "available; using finite-difference sensitivities with "
+                "NumPy.",
+                RuntimeWarning,
+                stacklevel=_caller_stacklevel(),
+            )
+            jac_type = 'finite_diff'
 
         self.distributed_uo = False
         self.mask_params = mask_params
@@ -581,7 +608,10 @@ class _BaseCryst:
                     mom_in = np.array([u_input['Inlet']['mu_n'][3]])
 
 
-                phi_in = 1 - self.Inlet.Solid_1.kv * mom_in
+                # kv * mu_3 is the solid volume fraction of the inlet
+                # slurry, so phi_in is the inlet liquid volume fraction
+                phi_in = 1 - self.Inlet.Solid_1.kv * mom_in  # [-]
+                # [-], [liquid, solid] inlet volume fractions
                 phis_in = np.concatenate([phi_in, 1 - phi_in])
 
                 h_in = self.Inlet.getEnthalpy(inlet_temp, phis_in, rhos_in)
@@ -590,9 +620,10 @@ class _BaseCryst:
                 rho_sol_in = None
 
                 rhos_in = np.array([rho_liq_in, rho_sol_in])
-                h_in = self.Inlet.getEnthalpy(temp=inlet_temp)
+                h_in_mass = self.Inlet.getEnthalpy(temp=inlet_temp)  # [J/kg]
+                h_in = h_in_mass * rho_liq_in  # [J/kg]*[kg/m**3] -> [J/m**3]
 
-                phis_in = [1, 0]
+                phis_in = [1, 0]  # [-], [liq, sol]; solid-free liquid inlet
 
             rhos = [rhos_susp, rhos_in]
 
@@ -676,16 +707,6 @@ class _BaseCryst:
 
         return jac_params
 
-    # def jac_states_ad(self, time, states, params):
-    #     def wrap_states(st): return self.unit_model(time, st, params)
-    #     jac_states = jacfwd(wrap_states)(states)
-
-    #     return jac_states
-
-    # def jac_params_ad(self, time, states, params):
-    #     def wrap_params(theta): return self.unit_model(time, states, theta)
-    #     jac_params = jacfwd(wrap_params)(params)
-
         return jac_params
 
     def rhs_sensitivity(self, time, states, sens, params):
@@ -702,6 +723,31 @@ class _BaseCryst:
 
     def set_ode_problem(self, eval_sens, states_init, params_mergd,
                         jacv_prod):
+        """Build the explicit Assimulo problem and sensitivity callbacks.
+
+        Parameters
+        ----------
+        eval_sens : bool
+            If True, configure state and parameter sensitivity callbacks.
+        states_init : numpy.ndarray
+            Initial model state vector [state-dependent units].
+        params_mergd : numpy.ndarray
+            Active kinetic parameter vector [parameter-dependent units].
+        jacv_prod : bool
+            If True, configure the Jacobian-vector product for a finite-volume
+            model without sensitivity evaluation.
+
+        Returns
+        -------
+        assimulo.problem.Explicit_Problem
+            ODE problem carrying the selected state and sensitivity callbacks.
+
+        Raises
+        ------
+        NameError
+            If ``jac_type`` is not ``'finite_diff'``, ``'analytical'``, or
+            None after constructor normalization.
+        """
         if eval_sens:
             problem = Explicit_Problem(self.unit_model, states_init,
                                        t0=self.elapsed_time,
@@ -710,13 +756,6 @@ class _BaseCryst:
             if self.jac_type == 'finite_diff':
                 self.jac_states_fn = self.jac_states_numerical
                 self.jac_params_fn = self.jac_params_numerical
-
-                problem.jac = self.jac_states_fn
-                problem.rhs_sens = self.rhs_sensitivity
-
-            elif self.jac_type == 'AD':
-                self.jac_states_fn = self.jac_states_ad
-                self.jac_params_fn = self.jac_params_ad
 
                 problem.jac = self.jac_states_fn
                 problem.rhs_sens = self.rhs_sensitivity
@@ -1315,6 +1354,31 @@ class BatchCryst(_BaseCryst):
         self.vol_offset = 0.75
 
     def jac_states(self, time, states, params, return_only=True):
+        """Return the BatchCryst state Jacobian.
+
+        Parameters
+        ----------
+        time : float
+            Evaluation time [s].
+        states : ndarray
+            Solver state vector ordered as total moments [um**n], liquid mass
+            concentrations [kg/m**3], and liquid volume [m**3].
+        params : ndarray or None
+            Kinetic parameter vector; units depend on the kinetic model.
+        return_only : bool, optional
+            If True, return the cached Jacobian from the solver interface.
+
+        Returns
+        -------
+        ndarray
+            State Jacobian. The concentration-concentration block has units
+            [1/s].
+
+        Notes
+        -----
+        Crystal growth rates are stored in [um/s], so the explicit
+        ``(1e-6)**3`` factors convert crystal-volume terms to [m**3].
+        """
 
         if return_only:
             return self.jac_states_vals
@@ -1398,12 +1462,17 @@ class BatchCryst(_BaseCryst):
                 self.num_distr + self.target_ind] = dfmun_dconc
 
             # Concentration eqns
+            # tr is the crystal mass transfer rate [kg/s].
             tr = 3 * kv * gr * moms[2] * rho_c * (1e-6)**3
+
+            # dtr_dconc_tg is d(tr)/d(c_target) [m**3/s].
             dtr_dconc_tg = g_exp * tr / conc_diff
 
+            # first_conc is [-]; second_conc is [m**3/s].
             first_conc = np.outer(self.kron_jtg - w_conc/rho_l, self.kron_jtg)
-            second_conc = tr/rho_l * np.eye(len(w_conc))
+            second_conc = -tr/rho_l * np.eye(len(w_conc))
 
+            # d(dmass_conc_dt)/d(mass_conc) [1/s].
             dfconc_dconc = -1/vol_liq * \
                 (dtr_dconc_tg * first_conc + second_conc)
 
@@ -1490,6 +1559,58 @@ class BatchCryst(_BaseCryst):
 
     def material_balances(self, time, params, u_inputs, rhos, mu_n,
                           distrib, mass_conc, temp, temp_ht, vol, phi_in=None):
+        """
+        Material balances for the batch crystallizer.
+
+        Parameters
+        ----------
+        time : float
+            integration time [s].
+        params : array-like
+            kinetic parameters passed to ``self.Kinetics``.
+        u_inputs : dict
+            unit inputs at `time`. Unused by the batch unit, kept for
+            signature compatibility with the flow-through units.
+        rhos : list of float
+            [liquid, solid] densities [kg/m**3].
+        mu_n : array-like
+            crystal size distribution moments [m**n] (total basis).
+        distrib : array-like
+            distribution state: [#/um] for ``method == '1D-FVM'``, or the
+            raw moment vector [um**n] for ``method == 'moments'``.
+        mass_conc : array-like
+            liquid-phase mass concentrations [kg/m**3].
+        temp : float
+            liquid temperature [K].
+        temp_ht : float or None
+            jacket temperature [K]. Unused here, kept for signature
+            compatibility.
+        vol : float
+            liquid volume [m**3].
+        phi_in : None
+            unused, kept for signature compatibility.
+
+        Returns
+        -------
+        dmaterial_dt : numpy.ndarray
+            stacked derivatives with mixed units, in this order:
+            ``ddistr_dt`` ([#/um/s] for '1D-FVM', [um**n/s] for 'moments'),
+            ``dcomp_dt`` [kg/m**3/s] and ``dvol_liq`` [m**3/s].
+        transf : numpy.ndarray
+            crystallization mass rate [kg/s].
+
+        Notes
+        -----
+        Batch states are declared on a *total* basis in
+        :meth:`_BaseCryst.nomenclature` (``mu_n`` in [m**n], ``distrib`` in
+        [#/um]), and the kinetics are evaluated with ``vol=vol_slurry``, so
+        ``transf`` is a total rate [kg/s] rather than the volumetric
+        [kg/m**3/s] rate returned by :meth:`MSMPR.material_balances`.
+
+        ``dcomp_dt`` is documented as [kg/m**3/s] because the
+        ``basis == 'mass_frac'`` rescaling below acts on a copy and never
+        reaches the returned array (tracked in issue #47).
+        """
 
         # 'vol' represents liquid volume
 
@@ -1519,56 +1640,106 @@ class BatchCryst(_BaseCryst):
 
         dmaterial_dt = np.concatenate((ddistr_dt, dliq_dt))
 
-        return dmaterial_dt, transf
+        return dmaterial_dt, transf  # transf [kg/s]
 
     def energy_balances(self, time, params, cryst_rate, u_inputs, rhos,
                         mu_n, distrib, mass_conc, temp, temp_ht, vol,
                         h_in=None, heat_prof=False):
+        """
+        Energy balances for the batch crystallizer.
+
+        Parameters
+        ----------
+        time : float
+            integration time [s].
+        params : array-like
+            kinetic parameters. Unused here, kept for signature
+            compatibility.
+        cryst_rate : numpy.ndarray
+            crystallization mass rate [kg/s], as returned by
+            :meth:`material_balances`.
+        u_inputs : dict
+            unit inputs at `time`. Unused by the batch unit.
+        rhos : list of float
+            [liquid, solid] densities [kg/m**3].
+        mu_n : array-like
+            crystal size distribution moments [m**n] (total basis).
+        distrib : array-like
+            distribution state. Unused here, kept for signature
+            compatibility.
+        mass_conc : array-like
+            liquid-phase mass concentrations [kg/m**3].
+        temp : float
+            liquid temperature [K].
+        temp_ht : float or None
+            jacket temperature [K]. ``None`` when the unit carries no
+            jacket state.
+        vol : float
+            liquid volume [m**3].
+        h_in : None
+            unused, kept for signature compatibility.
+        heat_prof : bool, optional
+            if True, return the individual heat terms instead of the
+            temperature derivatives. The default is False.
+
+        Returns
+        -------
+        If `heat_prof` is True, an array with the source and heat-transfer
+        terms [J/s]. Otherwise ``dtemp_dt`` [K/s], or the pair
+        (``dtemp_dt``, ``dtht_dt``) [K/s] when a jacket state is present.
+
+        Notes
+        -----
+        When ``'temp'`` is a control, ``ht_term`` carries the heat
+        capacitance [J/K] instead of a heat rate, so that the caller can
+        back out the required duty.
+        """
 
         vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
         vol_total = vol + vol_solid
 
-        phi = vol / vol_total
-        phis = [phi, 1 - phi]
+        phi = vol / vol_total  # [-], liquid volume fraction
+        phis = [phi, 1 - phi]  # [-], [liq, sol]
 
         # Suspension properties  TODO: slurry should be updated here
         capacitance = self.Slurry.getCp(temp, phis, rhos,
-                                        times_vliq=True)
+                                        times_vliq=True)  # [J/m**3/K]
 
         # Renaming
-        dh_cryst = -1.46e4  # J/kg
+        dh_cryst = -1.46e4  # [J/kg]
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
-        #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
+        #     self.Liquid_1.mw[self.target_ind] * 1000  # [J/kg]
 
-        vol = vol / phi
+        vol = vol / phi  # [m**3], liquid -> slurry volume
 
-        height_liq = vol / (np.pi/4 * self.diam_tank**2)
-        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
+        height_liq = vol / (np.pi/4 * self.diam_tank**2)  # [m]
+        # [m**2], wetted lateral area plus tank base
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base
 
-        source_term = dh_cryst*cryst_rate
+        source_term = dh_cryst*cryst_rate  # [J/s]
 
         if self.adiabatic:
-            ht_term = 0
+            ht_term = 0  # [J/s]
         elif 'temp' in self.controls.keys():
-            ht_term = capacitance * vol  # return capacitance
+            ht_term = capacitance * vol  # [J/K], return capacitance
         elif 'temp' in self.states_uo:
-            ht_term = self.u_ht*area_ht*(temp - temp_ht)
+            ht_term = self.u_ht*area_ht*(temp - temp_ht)  # [J/s]
 
         if heat_prof:
             heat_components = np.hstack([source_term, ht_term])
             return heat_components
         else:
             # Balance inside the tank
-            dtemp_dt = (-source_term - ht_term) / capacitance / vol
+            dtemp_dt = (-source_term - ht_term) / capacitance / vol  # [K/s]
 
             if temp_ht is not None:
                 ht_dict = self.Utility.get_inputs(time)
-                tht_in = ht_dict['temp_in']
-                flow_ht = ht_dict['vol_flow']
+                tht_in = ht_dict['temp_in']  # [K], Utility inlet temperature
+                flow_ht = ht_dict['vol_flow']  # [m**3/s]
 
-                cp_ht = 4180  # J/kg/K
-                rho_ht = 1000
-                vol_ht = vol*0.14  # m**3
+                cp_ht = 4180  # [J/kg/K]
+                rho_ht = 1000  # [kg/m**3]
+                vol_ht = vol*0.14  # [m**3]
 
                 dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
                     self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
@@ -1805,10 +1976,66 @@ class MSMPR(_BaseCryst):
 
     def material_balances(self, time, params, u_inputs, rhos, mu_n,
                           distrib, mass_conc, temp, temp_ht, vol, phi_in):
+        """
+        Material balances for the continuous (MSMPR) crystallizer.
+
+        Parameters
+        ----------
+        time : float
+            integration time [s].
+        params : array-like
+            kinetic parameters passed to ``self.Kinetics``.
+        u_inputs : dict
+            unit inputs at `time`, holding the inlet volumetric flow
+            [m**3/s], inlet distribution and inlet mass concentrations
+            [kg/m**3].
+        rhos : list
+            [[liquid, solid] tank densities, [liquid, solid] inlet
+            densities], all in [kg/m**3].
+        mu_n : array-like
+            crystal size distribution moments [m**n/m**3] (volumetric
+            basis).
+        distrib : array-like
+            distribution state: [#/m**3/um] for ``method == '1D-FVM'``, or
+            the raw moment vector [um**n/m**3] for ``method == 'moments'``.
+        mass_conc : array-like
+            liquid-phase mass concentrations [kg/m**3].
+        temp : float
+            liquid temperature [K].
+        temp_ht : float or None
+            jacket temperature [K]. Unused here, kept for signature
+            compatibility.
+        vol : float
+            slurry volume [m**3].
+        phi_in : array-like
+            inlet [liquid, solid] volume fractions [-].
+
+        Returns
+        -------
+        dmaterial_dt : numpy.ndarray
+            stacked derivatives with mixed units, in this order:
+            ``ddistr_dt`` ([#/m**3/um/s] for '1D-FVM', [um**n/m**3/s] for
+            'moments') and ``dcomp_dt`` ([kg/m**3/s], or [1/s] when
+            ``basis == 'mass_frac'``).
+        transf : numpy.ndarray
+            crystallization mass rate per unit slurry volume [kg/m**3/s].
+
+        Notes
+        -----
+        MSMPR states are declared on a *volumetric* basis in
+        :meth:`_BaseCryst.nomenclature` (``mu_n`` in [m**n/m**3],
+        ``distrib`` in [#/m**3/um]), and the kinetics are evaluated with the
+        default ``vol=1``. ``transf`` is therefore an intensive rate
+        [kg/m**3/s], unlike the total [kg/s] rate returned by
+        :meth:`BatchCryst.material_balances` and
+        :meth:`SemibatchCryst.material_balances`, whose states are on a
+        total basis. :meth:`energy_balances` multiplies it by ``vol`` to
+        obtain a heat rate in [J/s].
+        """
 
         rho_sol = rhos[0][1]
 
-        input_flow = u_inputs['Inlet']['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
 
         input_conc = u_inputs['Liquid_1']['mass_conc']
 
@@ -1825,15 +2052,16 @@ class MSMPR(_BaseCryst):
 
         # ---------- Add flow terms
         # Distribution
-        tau_inv = input_flow / vol
+        tau_inv = input_flow / vol  # [1/s], inverse residence time
         flow_distrib = tau_inv * (input_distrib - distrib)
 
         ddistr_dt = ddistr_dt + flow_distrib
         # Liquid phase
-        phi = 1 - self.Solid_1.kv * mu_n[3]
+        phi = 1 - self.Solid_1.kv * mu_n[3]  # [-], liquid volume fraction
 
-        c_tank = mass_conc
+        c_tank = mass_conc  # [kg/m**3]
 
+        # [kg/m**3/s] both terms
         flow_term = tau_inv * (input_conc*phi_in[0] - c_tank*phi)
         transf_term = transf * (self.kron_jtg - c_tank / rho_sol)
         dcomp_dt = 1 / phi * (flow_term - transf_term)
@@ -1844,55 +2072,116 @@ class MSMPR(_BaseCryst):
 
         dmaterial_dt = np.concatenate((ddistr_dt, dcomp_dt))
 
-        return dmaterial_dt, transf
+        return dmaterial_dt, transf  # transf [kg/m**3/s]
 
     def energy_balances(self, time, params, cryst_rate, u_inputs, rhos, mu_n,
                         distrib, mass_conc, temp, temp_ht, vol,
                         h_in, heat_prof=False):
+        """
+        Energy balances for the continuous (MSMPR) crystallizer.
+
+        Parameters
+        ----------
+        time : float
+            integration time [s].
+        params : array-like
+            kinetic parameters. Unused here, kept for signature
+            compatibility.
+        cryst_rate : numpy.ndarray
+            crystallization mass rate per unit slurry volume [kg/m**3/s],
+            as returned by :meth:`material_balances`. This is the
+            volumetric counterpart of the total [kg/s] rate returned by
+            :meth:`BatchCryst.material_balances`, hence the ``* vol``
+            factor in the source term below.
+        u_inputs : dict
+            unit inputs at `time`, holding the inlet volumetric flow
+            [m**3/s].
+        rhos : list
+            [[liquid, solid] tank densities, [liquid, solid] inlet
+            densities], all in [kg/m**3].
+        mu_n : array-like
+            crystal size distribution moments [m**n/m**3].
+        distrib : array-like
+            distribution state. Unused here, kept for signature
+            compatibility.
+        mass_conc : array-like
+            liquid-phase mass concentrations [kg/m**3].
+        temp : float
+            liquid temperature [K].
+        temp_ht : float or None
+            jacket temperature [K]. ``None`` when the unit carries no
+            jacket state.
+        vol : float
+            slurry volume [m**3].
+        h_in : float
+            volumetric enthalpy of the inlet stream [J/m**3].
+        heat_prof : bool, optional
+            if True, return the individual heat terms instead of the
+            temperature derivatives. The default is False.
+
+        Returns
+        -------
+        If `heat_prof` is True, an array with the source, heat-transfer and
+        flow terms [J/s]. Otherwise ``dtemp_dt`` [K/s], or the pair
+        (``dtemp_dt``, ``dtht_dt``) [K/s] when a jacket state is present.
+
+        Notes
+        -----
+        When ``'temp'`` is a control, ``ht_term`` carries the heat
+        capacitance [J/K] instead of a heat rate, so that the caller can
+        back out the required duty.
+        """
 
         rho_susp, rho_in = rhos
 
-        input_flow = u_inputs['Inlet']['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
 
         # Thermodynamic properties (basis: slurry volume)
-        phi_liq = 1 - self.Solid_1.kv * mu_n[3]
+        phi_liq = 1 - self.Solid_1.kv * mu_n[3]  # [-], liquid volume fraction
 
-        phis = [phi_liq, 1 - phi_liq]
-        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)
-        capacitance = self.Slurry.getCp(temp, phis, rho_susp)  # J/m**3/K
+        phis = [phi_liq, 1 - phi_liq]  # [-], [liq, sol]
+        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)  # [J/m**3]
+        capacitance = self.Slurry.getCp(temp, phis, rho_susp)  # [J/m**3/K]
 
         # Renaming
-        dh_cryst = -1.46e4  # J/kg  # TODO: read this from json file
+        dh_cryst = -1.46e4  # [J/kg]  # TODO: read this from json file
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
-        #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
+        #     self.Liquid_1.mw[self.target_ind] * 1000  # [J/kg]
 
-        height_liq = vol / (np.pi/4 * self.diam_tank**2)
-        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
+        height_liq = vol / (np.pi/4 * self.diam_tank**2)  # [m]
+        # [m**2], wetted lateral area plus tank base
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base
 
-        # Energy terms (W)
+        # Energy terms [J/s]
         flow_term = input_flow * (h_in - h_sp)
         source_term = dh_cryst*cryst_rate * vol
 
-        if 'temp' in self.controls.keys():
-            ht_term = capacitance * vol  # return capacitance
+        if self.adiabatic:
+            ht_term = 0  # [J/s]
+        elif 'temp' in self.controls.keys():
+            ht_term = capacitance * vol  # [J/K], return capacitance
         elif 'temp' in self.states_uo:
-            ht_term = self.u_ht*area_ht*(temp - temp_ht)
+            ht_term = self.u_ht*area_ht*(temp - temp_ht)  # [J/s]
         if heat_prof:
             heat_components = np.hstack([source_term, ht_term, flow_term])
             return heat_components
         else:
             # Balance inside the tank
-            dtemp_dt = (flow_term - source_term - ht_term) / vol / capacitance
+            dtemp_dt = (flow_term - source_term - ht_term) / \
+                vol / capacitance  # [K/s]
+
+            if self.adiabatic or temp_ht is None:
+                return dtemp_dt
 
             # Balance in the jacket
             ht_media = self.Utility.get_inputs(time)
-            flow_ht = ht_media['vol_flow']
-            tht_in = ht_media['temp_in']
+            flow_ht = ht_media['vol_flow']  # [m**3/s]
+            tht_in = ht_media['temp_in']  # [K], Utility inlet temperature
 
-            cp_ht = self.Utility.cp
-            rho_ht = self.Utility.rho
+            cp_ht = self.Utility.cp  # [J/kg/K]
+            rho_ht = self.Utility.rho  # [kg/m**3]
 
-            vol_ht = self.vol_tank*0.14  # m**3
+            vol_ht = self.vol_tank*0.14  # [m**3]
 
             dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
                 self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht
@@ -2105,13 +2394,67 @@ class SemibatchCryst(MSMPR):
 
     def material_balances(self, time, params, u_inputs, rhos, mu_n,
                           distrib, mass_conc, temp, temp_ht, vol, phi_in):
+        """
+        Material balances for the semibatch crystallizer.
+
+        Parameters
+        ----------
+        time : float
+            integration time [s].
+        params : array-like
+            kinetic parameters passed to ``self.Kinetics``.
+        u_inputs : dict
+            unit inputs at `time`, holding the inlet volumetric flow
+            [m**3/s], inlet distribution and inlet mass concentrations
+            [kg/m**3].
+        rhos : list
+            [[liquid, solid] tank densities, [liquid, solid] inlet
+            densities], all in [kg/m**3].
+        mu_n : array-like
+            crystal size distribution moments [m**n] (total basis).
+        distrib : array-like
+            distribution state: [#/um] for ``method == '1D-FVM'``, or the
+            raw moment vector [um**n] for ``method == 'moments'``.
+        mass_conc : array-like
+            liquid-phase mass concentrations [kg/m**3].
+        temp : float
+            liquid temperature [K].
+        temp_ht : float or None
+            jacket temperature [K]. Unused here, kept for signature
+            compatibility.
+        vol : float
+            liquid volume [m**3].
+        phi_in : array-like
+            inlet [liquid, solid] volume fractions [-].
+
+        Returns
+        -------
+        dmaterial_dt : numpy.ndarray
+            stacked derivatives with mixed units, in this order:
+            ``ddistr_dt`` ([#/um/s] for '1D-FVM', [um**n/s] for 'moments'),
+            ``dcomp_dt`` [kg/m**3/s] and ``dvol_dt`` [m**3/s].
+        transf : numpy.ndarray
+            crystallization mass rate [kg/s].
+
+        Notes
+        -----
+        Like :class:`BatchCryst` and unlike :class:`MSMPR`, the semibatch
+        states are declared on a *total* basis in
+        :meth:`_BaseCryst.nomenclature` (``mu_n`` in [m**n], ``distrib`` in
+        [#/um]), and the kinetics are evaluated with ``vol=vol_slurry``, so
+        ``transf`` is a total rate [kg/s].
+
+        ``dcomp_dt`` is documented as [kg/m**3/s] because the
+        ``basis == 'mass_frac'`` rescaling below acts on a copy and never
+        reaches the returned array (tracked in issue #47).
+        """
 
         rho_susp, rho_in = rhos
 
         rho_liq, rho_sol = rho_susp
         rho_in_liq, _ = rho_in
 
-        input_flow = u_inputs['Inlet']['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
         input_flow = np.max([eps, input_flow])
 
         # TODO: generalize dictionary iteration ('Inlet', 'Liquid_1', ...)?
@@ -2142,14 +2485,15 @@ class SemibatchCryst(MSMPR):
         ddistr_dt = ddistr_dt + flow_distrib
 
         # Liquid phase
-        c_tank = mass_conc
+        c_tank = mass_conc  # [kg/m**3]
 
         flow_term = phi_in[0]*input_flow * (
-            input_conc - mass_conc * rho_in_liq/rho_liq)
-        transf_term = transf * (self.kron_jtg - c_tank/rho_liq)
+            input_conc - mass_conc * rho_in_liq/rho_liq)  # [kg/s]
+        transf_term = transf * (self.kron_jtg - c_tank/rho_liq)  # [kg/s]
 
-        dcomp_dt = 1/vol * (flow_term - transf_term)
-        dvol_dt = (phi_in[0] * input_flow * rho_in_liq - transf) / rho_liq
+        dcomp_dt = 1/vol * (flow_term - transf_term)  # [kg/m**3/s]
+        dvol_dt = (phi_in[0] * input_flow * rho_in_liq
+                   - transf) / rho_liq  # [m**3/s]
 
         dliq_dt = np.append(dcomp_dt, dvol_dt)
 
@@ -2158,63 +2502,106 @@ class SemibatchCryst(MSMPR):
 
         dmaterial_dt = np.concatenate((ddistr_dt, dliq_dt))
 
-        return dmaterial_dt, transf
+        return dmaterial_dt, transf  # transf [kg/s]
 
     def energy_balances(self, time, params, cryst_rate, u_inputs, rhos,
                         distrib, mass_conc, temp, temp_ht, vol, mu_n, h_in):
+        """
+        Energy balances for the semibatch crystallizer.
+
+        Parameters
+        ----------
+        time : float
+            integration time [s].
+        params : array-like
+            kinetic parameters. Unused here, kept for signature
+            compatibility.
+        cryst_rate : numpy.ndarray
+            crystallization mass rate [kg/s], as returned by
+            :meth:`material_balances`. Unlike :meth:`MSMPR.energy_balances`,
+            it is already a total rate, so the source term below needs no
+            ``* vol`` factor.
+        u_inputs : dict
+            unit inputs at `time`, holding the inlet volumetric flow
+            [m**3/s].
+        rhos : list
+            [[liquid, solid] tank densities, [liquid, solid] inlet
+            densities], all in [kg/m**3].
+        distrib : array-like
+            distribution state. Unused here, kept for signature
+            compatibility.
+        mass_conc : array-like
+            liquid-phase mass concentrations [kg/m**3].
+        temp : float
+            liquid temperature [K].
+        temp_ht : float or None
+            jacket temperature [K]. ``None`` when the unit carries no
+            jacket state.
+        vol : float
+            liquid volume [m**3].
+        mu_n : array-like
+            crystal size distribution moments [m**n] (total basis).
+        h_in : float
+            volumetric enthalpy of the inlet stream [J/m**3].
+
+        Returns
+        -------
+        ``dtemp_dt`` [K/s], or the pair (``dtemp_dt``, ``dtht_dt``) [K/s]
+        when a jacket state is present.
+        """
 
         rho_susp, rho_in = rhos
 
         # Input properties
-        input_flow = u_inputs['Inlet']['vol_flow']
+        input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
         input_flow = np.max([eps, input_flow])
 
         vol_solid = mu_n[3] * self.Solid_1.kv  # mu_3 is total, not by volume
-        vol_total = vol + vol_solid
+        vol_total = vol + vol_solid  # [m**3], slurry volume
 
-        phi = vol / vol_total
-        phis = [phi, 1 - phi]
-        dens_slurry = np.dot(rho_susp, phis)
+        phi = vol / vol_total  # [-], liquid volume fraction
+        phis = [phi, 1 - phi]  # [-], [liq, sol]
+        dens_slurry = np.dot(rho_susp, phis)  # [kg/m**3]
 
         # Suspension properties
         capacitance = self.Slurry.getCp(temp, phis, rho_susp,
-                                        times_vliq=True)
-        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)
+                                        times_vliq=True)  # [J/m**3/K]
+        h_sp = self.Slurry.getEnthalpy(temp, phis, rho_susp)  # [J/m**3]
 
         # Renaming
-        dh_cryst = -1.46e4  # J/kg
+        dh_cryst = -1.46e4  # [J/kg]
         # dh_cryst = -self.Liquid_1.delta_fus[self.target_ind] / \
-        #     self.Liquid_1.mw[self.target_ind] * 1000  # J/kg
+        #     self.Liquid_1.mw[self.target_ind] * 1000  # [J/kg]
 
         # Terms
-        dens_in_liq = rho_in[0]
-        dmass_dt = input_flow * dens_in_liq
+        dens_in_liq = rho_in[0]  # [kg/m**3]
+        dmass_dt = input_flow * dens_in_liq  # [kg/s]
 
-        accum_term = dmass_dt * h_sp/dens_slurry
-        flow_term = input_flow * h_in
+        accum_term = dmass_dt * h_sp/dens_slurry  # [J/s]
+        flow_term = input_flow * h_in  # [J/s]
 
-        source_term = dh_cryst * cryst_rate
+        source_term = dh_cryst * cryst_rate  # [J/s]
 
-        height_liq = vol / (np.pi/4 * self.diam_tank**2)
-        area_ht = np.pi * self.diam_tank * height_liq + self.area_base  # m**2
+        height_liq = vol / (np.pi/4 * self.diam_tank**2)  # [m]
+        # [m**2], wetted lateral area plus tank base
+        area_ht = np.pi * self.diam_tank * height_liq + self.area_base
 
         if self.adiabatic:
-            ht_term = 0
+            ht_term = 0  # [J/s]
         else:
-            ht_term = self.u_ht*area_ht*(temp - temp_ht)
+            ht_term = self.u_ht*area_ht*(temp - temp_ht)  # [J/s]
 
         # Balance inside the tank
         dtemp_dt = (flow_term - source_term - ht_term - accum_term) / \
-            capacitance / vol
-
-        # print(dtemp_dt)
+            capacitance / vol  # [K/s]
 
         if temp_ht is not None:
-            tht_in = self.temp_ht_in  # degC
-            flow_ht = self.flow_ht
-            cp_ht = 4180  # J/kg/K
-            rho_ht = 1000
-            vol_ht = self.vol_tank*0.14  # m**3
+            ht_media = self.Utility.get_inputs(time)
+            tht_in = ht_media['temp_in']  # [K], Utility inlet temperature
+            flow_ht = ht_media['vol_flow']  # [m**3/s]
+            cp_ht = self.Utility.cp  # [J/kg/K]
+            rho_ht = self.Utility.rho  # [kg/m**3]
+            vol_ht = self.vol_tank*0.14  # [m**3]
 
             dtht_dt = flow_ht / vol_ht * (tht_in - temp_ht) - \
                 self.u_ht*area_ht*(temp_ht - temp) / rho_ht/vol_ht/cp_ht

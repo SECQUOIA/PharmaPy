@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from assimulo_helpers import import_module_with_assimulo_stub
+from PharmaPy.Crystallizers import MSMPR
 from PharmaPy.Kinetics import CrystKinetics
 
 
@@ -28,28 +28,6 @@ def _primary_growth_kinetics():
     )
     kin.target_idx = 0  # [-]
     return kin
-
-
-def _import_msmpr(monkeypatch):
-    """Import MSMPR while stubbing only optional Assimulo symbols.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the shared optional-import helper.
-
-    Returns
-    -------
-    type
-        Imported ``MSMPR`` class.
-    """
-    module = import_module_with_assimulo_stub(
-        monkeypatch,
-        "PharmaPy.Crystallizers",
-        solvers={"CVode": object},
-        problem={"Explicit_Problem": object},
-    )
-    return module.MSMPR
 
 
 @pytest.mark.parametrize("conc", [0.5, np.array(0.5)])
@@ -117,15 +95,8 @@ def test_get_kinetics_uses_secondary_parameters_from_vector_update():
     np.testing.assert_allclose(dissol, [0.0, 0.0])
 
 
-def test_msmpr_steady_state_accepts_scalar_seed(monkeypatch):
-    """MSMPR steady-state solve accepts a scalar seed fraction.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest cleanup fixture used by the optional Assimulo import helper.
-    """
-    MSMPR = _import_msmpr(monkeypatch)
+def test_msmpr_steady_state_accepts_scalar_seed():
+    """MSMPR steady-state solve accepts a scalar seed fraction."""
 
     crystallizer = MSMPR.__new__(MSMPR)
     crystallizer.vol_slurry = 1.0  # [m**3]
