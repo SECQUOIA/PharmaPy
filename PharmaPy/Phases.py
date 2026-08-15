@@ -292,11 +292,63 @@ class LiquidPhase(ThermoPhysicalManager):
     def updatePhase(self, mole_conc=None, mass_conc=None,
                     mass_frac=None, mole_frac=None,
                     vol=0, mass=0, moles=0, temp=None, pres=None):
+        """Update the liquid composition, amount, and intensive state.
+
+        Parameters
+        ----------
+        mole_conc : array-like, optional
+            Species molar concentrations with shape ``(num_species,)``
+            [mol/L]. When the phase declares a solvent, the solvent entry is
+            back-calculated from the mixture volume balance and any value
+            supplied at that index is ignored.
+        mass_conc : array-like, optional
+            Species mass concentrations with shape ``(num_species,)``
+            [kg/m**3], handled like ``mole_conc`` but on a mass basis.
+        mass_frac : array-like, optional
+            Species mass fractions with shape ``(num_species,)`` [-].
+        mole_frac : array-like, optional
+            Species mole fractions with shape ``(num_species,)`` [-].
+        vol : float, optional
+            Liquid volume [m**3].
+        mass : float, optional
+            Liquid mass [kg].
+        moles : float, optional
+            Amount of liquid [mol].
+        temp : float, optional
+            Liquid temperature [K]. The stored temperature is left unchanged
+            when ``None``.
+        pres : float, optional
+            Liquid pressure [Pa]. The stored pressure is left unchanged when
+            ``None``.
+
+        Returns
+        -------
+        None
+            The phase state is updated in place.
+
+        Notes
+        -----
+        Composition arguments are resolved in the order ``mole_conc``,
+        ``mass_conc``, ``mass_frac``, ``mole_frac``; the first one supplied
+        determines the new composition and the remaining ones are ignored.
+        When none is supplied, the stored composition is retained and only
+        the amount and intensive state are refreshed.
+
+        The amount is set from the first positive value among ``mass``,
+        ``vol``, and ``moles``, using the mixture mass density [kg/m**3] and
+        the average molar mass [g/mol]. When all three are left at zero, the
+        previously stored mass, volume, and moles are retained.
+
+        Solvent handling matches the constructor: ``self.ind_solv`` is
+        compared with ``None`` rather than tested for truth, so a solvent
+        declared as the first species (index ``0``) is honored and the
+        concentration converters' three-value return is unpacked correctly.
+        """
 
         if mole_conc is not None:
             frac_out = self.conc_to_frac(mole_conc,
                                          solvent_ind=self.ind_solv)
-            if self.ind_solv:
+            if self.ind_solv is not None:
                 mass_frac, mole_frac, mole_conc = frac_out
             else:
                 mass_frac, mole_frac = frac_out
@@ -307,7 +359,7 @@ class LiquidPhase(ThermoPhysicalManager):
             frac_out = self.mass_conc_to_frac(mass_conc,
                                               solvent_ind=self.ind_solv)
 
-            if self.ind_solv:
+            if self.ind_solv is not None:
                 mass_frac, mole_frac, mass_conc = frac_out
             else:
                 mass_frac, mole_frac = frac_out
