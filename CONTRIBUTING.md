@@ -23,7 +23,6 @@ environments backed by conda-forge:
 ```bash
 pixi run test                       # core test lane (Assimulo-free)
 pixi run -e assimulo test-assimulo  # solver-backed integration lane
-pixi run docs                       # Sphinx docs build (warnings are errors)
 ```
 
 `python -m pytest tests/ -m "not assimulo"` is the equivalent core command in

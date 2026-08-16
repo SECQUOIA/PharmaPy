@@ -1,5 +1,6 @@
 include LICENSE.md
 include README.md
+include CONTRIBUTING.md
 include INSTALLATION.md
 include DEPENDENCIES.md
 include TESTING.md
