@@ -2037,7 +2037,7 @@ class MSMPR(_BaseCryst):
         tank liquid density [kg/m**3].
         """
 
-        rho_liq_tank, rho_sol_tank = rhos[0]  # [kg/m**3], tank phase densities
+        rho_liq, rho_sol = rhos[0]  # [kg/m**3], liquid and solid tank densities
 
         input_flow = u_inputs['Inlet']['vol_flow']  # [m**3/s]
 
@@ -2046,11 +2046,11 @@ class MSMPR(_BaseCryst):
         if self.method == 'moments':
             input_distrib = u_inputs['Inlet']['mu_n'] * (1e6)**np.arange(self.num_distr)#* self.scale
             ddistr_dt, transf = self.method_of_moments(distrib, mass_conc, temp,
-                                                       params, rho_sol_tank)
+                                                       params, rho_sol)
         elif self.method == '1D-FVM':
             input_distrib = u_inputs['Inlet']['distrib'] * self.scale
             ddistr_dt, transf = self.fvm_method(distrib, mu_n, mass_conc, temp,
-                                                params, rho_sol_tank)
+                                                params, rho_sol)
 
             self.Solid_1.moments[[2, 3]] = mu_n[[2, 3]]
 
@@ -2063,15 +2063,13 @@ class MSMPR(_BaseCryst):
         # Liquid phase
         phi = 1 - self.Solid_1.kv * mu_n[3]  # [-], liquid volume fraction
 
-        c_tank = mass_conc  # [kg/m**3]
-
         # [kg/m**3/s] both terms
-        flow_term = tau_inv * (input_conc*phi_in[0] - c_tank*phi)
-        transf_term = transf * (self.kron_jtg - c_tank / rho_liq_tank)
+        flow_term = tau_inv * (input_conc*phi_in[0] - mass_conc*phi)
+        transf_term = transf * (self.kron_jtg - mass_conc / rho_liq)
         dcomp_dt = 1 / phi * (flow_term - transf_term)
 
         if self.basis == 'mass_frac':
-            dcomp_dt *= 1 / rho_liq_tank
+            dcomp_dt *= 1 / rho_liq
 
         dmaterial_dt = np.concatenate((ddistr_dt, dcomp_dt))
 
