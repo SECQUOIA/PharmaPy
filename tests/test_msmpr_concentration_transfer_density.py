@@ -16,65 +16,13 @@ visible in the asserted values, and the two species carry different
 concentrations so a component mix-up cannot pass.
 """
 
-import sys
-from types import ModuleType
-
 import numpy as np
 import pytest
 
+from PharmaPy.Crystallizers import MSMPR
+
 
 pytestmark = pytest.mark.unit
-
-
-def _stub_assimulo_modules(monkeypatch):
-    """Register minimal ``assimulo`` stand-ins for import-time access.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest helper used to register temporary module objects.
-    """
-    assimulo = ModuleType("assimulo")
-
-    solvers = ModuleType("assimulo.solvers")
-    solvers.CVode = object
-
-    problem = ModuleType("assimulo.problem")
-    problem.Explicit_Problem = object
-
-    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
-    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
-    monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
-
-
-def _import_msmpr(monkeypatch):
-    """Import ``MSMPR`` without requiring the optional Assimulo stack.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest helper used only when Assimulo is unavailable.
-
-    Returns
-    -------
-    type
-        The ``MSMPR`` crystallizer class.
-
-    Raises
-    ------
-    ModuleNotFoundError
-        If an import dependency other than Assimulo is unavailable.
-    """
-    try:
-        from PharmaPy.Crystallizers import MSMPR
-    except ModuleNotFoundError as exc:
-        if exc.name != "assimulo":
-            raise
-        _stub_assimulo_modules(monkeypatch)
-
-        from PharmaPy.Crystallizers import MSMPR
-
-    return MSMPR
 
 
 class _Liquid:
@@ -164,13 +112,8 @@ class _Kinetics:
         return impurity_factor
 
 
-def _build_msmpr(monkeypatch):
+def _build_msmpr():
     """Build an ``MSMPR`` populated with the regression fixture.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest helper used only when Assimulo is unavailable.
 
     Returns
     -------
@@ -183,8 +126,6 @@ def _build_msmpr(monkeypatch):
     Construction bypasses ``__init__`` to isolate the balance from solver
     setup while retaining the real public model method and collaborators.
     """
-    MSMPR = _import_msmpr(monkeypatch)
-
     crystallizer = MSMPR.__new__(MSMPR)
     crystallizer.num_distr = 4
     crystallizer.num_species = 2
@@ -224,15 +165,9 @@ RATE_RTOL = 1.0e-12  # [-], deterministic algebra roundoff allowance
 RATE_ATOL = 0.0  # [kg/m**3/s], no absolute slack for the nonzero rates
 
 
-def test_msmpr_transfer_term_uses_liquid_density(monkeypatch):
-    """Use liquid density only in the MSMPR volume-shrinkage correction.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Pytest helper used only when Assimulo is unavailable.
-    """
-    crystallizer = _build_msmpr(monkeypatch)
+def test_msmpr_transfer_term_uses_liquid_density():
+    """Use liquid density only in the MSMPR volume-shrinkage correction."""
+    crystallizer = _build_msmpr()
 
     # Mixed units by field: volumetric flow [m**3/s], inlet moments
     # [m**n/m**3], and liquid-phase mass concentrations [kg/m**3].
