@@ -901,15 +901,9 @@ class DistillationColumn(_BaseDistillation):
 
         Notes
         -----
-        ``x_dist`` and ``x_bot`` are mole fractions [-], so both outlet
-        ``LiquidStream`` objects are constructed on a mole-fraction basis.
-        The stream API derives ``mole_conc`` [mol/L] under ideal volume
-        mixing as ``c_i = x_i / sum_j(x_j / rho_mole,j)``, where
-        ``rho_mole,j`` is the pure-species molar density [mol/L]. It then
-        derives ``mass_conc`` [kg/m**3] as ``c_i * mw_i``: with molecular
-        weight [g/mol], the intermediate [g/L] is numerically identical to
-        [kg/m**3]. These volume conventions preserve PharmaPy's established
-        concentration API.
+        ``x_dist`` and ``x_bot`` are mole fractions [-]; the outlet streams
+        use that basis and derive ``mole_conc`` [mol/L] and ``mass_conc``
+        [kg/m**3].
         """
 
         if not(isinstance(x, np.ndarray)):
