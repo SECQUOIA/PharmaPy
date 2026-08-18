@@ -898,6 +898,12 @@ class DistillationColumn(_BaseDistillation):
         -------
         None
             The method stores ``self.result`` and outlet stream objects.
+
+        Notes
+        -----
+        ``x_dist`` and ``x_bot`` are mole fractions [-]; the outlet streams
+        use that basis and derive ``mole_conc`` [mol/L] and ``mass_conc``
+        [kg/m**3].
         """
 
         if not(isinstance(x, np.ndarray)):
@@ -914,10 +920,10 @@ class DistillationColumn(_BaseDistillation):
 
         path = self.Inlet.path_data
         self.OutletDistillate = LiquidStream(path, temp=dist_result['T'][0],
-                                             mole_conc=dist_result['x_dist'],
+                                             mole_frac=dist_result['x_dist'],
                                              mole_flow=dist_result['dist_flowrate'])
         self.OutletBottom = LiquidStream(path, temp=dist_result['T'][-1],
-                                         mole_conc=dist_result['x_bot'],
+                                         mole_frac=dist_result['x_bot'],
                                          mole_flow=dist_result['bot_flowrate'])
         self.Outlet = self.OutletBottom
 
