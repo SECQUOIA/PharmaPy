@@ -11,7 +11,7 @@ from PharmaPy._assimulo import CVode, Explicit_Problem
 
 from PharmaPy.Phases import LiquidPhase, SolidPhase, classify_phases
 from PharmaPy.Streams import LiquidStream, SolidStream
-from PharmaPy.MixedPhases import Slurry, SlurryStream
+from PharmaPy.MixedPhases import Cake, Slurry, SlurryStream
 
 from PharmaPy.NameAnalysis import get_dict_states
 from PharmaPy.Crystallizers import SemibatchCryst
@@ -363,6 +363,9 @@ class Mixer:
 
         Raises
         ------
+        TypeError
+            If an inlet exposes a solid phase but is neither a supported
+            :class:`Slurry` nor :class:`Cake` collaborator.
         RuntimeError
             If the Newton iteration cannot find the energy-balance root.
 
@@ -384,11 +387,17 @@ class Mixer:
             if isinstance(inlet, Slurry):
                 h_in.append(inlet.getEnthalpy(temp_in[ind],
                                               volumetric=False))
-            elif hasattr(inlet, 'Solid_1'):
+            elif isinstance(inlet, Cake):
                 distrib_in = u_inputs['num_distrib']  # [#/um]
                 h_in.append(inlet.getEnthalpy(temp_in[ind],
                                               mass_frac=massfrac_in[ind],
                                               distrib=distrib_in[ind]))
+            elif hasattr(inlet, 'Solid_1'):
+                raise TypeError(
+                    "Mixer.energy_balance supports Slurry and Cake "
+                    "solids-bearing inlets; got %s."
+                    % type(inlet).__name__
+                )
             else:
                 h_in.append(inlet.getEnthalpy(temp_in[ind],
                                               mass_frac=massfrac_in[ind]))

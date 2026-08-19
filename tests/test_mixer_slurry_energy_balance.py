@@ -14,39 +14,41 @@ for ``Cake.getEnthalpy(temp, mass_frac=..., distrib=...)`` and raises
 ``volumetric=True`` and returns [J/m**3] of suspension, which is then
 multiplied by a mass in [kg]. A correct balance must use the mass-basis
 mixed-phase enthalpy ``getEnthalpy(temp, volumetric=False)`` [J/kg] on both
-sides and weight it by the total slurry mass ``mass_liq + mass_solid`` [kg].
+sides and weight it by the total slurry mass ``mass_liq + mass_solid`` [kg],
+or total slurry mass flow [kg/s] for continuous inputs.
 
 Fixtures use the shared ``tests/Flowsheet/data/compound_database.json`` thermo
-file and real ``LiquidPhase``/``SolidPhase``/``Slurry`` collaborators. Expected
-temperatures are derived independently of the production expression, by closing
-the total-enthalpy balance over the individual phase enthalpies with ``brentq``.
+file and real batch and stream phase collaborators. Expected temperatures are
+derived independently of the production expression, by closing the total-
+enthalpy balance over the individual phase enthalpies with ``brentq``.
 
-Both tests call ``Mixer.energy_balance`` with the ``u_inputs`` mapping produced
-by the real ``Mixer.get_inputs_solids``, and assign ``Mixer.Outlet`` the way
+The batch tests call ``Mixer.energy_balance`` with the ``u_inputs`` mapping
+produced by the real ``Mixer.get_inputs_solids``. The continuous tests build
+the equivalent mapping from the real stream phase ``mass_flow`` attributes;
+issue #188 tracks the current ``get_inputs_solids`` attempt to read a deleted
+``LiquidStream.mass`` attribute. All tests assign ``Mixer.Outlet`` the way
 ``Mixer.balances_solids`` does. They cannot yet run through the public
-``Mixer.solve_unit`` entry point because two separate, unfixed defects abort
-that path first, both recorded in the triage comment on issue #25 and not
-covered by #38 or #88:
+``Mixer.solve_unit`` entry point because two separate defects abort that path:
 
-* ``Containers.py:527`` constructs ``LiquidPhase(path)`` with no composition,
-  raising ``ValueError: No measure of composition was provided`` for every
-  solids-bearing inlet set.
-* the outlet ``SolidPhase(path, mass=..., distrib=...)`` built at
-  ``Containers.py:487-497`` yields ``nan`` moments, so assigning
-  ``Slurry.Phases`` raises ``RuntimeError`` from ``newton``.
+* issue #186 tracks the composition-free ``LiquidPhase(path)`` construction;
+* issue #187 tracks the outlet ``SolidPhase`` construction that yields ``nan``
+  moments from a finite number distribution.
 
 The provisional contract asserted here is therefore the energy balance alone.
-Once those blockers are fixed, these tests should drive ``Mixer.solve_unit``
-end to end and assert the outlet temperature it reports.
+Once the corresponding blockers are fixed, these tests should drive
+``Mixer.solve_unit`` end to end and assert the outlet temperature it reports.
 """
+
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from scipy.optimize import brentq
 
 from PharmaPy.Containers import Mixer
-from PharmaPy.MixedPhases import Slurry
+from PharmaPy.MixedPhases import Slurry, SlurryStream
 from PharmaPy.Phases import LiquidPhase, SolidPhase
+from PharmaPy.Streams import LiquidStream, SolidStream
 
 
 pytestmark = pytest.mark.unit
@@ -71,6 +73,15 @@ DISTRIB = np.array([0.0, 1.0e9, 1.25e8, 0.0])  # [#/m**3/um]
 # Mixer geometry-free operating point.
 MASS_LIQUID_INLET = 1.0  # [kg], solids-free inlet
 VOL_SLURRY_INLET = 1.0e-3  # [m**3], slurry inlet
+
+# Continuous mixer operating point. Two slurry streams contribute 1 L/s and
+# 2 L/s to the 3 L/s outlet.
+VOL_FLOW_SLURRY_INLET_ONE = 1.0e-3  # [m**3/s]
+VOL_FLOW_SLURRY_INLET_TWO = 2.0e-3  # [m**3/s]
+
+# Root [K] of the independent phase-level enthalpy-rate balance for the fixed
+# 350 K / 300 K slurry-stream fixture defined below.
+EXPECTED_STREAM_MIX_TEMP = 316.7476545148889  # [K]
 
 # Bracket for the independent outlet-temperature solve [K]. Wide enough to
 # contain any physically admissible adiabatic mixing temperature for the
@@ -106,6 +117,41 @@ def _make_slurry_inlet(thermo_path, temp):
 
     slurry = Slurry(vol=VOL_SLURRY_INLET, x_distrib=X_DISTRIB,
                     distrib=DISTRIB)
+    slurry.Phases = (liquid, solid)
+
+    return slurry
+
+
+def _make_slurry_stream_inlet(thermo_path, temp, vol_flow):
+    """Build a slurry-stream inlet at a uniform temperature.
+
+    Parameters
+    ----------
+    thermo_path : str
+        Path to the pure-component thermodynamic database.
+    temp : float
+        Temperature of both slurry-stream phases [K].
+    vol_flow : float
+        Total slurry volumetric flow rate [m**3/s].
+
+    Returns
+    -------
+    PharmaPy.MixedPhases.SlurryStream
+        Slurry stream whose liquid and solid mass flows [kg/s] follow from the
+        volume-specific crystal distribution.
+    """
+    liquid = LiquidStream(
+        thermo_path, mass_frac=LIQUID_MASS_FRAC, temp=temp
+    )
+    solid = SolidStream(
+        thermo_path, mass_frac=SOLID_MASS_FRAC, kv=KV, temp=temp
+    )
+
+    slurry = SlurryStream(
+        vol_flow=vol_flow, x_distrib=X_DISTRIB, distrib=DISTRIB
+    )
+    # The public phase setter expects the liquid collaborator first and
+    # derives each phase flow rate from the slurry volumetric flow [m**3/s].
     slurry.Phases = (liquid, solid)
 
     return slurry
@@ -177,6 +223,103 @@ def _build_mixer(thermo_path, temp_liquid, temp_slurry):
     return mixer, u_inputs, {'liquid': total_liquid, 'solid': total_solid}
 
 
+def _build_stream_mixer(thermo_path, temp_first, temp_second):
+    """Assemble a stream-fed Mixer and its continuous input mapping.
+
+    Parameters
+    ----------
+    thermo_path : str
+        Path to the pure-component thermodynamic database.
+    temp_first : float
+        Temperature of both phases in the first slurry stream [K].
+    temp_second : float
+        Temperature of both phases in the second slurry stream [K].
+
+    Returns
+    -------
+    mixer : PharmaPy.Containers.Mixer
+        Mixer with real stream inlets and a mixed slurry-stream outlet.
+    u_inputs : dict
+        Continuous inlet mapping whose phase amounts are flow rates [kg/s].
+    mass_flows : dict
+        Total liquid and solid mass flow [kg/s], keyed ``'liquid'`` and
+        ``'solid'``.
+
+    Notes
+    -----
+    Issue #188 tracks the current ``Mixer.get_inputs_solids`` failure on the
+    deleted ``LiquidStream.mass`` attribute. Until that is fixed, this helper
+    constructs the same mapping from the stream collaborators' authoritative
+    ``mass_flow`` values [kg/s].
+    """
+    first_inlet = _make_slurry_stream_inlet(
+        thermo_path, temp_first, VOL_FLOW_SLURRY_INLET_ONE
+    )
+    second_inlet = _make_slurry_stream_inlet(
+        thermo_path, temp_second, VOL_FLOW_SLURRY_INLET_TWO
+    )
+
+    mixer = Mixer()
+    # ``Mixer.Inlets`` reads ``name_species`` from its first collaborator,
+    # which ``SlurryStream`` does not expose. Use the real first slurry's
+    # liquid phase while the public setter establishes metadata, then restore
+    # the real mixed-phase collaborator for the energy-balance dispatch.
+    mixer.Inlets = [first_inlet.Liquid_1, second_inlet]
+    mixer.Inlets[0] = first_inlet
+
+    mass_liquid = np.array([
+        first_inlet.Liquid_1.mass_flow, second_inlet.Liquid_1.mass_flow
+    ])  # [kg/s]
+    mass_solid = np.array([
+        first_inlet.Solid_1.mass_flow, second_inlet.Solid_1.mass_flow
+    ])  # [kg/s]
+    massfrac_liquid = np.array([
+        first_inlet.Liquid_1.mass_frac, second_inlet.Liquid_1.mass_frac
+    ])  # [-]
+    temps = np.array([
+        first_inlet.Liquid_1.temp, second_inlet.Liquid_1.temp
+    ])  # [K]
+    # Slurry enthalpy dispatch does not consume the cake-only distribution
+    # field. Preserve the mapping shape on the continuous number-rate basis.
+    num_distrib = np.vstack((
+        first_inlet.Solid_1.distrib, second_inlet.Solid_1.distrib
+    ))  # [#/um/s]
+
+    u_inputs = {
+        'temp': temps,
+        'mass_frac': massfrac_liquid,
+        'mass_liq': mass_liquid,
+        'mass_solid': mass_solid,
+        'num_distrib': num_distrib,
+    }
+
+    total_liquid = float(mass_liquid.sum())  # [kg/s]
+    total_solid = float(mass_solid.sum())  # [kg/s]
+    total_vol_flow = (
+        VOL_FLOW_SLURRY_INLET_ONE + VOL_FLOW_SLURRY_INLET_TWO
+    )  # [m**3/s]
+
+    outlet = SlurryStream(
+        vol_flow=total_vol_flow, x_distrib=X_DISTRIB, distrib=DISTRIB
+    )
+    outlet.Phases = (
+        LiquidStream(thermo_path, mass_frac=LIQUID_MASS_FRAC),
+        SolidStream(thermo_path, mass_frac=SOLID_MASS_FRAC, kv=KV),
+    )
+
+    assert outlet.Liquid_1.mass_flow == pytest.approx(
+        total_liquid, rel=1e-10
+    )
+    assert outlet.Solid_1.mass_flow == pytest.approx(
+        total_solid, rel=1e-10
+    )
+
+    mixer.Outlet = outlet
+
+    mass_flows = {'liquid': total_liquid, 'solid': total_solid}  # [kg/s]
+    return mixer, u_inputs, mass_flows
+
+
 def _expected_outlet_temp(mixer, u_inputs, masses):
     """Solve the adiabatic outlet temperature from the phase enthalpies.
 
@@ -194,7 +337,7 @@ def _expected_outlet_temp(mixer, u_inputs, masses):
     u_inputs : dict
         Inlet mapping from ``Mixer.get_inputs_solids``.
     masses : dict
-        Total liquid and solid mass of the mixture [kg].
+        Total liquid and solid mass [kg], or mass flow [kg/s], of the mixture.
 
     Returns
     -------
@@ -204,7 +347,7 @@ def _expected_outlet_temp(mixer, u_inputs, masses):
     liquid_probe = mixer.Outlet.Liquid_1
     solid_probe = mixer.Outlet.Solid_1
 
-    enthalpy_in = 0.0  # [J]
+    enthalpy_in = 0.0  # [J] for batch inputs or [J/s] for continuous inputs
     for ind, temp in enumerate(u_inputs['temp']):
         enthalpy_in += u_inputs['mass_liq'][ind] * liquid_probe.getEnthalpy(
             temp=temp, mass_frac=u_inputs['mass_frac'][ind], basis='mass')
@@ -212,12 +355,25 @@ def _expected_outlet_temp(mixer, u_inputs, masses):
             temp=temp, basis='mass')
 
     def residual(temp):
+        """Return the phase-level outlet enthalpy residual.
+
+        Parameters
+        ----------
+        temp : float
+            Trial outlet temperature [K].
+
+        Returns
+        -------
+        float or numpy.floating
+            Inlet-minus-outlet enthalpy [J] for batch inputs or enthalpy rate
+            [J/s] for continuous inputs.
+        """
         enthalpy_out = (
             masses['liquid'] * liquid_probe.getEnthalpy(
                 temp=temp, mass_frac=np.array(LIQUID_MASS_FRAC), basis='mass')
             + masses['solid'] * solid_probe.getEnthalpy(temp=temp,
                                                         basis='mass')
-        )  # [J]
+        )  # [J] for batch inputs or [J/s] for continuous inputs
 
         return enthalpy_in - enthalpy_out
 
@@ -265,3 +421,74 @@ def test_mixer_energy_balance_weights_inlets_by_total_slurry_mass(
     temp_out = mixer.energy_balance(u_inputs)  # [K]
 
     assert temp_out == pytest.approx(expected_temp, rel=1e-9)
+
+
+def test_mixer_energy_balance_preserves_isothermal_stream_temperature(
+        thermo_path):
+    """A common inlet temperature must be invariant on the [J/s] basis.
+
+    Parameters
+    ----------
+    thermo_path : str
+        Path to the pure-component thermodynamic database.
+    """
+    temp_common = 300.0  # [K]
+
+    mixer, u_inputs, _ = _build_stream_mixer(
+        thermo_path, temp_common, temp_common
+    )
+
+    temp_out = mixer.energy_balance(u_inputs)  # [K]
+
+    assert temp_out == pytest.approx(temp_common, abs=1e-8)
+
+
+def test_mixer_energy_balance_closes_stream_enthalpy_rate(thermo_path):
+    """Continuous mixing must close the phase-level enthalpy-rate balance.
+
+    Parameters
+    ----------
+    thermo_path : str
+        Path to the pure-component thermodynamic database.
+    """
+    temp_first = 350.0  # [K]
+    temp_second = 300.0  # [K]
+
+    mixer, u_inputs, mass_flows = _build_stream_mixer(
+        thermo_path, temp_first, temp_second
+    )
+    expected_temp = _expected_outlet_temp(
+        mixer, u_inputs, mass_flows
+    )  # [K]
+
+    # Pin the fixed fixture to its independently derived phase-level root so a
+    # coupled change cannot move both the helper and production result together.
+    assert expected_temp == pytest.approx(
+        EXPECTED_STREAM_MIX_TEMP, abs=1e-9
+    )
+
+    temp_out = mixer.energy_balance(u_inputs)  # [K]
+
+    assert temp_out == pytest.approx(expected_temp, rel=1e-9)
+
+
+def test_mixer_energy_balance_rejects_unknown_solids_inlet(thermo_path):
+    """Unknown solids-bearing collaborators must fail at dispatch.
+
+    Parameters
+    ----------
+    thermo_path : str
+        Path to the pure-component thermodynamic database.
+    """
+    temp_common = 300.0  # [K]
+    mixer, u_inputs, _ = _build_mixer(
+        thermo_path, temp_common, temp_common
+    )
+    mixer.Inlets[1] = SimpleNamespace(Solid_1=object())
+
+    message = (
+        r'^Mixer\.energy_balance supports Slurry and Cake solids-bearing '
+        r'inlets; got SimpleNamespace\.$'
+    )
+    with pytest.raises(TypeError, match=message):
+        mixer.energy_balance(u_inputs)
