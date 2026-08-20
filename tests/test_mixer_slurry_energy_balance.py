@@ -1,42 +1,8 @@
-"""Regression tests for the Mixer adiabatic energy balance with solids.
+"""Test the Mixer adiabatic solids energy balance.
 
-Issue #25: ``Mixer.energy_balance`` weights every inlet enthalpy by the
-liquid-only mass ``u_inputs['mass_liq']`` and closes the balance against
-``sum(mass_liq) * h_out``, even though a solids-bearing inlet reports a
-mixed-phase enthalpy. The solid mass therefore carries no enthalpy on either
-side of the balance and the solved adiabatic mixing temperature is wrong
-whenever a solid phase is present.
-
-The same lines also select the wrong enthalpy basis: the inlet call is shaped
-for ``Cake.getEnthalpy(temp, mass_frac=..., distrib=...)`` and raises
-``TypeError`` for a ``Slurry``/``SlurryStream`` inlet, while the outlet call
-``self.Outlet.getEnthalpy(temp)`` takes ``Slurry.getEnthalpy``'s default
-``volumetric=True`` and returns [J/m**3] of suspension, which is then
-multiplied by a mass in [kg]. A correct balance must use the mass-basis
-mixed-phase enthalpy ``getEnthalpy(temp, volumetric=False)`` [J/kg] on both
-sides and weight it by the total slurry mass ``mass_liq + mass_solid`` [kg],
-or total slurry mass flow [kg/s] for continuous inputs.
-
-Fixtures use the shared ``tests/Flowsheet/data/compound_database.json`` thermo
-file and real batch and stream phase collaborators. Expected temperatures are
-derived independently of the production expression, by closing the total-
-enthalpy balance over the individual phase enthalpies with ``brentq``.
-
-The batch tests call ``Mixer.energy_balance`` with the ``u_inputs`` mapping
-produced by the real ``Mixer.get_inputs_solids``. The continuous tests build
-the equivalent mapping from the real stream phase ``mass_flow`` attributes;
-issue #188 tracks the current ``get_inputs_solids`` attempt to read a deleted
-``LiquidStream.mass`` attribute. All tests assign ``Mixer.Outlet`` the way
-``Mixer.balances_solids`` does. They cannot yet run through the public
-``Mixer.solve_unit`` entry point because two separate defects abort that path:
-
-* issue #186 tracks the composition-free ``LiquidPhase(path)`` construction;
-* issue #187 tracks the outlet ``SolidPhase`` construction that yields ``nan``
-  moments from a finite number distribution.
-
-The provisional contract asserted here is therefore the energy balance alone.
-Once the corresponding blockers are fixed, these tests should drive
-``Mixer.solve_unit`` end to end and assert the outlet temperature it reports.
+The regressions cover batch and continuous slurry inlets, independently solve
+the expected outlet temperature from phase enthalpies, and validate dispatch
+for unsupported solids-bearing collaborators.
 """
 
 from types import SimpleNamespace
@@ -180,6 +146,13 @@ def _build_mixer(thermo_path, temp_liquid, temp_slurry):
     masses : dict
         Total liquid and solid mass of the mixture [kg], keyed ``'liquid'``
         and ``'solid'``.
+
+    Notes
+    -----
+    Issues #186 and #187 currently prevent the public ``Mixer.solve_unit``
+    path from reaching the energy balance. Until they are fixed, this helper
+    constructs the same outlet state directly; afterward these regressions
+    should exercise ``solve_unit`` and assert its reported outlet temperature.
     """
     liquid_inlet = LiquidPhase(thermo_path, mass=MASS_LIQUID_INLET,
                                mass_frac=LIQUID_MASS_FRAC, temp=temp_liquid)
