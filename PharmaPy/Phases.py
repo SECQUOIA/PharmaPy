@@ -1376,50 +1376,6 @@ class SolidPhase(ThermoPhysicalManager):
 
         return porosity
 
-    # def getPorosity(self, distrib=None, diam_filter=1):  # x_distrib is the x
-    #     if distrib is None:
-    #         distrib = self.distrib
-    #         mom_zero = self.moments[0]
-    #         mom_one = self.moments[1]
-    #     else:
-    #         mom_zero, mom_one = self.getMoments(mom_num=(0, 1))
-
-    #     # mom_one *= 1e-6  # m
-    #     x_dist = self.x_distrib * 1e-6  # m
-
-    #     # Ouchiyiama model
-    #     E_denom = np.zeros_like(x_dist)
-
-    #     for p in range(4, len(E_denom)):
-    #         xx = x_dist[:p]
-    #         CSD = distrib[:p]
-
-    #         D_mean = mom_one / mom_zero
-
-    #         # average porosity of packing of uniform sized spheres [-]
-    #         E_0_Jeschar = 0.375 + 0.34 * D_mean / diam_filter
-
-    #         DD = xx - D_mean
-    #         DD[DD <= 0] = 0
-
-    #         # n value
-    #         n_num = np.dot((xx + D_mean)**2,
-    #                        (1 - 3/8*(D_mean/(xx + D_mean)))*CSD)
-
-    #         n_denom = np.dot((xx**3 - DD**3), CSD)
-
-    #         n_bar = 1 + 4/13*D_mean*(7 - 8*E_0_Jeschar)*(n_num/n_denom)
-
-    #         E_denom[p] = np.dot((DD**3 + (1/n_bar)*((xx + D_mean)**3 - DD**3)),
-    #                             CSD)
-
-    #     E_denom = max(E_denom)
-    #     E_num = np.dot(x_dist**3, distrib)
-
-    #     porosity = max(0, 1 - E_num/E_denom)
-
-    #     return porosity
-
     def getCp(self, temp=None, mass_frac=None, mole_frac=None, basis='mass'):
         if temp is None:
             temp = self.temp
