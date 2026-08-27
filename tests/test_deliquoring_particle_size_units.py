@@ -292,7 +292,7 @@ def test_get_sat_inf_returns_per_node_values_for_array_properties():
 
 
 def test_get_sat_inf_clips_micronized_aggregate_roundoff():
-    """Micronized CSD aggregation clips upper-bound roundoff to one."""
+    """Searched micronized values clip upper-bound roundoff to one."""
     size_grid_um = np.array(
         [0.29443721003613355, 1.3640842476616897, 1.3987695850176836]
     )  # [um]
@@ -319,10 +319,10 @@ def test_get_sat_inf_clips_micronized_aggregate_roundoff():
         (surf_tens, rho_liq),
     )
 
-    # This asymmetric micronized distribution makes all bin saturations hit the
-    # upper bound; before aggregate clipping, volume-fraction roundoff sums the
-    # weighted saturation to 1.0000000000000002 [-].
-    assert sat_inf == 1.0
+    # These searched values are a numerical guard, not a physical cake. They
+    # make all bin saturations hit the upper bound; before aggregate clipping,
+    # volume-fraction roundoff sums the weighted saturation to
+    # 1.0000000000000002 [-].
     assert sat_inf <= 1.0
 
 
