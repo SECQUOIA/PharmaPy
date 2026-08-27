@@ -259,6 +259,73 @@ def test_deliquoring_threshold_pressure_uses_expected_size_basis(monkeypatch):
     assert unit.p_thresh == pytest.approx(expected_threshold, rel=1e-9)
 
 
+def test_get_sat_inf_returns_per_node_values_for_array_properties():
+    """Array-valued liquid properties return one saturation per property node."""
+    size_grid_um = np.array([50.0, 100.0, 150.0, 200.0])  # [um]
+    size_grid_m = size_grid_um * 1e-6  # [m]
+    csd_number = np.array([1.0, 2.0, 1.0, 0.5])  # [#/m**3/um]
+    delta_p = 5.0e4  # [Pa]
+    cake_height = 0.02  # [m]
+    surf_tens = np.array([0.065, 0.067, 0.066])  # [N/m]
+    rho_liq = np.array([950.0, 960.0, 970.0])  # [kg/m**3]
+    mu_zero = _zeroth_moment(size_grid_um, csd_number)  # [#/m**3]
+
+    sat_inf = solid_liquid_sep.get_sat_inf(
+        size_grid_m,
+        csd_number,
+        delta_p,
+        POROSITY,
+        cake_height,
+        mu_zero,
+        (surf_tens, rho_liq),
+    )
+
+    # Literals are independently frozen from the array-property case so a
+    # scalar reduction, flat sum, or node-ordering mutation cannot drift with
+    # the production expression.
+    expected_sat_inf = np.array(
+        [0.1650323056996773, 0.1651821984011924, 0.1651072525989054]
+    )  # [-]
+
+    assert sat_inf.shape == expected_sat_inf.shape
+    np.testing.assert_allclose(sat_inf, expected_sat_inf, rtol=1e-12)
+
+
+def test_get_sat_inf_clips_micronized_aggregate_roundoff():
+    """Micronized CSD aggregation clips upper-bound roundoff to one."""
+    size_grid_um = np.array(
+        [0.29443721003613355, 1.3640842476616897, 1.3987695850176836]
+    )  # [um]
+    size_grid_m = size_grid_um * 1e-6  # [m]
+    csd_number = np.array(
+        [1.6568408995106283e-7, 4.5172148784017079, 2.1064206650858339e-10]
+    )  # [#/m**3/um]
+    delta_p = 1.0e3  # [Pa]
+    cake_height = 0.02  # [m]
+    surf_tens = 0.066  # [N/m]
+    rho_liq = 950.0  # [kg/m**3]
+    mu_zero = _zeroth_moment(
+        size_grid_um,
+        csd_number,
+    )  # [#/m**3]
+
+    sat_inf = solid_liquid_sep.get_sat_inf(
+        size_grid_m,
+        csd_number,
+        delta_p,
+        POROSITY,
+        cake_height,
+        mu_zero,
+        (surf_tens, rho_liq),
+    )
+
+    # This asymmetric micronized distribution makes all bin saturations hit the
+    # upper bound; before aggregate clipping, volume-fraction roundoff sums the
+    # weighted saturation to 1.0000000000000002 [-].
+    assert sat_inf == 1.0
+    assert sat_inf <= 1.0
+
+
 def test_deliquoring_rejects_singular_micronized_irreducible_saturation():
     """Deliquoring rejects micronized cakes with undefined reduced saturation."""
     unit = _make_deliquoring_unit(

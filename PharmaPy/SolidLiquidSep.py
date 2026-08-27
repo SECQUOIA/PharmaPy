@@ -149,7 +149,8 @@ def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
     -------
     float or ndarray
         Irreducible saturation clipped to the physically admissible interval
-        ``0 <= S_inf <= 1`` [-].
+        ``0 <= S_inf <= 1`` [-]. Scalar property inputs return a scalar;
+        array-valued property inputs return one saturation per property node.
 
     Notes
     -----
