@@ -58,6 +58,35 @@ def upwind_fvm(f, boundary_cond):
 
 
 def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
+    """Estimate the cake specific resistance from the particle-size grid.
+
+    Parameters
+    ----------
+    solid_phase : SolidPhase
+        Solid phase containing ``x_distrib`` [um], ``distrib`` [#/m**3/um],
+        and density information [kg/m**3].
+    porosity : float
+        Cake porosity [-].
+    sphericity : float
+        Particle sphericity [-]. Accepted for the legacy API; the current
+        implementation uses the pre-existing spherical volume-shape factor.
+    rho_sol : float
+        Solid density [kg/m**3]. Accepted for the legacy API; the current
+        implementation reads density from ``solid_phase``.
+    csd : ndarray, optional
+        Crystal-size distribution [#/m**3/um]. Accepted for the legacy API;
+        the current implementation reads the distribution from ``solid_phase``.
+
+    Returns
+    -------
+    float
+        Cake specific resistance [m/kg].
+
+    Notes
+    -----
+    ``SolidPhase.x_distrib`` is stored in micrometers [um] and converted to
+    meters [m] before the Carman-Kozeny-style resistance is evaluated.
+    """
     # if csd is None:
     #     csd = solid_phase.distrib
 
@@ -96,6 +125,40 @@ def get_alpha(solid_phase, porosity, sphericity, rho_sol, csd=None):
 
 
 def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
+    """Estimate irreducible cake saturation from a particle-size distribution.
+
+    Parameters
+    ----------
+    x_vec : ndarray
+        Particle diameter grid supplied to the capillary correlation [m].
+    csd : ndarray
+        Crystal-size distribution on the stored grid [#/m**3/um].
+    deltaP : float
+        Pressure drop through the cake used in the capillary number [Pa].
+    porosity : float
+        Cake porosity [-].
+    height : float
+        Cake height [m].
+    mu_zero : float
+        Zeroth number-distribution moment [#/m**3]. Accepted for the legacy
+        API; this volume-weighted implementation does not use it directly.
+    props : tuple
+        Surface tension [N/m] and liquid density [kg/m**3].
+
+    Returns
+    -------
+    float or ndarray
+        Irreducible saturation clipped to the physically admissible interval
+        ``0 <= S_inf <= 1`` [-].
+
+    Notes
+    -----
+    The threshold-pressure and irreducible-saturation correlations follow
+    Destro et al. (2021), Equations 16-18
+    (doi:10.1016/j.ces.2021.116803), which adapt Wakeman's mono-sized-cake
+    correlations to a particle-size distribution with additive
+    volume-fraction weighting.
+    """
     surf_tens, rho_liq = props
 
     kv = 0.524  # converting number based CSD to volume based:
@@ -125,9 +188,55 @@ def get_sat_inf(x_vec, csd, deltaP, porosity, height, mu_zero, props):
     # Calculate irreducible saturation in weighted csd (volume based)
     vol_frac = vol_cry/ np.sum(vol_cry)
 
-    s_inf = np.sum(vol_frac *s_inf)
+    if np.ndim(s_inf) == 1:
+        s_inf = np.sum(vol_frac * s_inf)
+    else:
+        s_inf = np.sum(vol_frac[:, np.newaxis] * s_inf, axis=0)
+
+    s_inf = np.clip(s_inf, 0, 1)  # [-]
 
     return s_inf
+
+
+def _validate_irreducible_saturation(s_inf, deltaP, size_grid_m, operation):
+    """Validate that reduced-saturation coordinates are well defined.
+
+    Parameters
+    ----------
+    s_inf : float or ndarray
+        Irreducible saturation predicted by ``get_sat_inf`` [-].
+    deltaP : float
+        Pressure drop used in the irreducible-saturation estimate [Pa].
+    size_grid_m : ndarray
+        Particle diameter grid supplied to ``get_sat_inf`` [m].
+    operation : str
+        Unit-operation name included in the error message [-].
+
+    Returns
+    -------
+    None
+        The function returns only when ``s_inf`` is finite and below one.
+
+    Raises
+    ------
+    ValueError
+        If ``s_inf`` is non-finite or greater than or equal to one, making the
+        reduced-saturation mapping ``(S - S_inf) / (1 - S_inf)`` undefined.
+    """
+    s_inf_array = np.asarray(s_inf)  # [-]
+    size_grid_m = np.asarray(size_grid_m)  # [m]
+
+    if (
+            not np.all(np.isfinite(s_inf_array))
+            or np.any(s_inf_array >= 1)):
+        size_min = np.min(size_grid_m)  # [m]
+        size_max = np.max(size_grid_m)  # [m]
+        raise ValueError(
+            f"{operation} irreducible saturation s_inf={s_inf} must be "
+            "finite and less than 1 for the reduced-saturation mapping; "
+            f"deltaP={deltaP} Pa, particle size grid spans "
+            f"{size_min} to {size_max} m."
+        )
 
 
 class Carousel:
@@ -335,11 +444,19 @@ class DeliquoringStep:
         surf_tens = np.mean(surf_tens_per_node)
         s_inf = get_sat_inf(diam_i, csd, deltaP, epsilon, self.cake_height,
                             mom_zero, (surf_tens, rho_liq))
+        _validate_irreducible_saturation(
+            s_inf, deltaP, diam_i, "DeliquoringStep"
+        )
 
         self.sat_inf = s_inf
 
         # Threshold pressure
-        p_thresh_i = 4.6 * (1 - epsilon) * surf_tens / epsilon / diam_i  # [Pa]
+        # Destro et al. (2021), Eq. 16, reports the Wakeman threshold
+        # coefficient for completely wettable cakes.
+        p_thresh_coeff = 4.6  # [-]
+        p_thresh_i = (
+            p_thresh_coeff * (1 - epsilon) * surf_tens / epsilon / diam_i
+        )  # [Pa]
         p_thresh = (
             trapezoidal_rule(size_grid_um, p_thresh_i*csd) / mom_zero
         )  # [Pa]

@@ -13,7 +13,12 @@ from scipy.interpolate import CubicSpline
 
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Cake
-from PharmaPy.SolidLiquidSep import high_resolution_fvm, get_sat_inf, upwind_fvm
+from PharmaPy.SolidLiquidSep import (
+    _validate_irreducible_saturation,
+    get_sat_inf,
+    high_resolution_fvm,
+    upwind_fvm,
+)
 from PharmaPy.NameAnalysis import get_dict_states
 # from PharmaPy.Interpolation import SplineInterpolation
 from PharmaPy.general_interpolation import define_initial_state
@@ -756,6 +761,9 @@ class Drying:
         self.s_inf = get_sat_inf(x_csd, csd, deltaP, porosity,
                                  self.cake_height, mom_zero,
                                  (np.mean(surf_tens), rho_liq[0]))  # [-]
+        _validate_irreducible_saturation(
+            self.s_inf, deltaP, x_csd, "Drying"
+        )
 
         # ---------- Solve model
         model = self.unit_model
