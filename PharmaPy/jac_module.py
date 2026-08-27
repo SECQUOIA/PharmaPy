@@ -144,16 +144,3 @@ def numerical_jacv(func, x, v, args=()):
     jac_v = (func(x + sig*v, *args) - f_eval) / sig
 
     return jac_v
-
-
-def jac_fun(x):
-    x1, x2 = x
-    dim = len(x)
-    jac = np.zeros((dim, dim))
-
-    jac[0, 0] = 2*x1
-    jac[0, 1] = -3/2*x2**2
-    jac[1, 0] = 1
-    jac[1, 1] = 1/2/np.sqrt(x2)
-
-    return jac
