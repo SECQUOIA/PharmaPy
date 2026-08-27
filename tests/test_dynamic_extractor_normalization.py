@@ -1,12 +1,69 @@
 """Regression tests for DynamicExtractor mole-fraction closure."""
 
+import json
+
 import numpy as np
 import pytest
 
 import PharmaPy.DynamicExtraction as dynamic_extraction
+from PharmaPy.Phases import LiquidPhase
+from PharmaPy.Streams import LiquidStream
 
 
 pytestmark = pytest.mark.unit
+
+
+_SPECIES = {
+    "a": {
+        "mw": 18.0,  # [g/mol]
+        "rho_liq": 1000.0,  # [kg/m**3]
+        "t_crit": 647.0,  # [K]
+        "cp_liq": [75.0],  # [J/mol/K]
+        "p_vap": [8.0, 1500.0, -40.0],  # Antoine A [-], B [K], C [K]
+        "delta_hvap": 40000.0,  # [J/mol]
+        "tref_hvap": 350.0,  # [K]
+    },
+    "b": {
+        "mw": 150.0,  # [g/mol]
+        "rho_liq": 1200.0,  # [kg/m**3]
+        "t_crit": 800.0,  # [K]
+        "cp_liq": [220.0],  # [J/mol/K]
+        "p_vap": [8.0, 2200.0, -40.0],  # Antoine A [-], B [K], C [K]
+        "delta_hvap": 70000.0,  # [J/mol]
+        "tref_hvap": 350.0,  # [K]
+    },
+    "c": {
+        "mw": 60.0,  # [g/mol]
+        "rho_liq": 800.0,  # [kg/m**3]
+        "t_crit": 700.0,  # [K]
+        "cp_liq": [130.0],  # [J/mol/K]
+        "p_vap": [8.0, 1800.0, -40.0],  # Antoine A [-], B [K], C [K]
+        "delta_hvap": 55000.0,  # [J/mol]
+        "tref_hvap": 350.0,  # [K]
+    },
+}
+# Synthetic species are chosen only to provide distinct molar volumes and heat
+# capacities for real `LiquidPhase` construction; they are not a calibrated
+# liquid-liquid extraction system.
+
+
+def _write_thermo_database(tmp_path):
+    """Write the synthetic liquid-property database for real collaborator tests.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Temporary directory that receives the generated JSON database.
+
+    Returns
+    -------
+    str
+        Absolute path to the thermodynamic-property database [-].
+    """
+    path = tmp_path / "dynamic_extractor_thermo.json"
+    path.write_text(json.dumps(_SPECIES))
+
+    return str(path)
 
 
 def _constant_distribution(x_light, x_heavy, temp):
@@ -27,120 +84,6 @@ def _constant_distribution(x_light, x_heavy, temp):
     coeffs = np.array([0.4, 1.5, 1.1])  # [-]
 
     return np.broadcast_to(coeffs, np.shape(x_light))  # [-]
-
-
-class _InletStream:
-    """Minimal inlet stream exposing a molar density."""
-
-    def __init__(self, density):
-        """Store the stream density.
-
-        Parameters
-        ----------
-        density : float
-            Molar density [mol/L].
-        """
-        self.density = density  # [mol/L]
-
-    def getDensity(self, basis="mole"):
-        """Return the stream density on the requested basis.
-
-        Parameters
-        ----------
-        basis : str, optional
-            Density basis selector. Only ``"mole"`` is used here.
-
-        Returns
-        -------
-        ndarray
-            Molar density [mol/L].
-        """
-        return np.array(self.density)  # [mol/L]
-
-
-class _Phase:
-    """Minimal liquid phase exposing thermodynamic callbacks."""
-
-    temp = 298.15  # [K]
-
-    def getDensity(self, mole_frac=None, basis="mole", temp=None):
-        """Return a constant molar density.
-
-        Parameters
-        ----------
-        mole_frac : ndarray, optional
-            Liquid mole fractions [-].
-        basis : str, optional
-            Density basis selector. Only ``"mole"`` is used here.
-        temp : ndarray, optional
-            Liquid temperatures [K].
-
-        Returns
-        -------
-        float
-            Molar density [mol/L].
-        """
-        return 1.0  # [mol/L]
-
-    def getEnthalpy(self, mole_frac, temp, basis="mole"):
-        """Return zero molar enthalpy for each requested stage.
-
-        Parameters
-        ----------
-        mole_frac : ndarray
-            Liquid mole fractions [-].
-        temp : ndarray
-            Liquid temperatures [K].
-        basis : str, optional
-            Enthalpy basis selector. Only ``"mole"`` is used here.
-
-        Returns
-        -------
-        ndarray
-            Molar enthalpy [J/mol].
-        """
-        mole_frac = np.asarray(mole_frac)  # [-]
-
-        return np.zeros(mole_frac.shape[0])  # [J/mol]
-
-
-class _BatchResult:
-    """Equilibrium result fixture with normalized inlet phase fractions."""
-
-    x_light = np.array([0.3, 0.3, 0.4])  # [-]
-    x_heavy = np.array([0.2, 0.2, 0.6])  # [-]
-    mol_light = 10.0  # [mol]
-    mol_heavy = 8.0  # [mol]
-    rho_light = 0.8  # [mol/L]
-    rho_heavy = 1.2  # [mol/L]
-
-
-class _BatchExtractor:
-    """BatchExtractor stub returning the fixed equilibrium fixture."""
-
-    def __init__(self, k_fun=None, gamma_method="UNIQUAC"):
-        """Store constructor arguments for interface compatibility.
-
-        Parameters
-        ----------
-        k_fun : callable, optional
-            Equilibrium distribution callback [-].
-        gamma_method : str, optional
-            Activity-coefficient model selector [-].
-        """
-        self.k_fun = k_fun
-        self.gamma_method = gamma_method
-        self.result = _BatchResult()
-
-    def solve_unit(self):
-        """Skip the real batch solve.
-
-        Returns
-        -------
-        None
-            The prebuilt ``result`` fixture is already attached.
-        """
-        return None
 
 
 def test_material_balances_replace_dependent_components_with_closure():
@@ -196,23 +139,57 @@ def test_material_balances_replace_dependent_components_with_closure():
     np.testing.assert_allclose(y_residuals[:, -1], y_i.sum(axis=1) - 1.0)
 
 
-def test_initialize_model_returns_closed_phase_compositions(monkeypatch):
-    """The initialization correction keeps both phase fractions normalized."""
-    monkeypatch.setattr(dynamic_extraction, "BatchExtractor", _BatchExtractor)
+def test_initialize_model_returns_closed_phase_compositions(tmp_path):
+    """The initialization correction closes the real batch-extractor result."""
+    thermo_path = _write_thermo_database(tmp_path)
+    feed_mole_frac = np.array([0.30, 0.30, 0.40])  # [-]
+    solvent_mole_frac = np.array([0.20, 0.20, 0.60])  # [-]
+    feed_reference_moles = 10.0  # [mol]
+    solvent_reference_moles = 8.0  # [mol]
+    batch_moles = feed_reference_moles + solvent_reference_moles  # [mol]
+    batch_mole_frac = (
+        feed_reference_moles * feed_mole_frac
+        + solvent_reference_moles * solvent_mole_frac
+    ) / batch_moles  # [-]
+    feed_flow = 10.0  # [mol/s]
+    solvent_flow = 8.0  # [mol/s]
 
     extractor = dynamic_extraction.DynamicExtractor(
         num_stages=1,
         k_fun=_constant_distribution,
         eff=1.0,
     )
-    extractor.num_comp = 3  # [-]
-    extractor.Liquid_1 = _Phase()
+    phase = LiquidPhase(
+        thermo_path,
+        mole_frac=batch_mole_frac,
+        moles=batch_moles,
+        temp=298.15,  # [K]
+        verbose=False,
+    )
+    feed = LiquidStream(
+        thermo_path,
+        mole_frac=feed_mole_frac,
+        mole_flow=feed_flow,
+        temp=298.15,  # [K]
+        verbose=False,
+    )
+    solvent = LiquidStream(
+        thermo_path,
+        mole_frac=solvent_mole_frac,
+        mole_flow=solvent_flow,
+        temp=298.15,  # [K]
+        verbose=False,
+    )
+
+    extractor.Phases = phase
     extractor.Inlet = {
-        "feed": _InletStream(_BatchResult.rho_light),
-        "solvent": _InletStream(_BatchResult.rho_heavy),
+        "feed": feed,
+        "solvent": solvent,
     }
 
     di_init = extractor.initialize_model()
 
+    assert extractor.fixed_vals["H_R"] > 0  # [mol]
+    assert extractor.fixed_vals["H_E"] > 0  # [mol]
     np.testing.assert_allclose(di_init["x_i"].sum(axis=1), 1.0)
     np.testing.assert_allclose(di_init["y_i"].sum(axis=1), 1.0)
