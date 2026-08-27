@@ -461,6 +461,69 @@ class ThermoPhysicalManager:
         return frac_out
 
     def conc_to_frac(self, conc, solvent_ind=None, basis=None):
+        """Convert liquid molar concentrations into composition fractions.
+
+        Parameters
+        ----------
+        conc : array-like
+            Species molar concentrations [mol/L]. Shape ``(num_species,)``
+            is always accepted; ``(num_points, num_species)`` is accepted
+            only when ``solvent_ind`` is ``None``. When ``solvent_ind`` is
+            given, the value at that index is ignored on input and replaced
+            by the concentration that closes the mixture volume balance, and
+            that back-calculation supports one-dimensional input only.
+        solvent_ind : int, optional
+            Positional index of the solvent species [-]. Index ``0`` is a
+            valid solvent index, so this argument is compared with ``None``
+            and never tested for truth. When ``None``, ``conc`` is taken as a
+            complete composition and no solvent concentration is
+            back-calculated.
+        basis : {'mole', 'mass', None}, optional
+            Basis of the returned fractions. ``'mole'`` returns mole
+            fractions only, ``'mass'`` returns mass fractions only, and the
+            default ``None`` returns both.
+
+        Returns
+        -------
+        mass_frac : numpy.ndarray
+            Species mass fractions [-]. Returned when ``basis`` is ``'mass'``
+            or ``None``.
+        mole_frac : numpy.ndarray
+            Species mole fractions [-]. Returned when ``basis`` is ``'mole'``
+            or ``None``.
+        conc : numpy.ndarray
+            Species molar concentrations with the solvent entry filled in
+            [mol/L]. Appended to the returned tuple only when ``solvent_ind``
+            is not ``None``.
+
+        Raises
+        ------
+        IndexError
+            If ``conc`` is two-dimensional and ``solvent_ind`` is not
+            ``None``. The solvent mask is built with ``numpy.ones_like``, so
+            for a two-dimensional argument it selects along the point axis
+            instead of the species axis.
+
+        Notes
+        -----
+        The solvent concentration closes the ideal-mixture volume balance
+        ``sum_i c_i * v_i = 1``, in which ``v_i = 1 / rho_i`` is the
+        pure-species molar volume [L/mol] taken from
+        :meth:`getDensityPure`::
+
+            c_solv = (1 - sum_{i != solv} c_i * v_i) / v_solv
+
+        The length of the returned tuple therefore depends on whether
+        ``solvent_ind`` was supplied, not on its value, so callers must
+        branch on ``solvent_ind is not None``.
+
+        Warnings
+        --------
+        ``conc`` is wrapped with ``numpy.asarray`` and the solvent entry is
+        written in place, so a NumPy array supplied by the caller is modified
+        by this call. A list or tuple is copied by ``asarray`` and is left
+        untouched.
+        """
         conc = np.asarray(conc)
 
         if solvent_ind is not None:
@@ -481,25 +544,85 @@ class ThermoPhysicalManager:
             mole_frac = (conc.T / conc.sum(axis=1)).T
 
         if basis == 'mole':
-            if solvent_ind:
+            if solvent_ind is not None:
                 return mole_frac, conc
             else:
                 return mole_frac
 
         elif basis == 'mass':
             mass_frac = self.frac_to_frac(mole_frac=mole_frac)
-            if solvent_ind:
+            if solvent_ind is not None:
                 return mass_frac, conc
             else:
                 return mass_frac
         else:
             mass_frac = self.frac_to_frac(mole_frac=mole_frac)
-            if solvent_ind:
+            if solvent_ind is not None:
                 return mass_frac, mole_frac, conc
             else:
                 return mass_frac, mole_frac
 
     def mass_conc_to_frac(self, conc, solvent_ind=None, basis=None):
+        """Convert liquid mass concentrations into composition fractions.
+
+        Parameters
+        ----------
+        conc : array-like
+            Species mass concentrations [kg/m**3]. Shape ``(num_species,)``
+            is always accepted; ``(num_points, num_species)`` is accepted
+            only when ``solvent_ind`` is ``None``. When ``solvent_ind`` is
+            given, the value at that index is ignored on input and replaced
+            by the concentration that closes the mixture volume balance, and
+            that back-calculation supports one-dimensional input only.
+        solvent_ind : int, optional
+            Positional index of the solvent species [-]. Index ``0`` is a
+            valid solvent index, so this argument is compared with ``None``
+            and never tested for truth. When ``None``, ``conc`` is taken as a
+            complete composition and no solvent concentration is
+            back-calculated.
+        basis : {'mass', 'mole', None}, optional
+            Basis of the returned fractions. ``'mass'`` returns mass
+            fractions only, ``'mole'`` returns mole fractions only, and the
+            default ``None`` returns both.
+
+        Returns
+        -------
+        mass_frac : numpy.ndarray
+            Species mass fractions [-]. Returned when ``basis`` is ``'mass'``
+            or ``None``.
+        mole_frac : numpy.ndarray
+            Species mole fractions [-]. Returned when ``basis`` is ``'mole'``
+            or ``None``.
+        conc : numpy.ndarray
+            Species mass concentrations with the solvent entry filled in
+            [kg/m**3]. Appended to the returned tuple only when
+            ``solvent_ind`` is not ``None``.
+
+        Raises
+        ------
+        IndexError
+            If ``conc`` is two-dimensional and ``solvent_ind`` is not
+            ``None``, for the same reason as in :meth:`conc_to_frac`.
+
+        Notes
+        -----
+        The solvent concentration closes the ideal-mixture volume balance
+        ``sum_i c_i / rho_i = 1``, in which ``rho_i`` is the pure-species mass
+        density [kg/m**3] taken from :meth:`getDensityPure`::
+
+            c_solv = (1 - sum_{i != solv} c_i / rho_i) * rho_solv
+
+        This is the mass-basis counterpart of :meth:`conc_to_frac`, and the
+        length of the returned tuple likewise depends on whether
+        ``solvent_ind`` was supplied, not on its value.
+
+        Warnings
+        --------
+        ``conc`` is wrapped with ``numpy.asarray`` and the solvent entry is
+        written in place, so a NumPy array supplied by the caller is modified
+        by this call. A list or tuple is copied by ``asarray`` and is left
+        untouched.
+        """
         conc = np.asarray(conc)
 
         if solvent_ind is not None:
@@ -519,24 +642,24 @@ class ThermoPhysicalManager:
             mass_frac = (conc.T / conc.sum(axis=1)).T
 
         if basis == 'mass':
-            if solvent_ind:
+            if solvent_ind is not None:
                 return mass_frac, conc
             else:
                 return mass_frac
 
         elif basis == 'mole':
             mole_frac = self.frac_to_frac(mass_frac=mass_frac)
-            if solvent_ind:
+            if solvent_ind is not None:
                 return mole_frac, conc
             else:
                 return mole_frac
 
         else:
             mole_frac = self.frac_to_frac(mass_frac=mass_frac)
-            if solvent_ind is None:
-                return mass_frac, mole_frac
-            else:
+            if solvent_ind is not None:
                 return mass_frac, mole_frac, conc
+            else:
+                return mass_frac, mole_frac
 
     def conc_to_conc(self, mass_conc=None, mole_conc=None):
         if mass_conc is not None:
