@@ -1,23 +1,3 @@
-"""Balance regressions for the MultiPhaseVessel reactor path.
-
-Replaces the ad-hoc ``PharmaPy/Tester.py`` script, which was the only
-executable exercise of the refactored vessel but hard-coded an absolute path
-to a developer machine, plotted to screen, and left its reaction kinetics
-commented out. These tests drive the same scenario through ``unit_model``
-directly, so they need no integrator and run without Assimulo.
-
-Fixtures use the five-species ``tests/Flowsheet/data`` database, whose molar
-masses make both reactions exactly mass conserving (A 100 + B 50 = C 150;
-C 150 + A 100 = D 250). The charge is deliberately richer in B than in A
-(0.4 kg A, 0.6 kg B) so that A is the limiting reactant and an A/B mix-up is
-visible in the stoichiometric ratio.
-
-Two kinetic regimes are exercised. ``RATE_CONSTANT_KINETIC`` is slow enough
-that the extent follows the Arrhenius expression, while
-``RATE_CONSTANT_CLAMPED`` reproduces the "pseudo-instantaneous" constants
-from Tester.py, where ``RxnKinetics.get_rxn_rates`` rescales the extent so no
-concentration goes negative.
-"""
 
 import os
 
@@ -46,11 +26,10 @@ CHARGE_MASS_FRAC = [0.4, 0.6, 0.0, 0.0, 0.0]  # [-] ordered as SPECIES
 INLET_MASS_FLOW = 0.1  # [kg/s]
 
 REACTIONS = ["A + B --> C", "C + A --> D"]
-# Low enough that the Arrhenius temperature factor stays near unity, so the
-# regime is set by the pre-exponential factor alone.
+# Low enough that the Arrhenius temperature factor stays near unity
 ACTIVATION_ENERGY = 1e2  # [J/mol]
 RATE_CONSTANT_KINETIC = 1e-2  # [L/mol/s], slow enough to avoid the extent clamp
-RATE_CONSTANT_CLAMPED = 1e4  # [L/mol/s], the Tester.py "pseudo-instantaneous" value
+RATE_CONSTANT_CLAMPED = 1e4  # [L/mol/s], pseudo-instantaneous value
 
 UTILITY_MASS_FLOW = 100.0  # [kg/s]
 UTILITY_TEMP_IN = 273.55  # [K], below the 298.15 K charge so the jacket removes heat
