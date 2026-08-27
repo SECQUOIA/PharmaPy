@@ -158,6 +158,9 @@ class DynamicExtractor:
         -----
         The current dynamic-extractor state vector contains light and heavy
         liquid mole fractions [-], internal energy [J], and temperature [K].
+        The mole-fraction vectors retain all components for compatibility, but
+        the final component is algebraically dependent through phase
+        normalization.
         It keeps the existing dictionary-based metadata structure used by the
         result and plotting helpers; replacing that structure is outside this
         #56 fix.
@@ -389,7 +392,12 @@ class DynamicExtractor:
         Returns
         -------
         list of ndarray
-            Mole-fraction rates [1/s] and equilibrium residuals [-].
+            Mole-fraction residuals and equilibrium residuals. The first
+            ``num_comp - 1`` light-phase entries are mole-fraction rates
+            [1/s], the final light-phase entry is ``sum(x_i) - 1`` [-],
+            the first ``num_comp - 1`` heavy-phase entries are equilibrium
+            residuals [-], and the final heavy-phase entry is
+            ``sum(y_i) - 1`` [-].
         """
 
         x_augm, y_augm, temp_augm, light_flows, heavy_flows = augm_arrays
@@ -426,7 +434,15 @@ class DynamicExtractor:
         if di_sdot is not None:
             dxij_dt = dxij_dt - di_sdot['x_i']  # [1/s]
 
-        out = [dxij_dt, equilibrium_alg]  # [1/s, -]
+        # The final component in each phase is dependent: replacing its
+        # component equation with closure keeps full mole-fraction states while
+        # preserving the physical unit-sum manifold.
+        material_residuals = dxij_dt.copy()  # first num_comp - 1: [1/s]
+        equilibrium_residuals = equilibrium_alg.copy()  # [-]
+        material_residuals[:, -1] = x_i.sum(axis=1) - 1  # [-]
+        equilibrium_residuals[:, -1] = y_i.sum(axis=1) - 1  # [-]
+
+        out = [material_residuals, equilibrium_residuals]  # [mixed, -]
 
         return out
 
@@ -498,7 +514,9 @@ class DynamicExtractor:
         The nested ``BatchExtractor`` receives both the selected ``k_fun`` and
         ``gamma_model``. The full staged solve still depends on broader
         stage-wise ``K_i`` support tracked in #123; the handoff itself is
-        covered here without replacing the real thermodynamic callbacks.
+        covered here without replacing the real thermodynamic callbacks. The
+        final light- and heavy-phase components are dependent normalization
+        equations, matching ``material_balances``.
         """
         # ---------- Equilibrium calculations
         extr = BatchExtractor(k_fun=self.k_fun,
@@ -591,6 +609,9 @@ class DynamicExtractor:
 
             if self.num_stages > 1:
                 y_eqns[1:] = m_ij * (xi[1:] - xi[:-1] * (1 - self.eff)) - yi[1:]
+
+            x_eqns[:, -1] = xi.sum(axis=1) - 1  # [-]
+            y_eqns[:, -1] = yi.sum(axis=1) - 1  # [-]
 
             eqns = np.column_stack((x_eqns, y_eqns)).ravel()  # [-]
 
