@@ -31,8 +31,7 @@ class MetaModelingClass:
             self.method_arguments['material_balances'] += name_states
             self.method_arguments['energy_balances'] += name_states
 
-    def __write_method(self, open_object, method_name, arg_names,
-                       internals=None):
+    def __write_method(self, open_object, method_name, arg_names):
         """Write one method body into a generated PharmaPy template.
 
         Parameters
@@ -44,9 +43,6 @@ class MetaModelingClass:
             Name of the template method to emit.
         arg_names : sequence of str
             Ordered method-argument names to place in the emitted signature.
-        internals : object, optional
-            Reserved placeholder for future method-specific internals.
-
         Returns
         -------
         None
@@ -112,9 +108,9 @@ class MetaModelingClass:
                 ' '*8 + 'energy = self.energy_balances(time, **dict_states)\n\n')
 
             if self.model_type == 'ODE':
-                concat_snippet = ' '*8 + 'balances = np.concatenate((material, energy))\n'
+                concat_snippet = ' '*8 + 'balances = np.concatenate((material, energy)).ravel()\n'
             else:
-                concat_snippet = ' '*8 + 'balances = np.hstack((material, energy))\n'
+                concat_snippet = ' '*8 + 'balances = np.hstack((material, energy)).ravel()\n'
 
             open_object.writelines(concat_snippet)
 
@@ -182,9 +178,10 @@ class MetaModelingClass:
                     ]
             elif self.model_type == 'PDE':
                 assign_outputs = [
-                    ' '*8 + 'model_outputs = reorder_pde_outputs(states, self.num_nodes, self.len_states)\n']
+                    ' '*8 + 'model_outputs = reorder_pde_outputs(states, self.num_nodes, self.len_states, self.name_states)\n']
 
             open_object.writelines(assign_outputs)
+            open_object.write(' '*8 + 'self.outputs = model_outputs\n')
             open_object.write(' '*8 + 'return model_outputs\n\n')
 
         elif method_name != 'Phases':
