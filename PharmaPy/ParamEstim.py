@@ -6,7 +6,6 @@ Created on Mon Oct 28 15:35:48 2019
 @author: casas100
 """
 
-# from reactor_module import ReactorClass
 import numpy as np
 from scipy.linalg import inv, ldl
 from itertools import cycle

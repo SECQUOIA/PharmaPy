@@ -157,28 +157,3 @@ def jac_fun(x):
     jac[1, 1] = 1/2/np.sqrt(x2)
 
     return jac
-
-
-if __name__ == '__main__':
-    from autograd import jacobian, make_jvp
-    from jax import jvp
-
-    # Autograd fns
-    jac_ad = jacobian(fun)
-    jacv_ad = make_jvp(fun)
-
-
-    # Nominal x
-    x_test = np.array([1., 2.])
-
-    # Evaluate jacs
-    jacfun_eval = jac_fun(x_test)
-    # jacauto_eval = jac_ad(x_test)
-    jacnum_eval = numerical_jac(fun, x_test)
-
-    # Evaluate J*v
-    v_test = np.array([0.5, 0.5])
-    jacv_analytic = np.dot(jacfun_eval, v_test)
-    jacv_numeric = numerical_jacv(fun, x_test, v_test)
-    _, jacv_autograd = jacv_ad(x_test)(v_test)
-    # _, jacv_jax = jvp(fun, (x_test,), (v_test,))
