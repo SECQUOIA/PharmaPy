@@ -648,6 +648,9 @@ class Drying:
         distributed and uniform single-node cake initial conditions.
         Cake permeability is computed as
         ``1 / (alpha * rho_sol * (1 - porosity))`` [m**2].
+        ``Solid_1.x_distrib`` is stored in micrometers [um] and is converted to
+        meters [m] before evaluating the shared irreducible-saturation
+        correlation.
         Liquid density [kg/m**3] computed from the initial liquid composition
         is used for the irreducible-saturation estimate. During integration,
         ``unit_model`` recomputes ``self.rho_liq`` from the current liquid
@@ -746,9 +749,9 @@ class Drying:
         self.pres_gas = np.linspace(p_top, p_top - deltaP,
                                     num=self.num_nodes)  # [Pa]
 
-        x_csd = self.Solid_1.x_distrib  # [m]
-        csd = self.Solid_1.distrib  # [-]
-        mom_zero = self.Solid_1.moments[0]  # [-]
+        x_csd = self.Solid_1.x_distrib * 1e-6  # [m]
+        csd = self.Solid_1.distrib  # [#/m**3/um]
+        mom_zero = self.Solid_1.moments[0]  # [#/m**3]
 
         self.s_inf = get_sat_inf(x_csd, csd, deltaP, porosity,
                                  self.cake_height, mom_zero,

@@ -288,12 +288,41 @@ class DeliquoringStep:
 
     def solve_unit(self, deltaP, runtime, p_atm=101325,
                    verbose=True):
+        """Initialize and integrate the deliquoring model.
+
+        Parameters
+        ----------
+        deltaP : float
+            Applied pressure drop across the cake and filter medium [Pa].
+        runtime : float
+            Physical duration to simulate [s].
+        p_atm : float, optional
+            Ambient pressure at the outlet face [Pa].
+        verbose : bool, optional
+            If False, suppress solver output [-].
+
+        Returns
+        -------
+        theta : ndarray
+            Non-dimensional solver time grid [-].
+        states : ndarray
+            Flattened reduced saturation and concentration state history [-].
+
+        Notes
+        -----
+        ``Solid_1.x_distrib`` is stored on the PharmaPy solid grid in
+        micrometers [um]. The capillary and threshold-pressure correlations use
+        particle diameters in meters [m], while CSD-weighted averages integrate
+        over the stored number distribution ``Solid_1.distrib`` [#/m**3/um] on
+        the micrometer grid.
+        """
 
         # Solid properties
-        csd = self.Solid_1.distrib #* 1e6
-        diam_i = self.Solid_1.x_distrib# * 1e-6  # um
-        mom_zero = self.Solid_1.moments[0]
-        alpha = self.CakePhase.alpha
+        size_grid_um = self.Solid_1.x_distrib  # [um]
+        diam_i = size_grid_um * 1e-6  # [m]
+        csd = self.Solid_1.distrib  # [#/m**3/um]
+        mom_zero = self.Solid_1.moments[0]  # [#/m**3]
+        alpha = self.CakePhase.alpha  # [m/kg]
 
         # Irreducible saturation
         epsilon = self.Solid_1.getPorosity()
@@ -310,8 +339,10 @@ class DeliquoringStep:
         self.sat_inf = s_inf
 
         # Threshold pressure
-        p_thresh = 4.6 * (1 - epsilon) * surf_tens / epsilon / diam_i
-        p_thresh = trapezoidal_rule(diam_i, p_thresh*csd) / mom_zero
+        p_thresh_i = 4.6 * (1 - epsilon) * surf_tens / epsilon / diam_i  # [Pa]
+        p_thresh = (
+            trapezoidal_rule(size_grid_um, p_thresh_i*csd) / mom_zero
+        )  # [Pa]
 
         self.p_thresh = p_thresh
 
