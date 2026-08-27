@@ -43,6 +43,7 @@ class MetaModelingClass:
             Name of the template method to emit.
         arg_names : sequence of str
             Ordered method-argument names to place in the emitted signature.
+
         Returns
         -------
         None

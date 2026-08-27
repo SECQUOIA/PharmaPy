@@ -227,6 +227,8 @@ def test_generated_staged_unit_model_flattens_stage_rate_blocks(
     if model_type == "ODE":
         expected_rates = [0.1, 0.2, 0.3, 3.0, 4.0, 5.0]
     else:
+        # Current generated staged DAE behavior is pinned here for the
+        # #82 flattening fix; #196 tracks aligning state and residual order.
         expected_rates = [0.1, 3.0, 0.2, 4.0, 0.3, 5.0]
 
     np.testing.assert_allclose(rates, expected_rates)
