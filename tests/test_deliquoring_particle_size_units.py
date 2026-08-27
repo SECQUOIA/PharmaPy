@@ -406,5 +406,26 @@ def test_drying_rejects_singular_micronized_irreducible_saturation(
         csd_number=MICRONIZED_CSD_NUMBER,
     )
 
+    def stop_at_rhs(time, states, sw=None):
+        """Stop if drying reaches the RHS without rejecting ``s_inf``.
+
+        Parameters
+        ----------
+        time : float
+            Initial solve time [s].
+        states : ndarray
+            Flattened initial drying state [-] and [K].
+        sw : list, optional
+            Assimulo event switches [-].
+
+        Raises
+        ------
+        StopAfterSetup
+            Always raised when the validation guard is bypassed.
+        """
+        raise StopAfterSetup
+
+    monkeypatch.setattr(dryer, "unit_model", stop_at_rhs)
+
     with pytest.raises(ValueError, match="s_inf=.*deltaP=.*particle size grid"):
         dryer.solve_unit(deltaP=5.0e4, runtime=10.0)  # [Pa], [s]
