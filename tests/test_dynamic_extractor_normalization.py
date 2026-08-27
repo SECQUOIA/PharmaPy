@@ -151,7 +151,9 @@ def test_material_balances_replace_dependent_components_with_closure():
         eff=1.0,
     )
 
-    x_i = np.array([[0.2, 0.3, 0.5]])  # [-]
+    # Deliberately unnormalized so a constant-zero mutant cannot satisfy the
+    # dependent light-phase closure assertion.
+    x_i = np.array([[0.2, 0.3, 0.55]])  # [-]
     m_i = _constant_distribution(x_i, x_i, np.array([298.15]))  # [-]
     y_i = m_i * x_i  # [-]
 
@@ -180,15 +182,14 @@ def test_material_balances_replace_dependent_components_with_closure():
     )
 
     x_residuals, y_residuals = residuals
-    component_imbalance = y_augm[1:] * heavy_flows[1:, np.newaxis] \
-        + x_augm[:-1] * light_flows[:-1, np.newaxis] \
-        - y_augm[:-1] * heavy_flows[:-1, np.newaxis] \
-        - x_augm[1:] * light_flows[1:, np.newaxis]  # [mol/s]
-    effective_holdup = holdup_light[:, np.newaxis] \
-        + holdup_heavy[:, np.newaxis] * m_i  # [mol]
-    expected_dxdt = component_imbalance / effective_holdup  # [1/s]
+    expected_independent_dxdt = np.array([
+        [0.1361111111111111, -0.09523809523809523],
+    ])  # [1/s]
+    # Values are hand-calculated from [1.96, -2.0] mol/s component imbalances
+    # over [14.4, 21.0] mol effective holdups.
 
-    np.testing.assert_allclose(x_residuals[:, :-1], expected_dxdt[:, :-1])
+    np.testing.assert_allclose(x_residuals[:, :-1],
+                               expected_independent_dxdt)
     np.testing.assert_allclose(x_residuals[:, -1], x_i.sum(axis=1) - 1.0)
     np.testing.assert_allclose(y_residuals[:, :-1],
                                m_i[:, :-1] * x_i[:, :-1] - y_i[:, :-1])
