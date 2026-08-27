@@ -82,3 +82,6 @@ ENV/
 *.rar
 
 source/crystallization/
+
+# VS Code project settings
+.vscode/
