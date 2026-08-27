@@ -218,6 +218,8 @@ def test_drying_setup_converts_micrometer_grid_before_irreducible_saturation(
         return 0.25  # [-]
 
     monkeypatch.setattr(drying_model, "get_sat_inf", capture_sat_inf)
+    monkeypatch.setattr(drying_model, "Explicit_Problem", DummyExplicitProblem)
+    monkeypatch.setattr(drying_model, "CVode", StopSolver)
 
     dryer = drying_model.Drying(number_nodes=2, supercrit_names=["nitrogen"])
     dryer.names_states_in = ["temp", "mass_frac"]
