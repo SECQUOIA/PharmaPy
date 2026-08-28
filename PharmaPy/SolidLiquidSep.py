@@ -3,6 +3,12 @@
 Created on Wed May 13 02:03:18 2020
 
 @author: huri
+
+References
+----------
+Destro et al. (2021), Chemical Engineering Science, 244, 116803,
+https://doi.org/10.1016/j.ces.2021.116803.
+See repository-level REFERENCES.md for the full citation.
 """
 
 import numpy as np
