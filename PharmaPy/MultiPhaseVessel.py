@@ -1500,10 +1500,29 @@ class MultiPhaseVessel():
             completed_state
         )
 
-        qdot = sum(contributions.values())
+        qdot = sum(contributions.values())  # [W]
         basis = 'mass' if self.basis=='mass_j' else self.basis
-        heat_capacity = self.Phases.getCp(basis = basis)
-        dtemp_dt = qdot / heat_capacity
+
+        # getCp resolves through MixedPhase.__getattr__, which mass-weights
+        # the per-phase values and so returns a specific heat [J/kg/K]. The
+        # balance is m*cp*dT/dt = qdot, so the holdup mass is required to
+        # form the total heat capacity; without it dT/dt carries a spurious
+        # mass factor and is only correct for a 1 kg holdup.
+        specific_heat = self.Phases.getCp(basis=basis)  # [J/kg/K]
+        total_mass = self.Phases.mass  # [kg], summed over every phase
+
+        if total_mass <= 0:
+            # An empty vessel has no thermal inertia, so the temperature is
+            # undefined and we should not attempt to solve for it.
+            raise ValueError(
+                "Cannot evaluate the energy balance with a total holdup of "
+                f"{total_mass} kg. Charge the vessel before solving, or set "
+                "isothermal=True to drop the temperature state."
+            )
+
+        heat_capacity = total_mass * specific_heat  # [J/K]
+
+        dtemp_dt = qdot / heat_capacity  # [K/s]
         return {StateKey("global_temp"): dtemp_dt}
 
     def add_inlet_energy_terms(

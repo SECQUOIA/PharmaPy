@@ -35,6 +35,15 @@ UTILITY_MASS_FLOW = 100.0  # [kg/s]
 UTILITY_TEMP_IN = 273.55  # [K], below the 298.15 K charge so the jacket removes heat
 HEAT_TRANSFER_COEFF = 1e4  # [W/m**2/K]
 VESSEL_DIAMETER = 0.01  # [m]
+HOT_FEED_TEMP = 350.0  # [K], above the 298.15 K charge so the feed adds heat
+
+# Charge masses used to probe how dT/dt scales with holdup. They are unequal
+# and not equal to one, so a missing or spurious mass factor cannot cancel.
+CHARGE_MASS_SCALING = (1.0, 2.0, 4.0)  # [kg]
+# Temperature rates are compared across separately constructed vessels, so the
+# budget covers accumulated roundoff in the property and geometry evaluations
+# rather than an exact bitwise match.
+TEMP_RATE_RTOL = 1e-9  # [-]
 
 # Species mass rates that must cancel are compared against an absolute floor
 # rather than a relative one, because the exact answer is zero. The budget sits
@@ -45,13 +54,15 @@ MASS_CLOSURE_ATOL = 1e-12  # [kg/s]
 RATIO_RTOL = 1e-10  # [-]
 
 
-def _build_reactor(reactor_cls, rate_constant=None, with_inlet=False):
+def _build_reactor(reactor_cls, rate_constant=None, with_inlet=False,
+                   charge_mass=CHARGE_MASS, with_utility=True,
+                   inlet_temp=None):
     """Construct a vessel charged with the standard A/B mixture.
 
     Parameters
     ----------
     reactor_cls : type
-        ``BatchReactor`` or ``ContinuousReactor``.
+        ``BatchReactor``, ``SemiBatchReactor`` or ``ContinuousReactor``.
     rate_constant : float, optional
         Pre-exponential factor applied to both reactions [L/mol/s]. When
         None, no kinetics are attached and the vessel has no reaction
@@ -59,6 +70,14 @@ def _build_reactor(reactor_cls, rate_constant=None, with_inlet=False):
     with_inlet : bool, optional
         When True, attach a liquid feed at ``INLET_MASS_FLOW`` whose
         composition equals the initial charge composition.
+    charge_mass : float, optional
+        Initial liquid holdup [kg]. Defaults to ``CHARGE_MASS``.
+    with_utility : bool, optional
+        When True, attach the cooling-water utility. Set False to isolate
+        the feed enthalpy term from the jacket term.
+    inlet_temp : float, optional
+        Feed temperature [K]. When None the stream default is used, which
+        matches the charge temperature and so carries no sensible heat.
 
     Returns
     -------
@@ -67,15 +86,16 @@ def _build_reactor(reactor_cls, rate_constant=None, with_inlet=False):
     """
     vessel = reactor_cls(
         integrator=AssimuloBackend(),
-        h_conv=HEAT_TRANSFER_COEFF,
+        h_conv=HEAT_TRANSFER_COEFF if with_utility else 0,
         diam=VESSEL_DIAMETER,
     )
     vessel.Phases = LiquidPhase(
-        DATA_PATH, mass=CHARGE_MASS, mass_frac=CHARGE_MASS_FRAC
+        DATA_PATH, mass=charge_mass, mass_frac=CHARGE_MASS_FRAC
     )
-    vessel.Utility = CoolingWater(
-        mass_flow=UTILITY_MASS_FLOW, temp_in=UTILITY_TEMP_IN
-    )
+    if with_utility:
+        vessel.Utility = CoolingWater(
+            mass_flow=UTILITY_MASS_FLOW, temp_in=UTILITY_TEMP_IN
+        )
 
     if rate_constant is not None:
         vessel.RxnKinetics = RxnKinetics(
@@ -86,13 +106,34 @@ def _build_reactor(reactor_cls, rate_constant=None, with_inlet=False):
         )
 
     if with_inlet:
+        stream_kwargs = {}
+        if inlet_temp is not None:
+            stream_kwargs["temp"] = inlet_temp
         vessel.Inlet = LiquidStream(
             DATA_PATH,
             mass_flow=INLET_MASS_FLOW,
             mass_frac=CHARGE_MASS_FRAC,
+            **stream_kwargs,
         )
 
     return vessel
+
+
+def _temperature_rate(vessel):
+    """Evaluate the full balance once and return the temperature rate.
+
+    Parameters
+    ----------
+    vessel : MultiPhaseVessel
+        Configured vessel.
+
+    Returns
+    -------
+    float
+        Rate of change of the vessel temperature [K/s].
+    """
+    states = vessel.create_solver_init_states()
+    return float(np.asarray(vessel.unit_model(0.0, states))[-1])
 
 
 def _species_rates(vessel):
@@ -294,18 +335,72 @@ def test_reaction_runs_while_the_continuous_vessel_holds_volume():
 
 
 def test_cold_jacket_removes_heat_from_the_charge():
-    """A jacket below the charge temperature gives a negative dT/dt.
-
-    Only the sign is asserted. The magnitude is currently correct just for a
-    1 kg charge, because ``MultiPhaseVessel.energy_balances`` divides the heat
-    rate by the specific heat without multiplying by the total mass. The
-    mass-scaling contract is asserted separately once that is fixed.
-    """
+    """A jacket below the charge temperature gives a negative dT/dt."""
     vessel = _build_reactor(BatchReactor)
 
-    states = vessel.create_solver_init_states()
-    rates = np.asarray(vessel.unit_model(0.0, states))
+    temperature_rate = _temperature_rate(vessel)  # [K/s]
 
-    temperature_rate = rates[-1]  # [K/s]
     assert np.isfinite(temperature_rate)
     assert temperature_rate < 0
+
+
+def test_jacket_cooling_rate_is_independent_of_charge_mass():
+    """Scaling the charge leaves dT/dt unchanged under jacket cooling.
+
+    The energy balance is m * cp * dT/dt = Q. The jacket area follows
+    ``4 * vol / diam``, so at fixed composition both Q and the heat capacity
+    m * cp are proportional to the holdup and the temperature rate is
+    invariant. A missing mass factor makes dT/dt grow in proportion to the
+    charge instead.
+    """
+    rates = [
+        _temperature_rate(_build_reactor(BatchReactor, charge_mass=mass))
+        for mass in CHARGE_MASS_SCALING
+    ]
+
+    assert rates[0] < 0
+    for rate in rates[1:]:
+        np.testing.assert_allclose(rate, rates[0], rtol=TEMP_RATE_RTOL)
+
+
+def test_empty_vessel_energy_balance_is_rejected():
+    """An empty vessel raises instead of producing a NaN temperature rate.
+
+    Dividing by the total heat capacity is a zero-over-zero form when there
+    is no holdup, and the resulting NaN would otherwise spread through the
+    integration without any indication of where it came from.
+    """
+    vessel = _build_reactor(BatchReactor, charge_mass=0.0)
+
+    states = vessel.create_solver_init_states()
+    with pytest.raises(ValueError, match="total holdup"):
+        vessel.unit_model(0.0, states)
+
+
+def test_feed_heating_rate_is_inversely_proportional_to_charge_mass():
+    """A fixed heat input warms a larger charge proportionally more slowly.
+
+    With no utility attached, the only energy input is the sensible heat of
+    the feed, which is set by the feed alone and does not depend on the
+    holdup. 
+    """
+    rates = [
+        _temperature_rate(
+            _build_reactor(
+                SemiBatchReactor,
+                with_inlet=True,
+                with_utility=False,
+                charge_mass=mass,
+                inlet_temp=HOT_FEED_TEMP,
+            )
+        )
+        for mass in CHARGE_MASS_SCALING
+    ]
+
+    # A hot feed must warm the charge, otherwise the comparison below is
+    # satisfied trivially by a row of zeros.
+    assert rates[0] > 0
+
+    for mass, rate in zip(CHARGE_MASS_SCALING[1:], rates[1:]):
+        expected = rates[0] * CHARGE_MASS_SCALING[0] / mass  # [K/s]
+        np.testing.assert_allclose(rate, expected, rtol=TEMP_RATE_RTOL)
