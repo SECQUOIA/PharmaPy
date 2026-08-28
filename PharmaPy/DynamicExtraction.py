@@ -450,7 +450,8 @@ class DynamicExtractor:
 
         # ---------- Modify outputs for stage two on
         if self.num_stages > 1:
-            deriv_term = holdup_heavy[0] * m_ij * (1 - self.eff) / div[1:] * \
+            deriv_term = holdup_heavy[1:, np.newaxis] * m_ij[1:] * \
+                (1 - self.eff) / div[1:] * \
                 dxij_dt[:-1]  # mole-fraction rate [1/s]
 
             dxij_dt[1:] += deriv_term
@@ -635,10 +636,12 @@ class DynamicExtractor:
             m_ij = k_ij / self.eff  # [-]
 
             y_eqns = np.zeros_like(yi)  # equilibrium residuals [-]
-            y_eqns[0] = m_ij * xi[0] - yi[0]
+            y_eqns[0] = m_ij[0] * xi[0] - yi[0]
 
             if self.num_stages > 1:
-                y_eqns[1:] = m_ij * (xi[1:] - xi[:-1] * (1 - self.eff)) - yi[1:]
+                y_eqns[1:] = m_ij[1:] * (
+                    xi[1:] - xi[:-1] * (1 - self.eff)
+                ) - yi[1:]
 
             x_eqns[:, -1] = xi.sum(axis=1) - 1  # [-]
             y_eqns[:, -1] = yi.sum(axis=1) - 1  # [-]
