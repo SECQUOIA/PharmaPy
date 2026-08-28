@@ -425,7 +425,9 @@ class ParameterEstimation:
         self.objfun_iter = []
         self.cond_number = []
 
+        self.optimize_flag = True  # [-]
         self.resid_runs = None
+        self.params_residuals = None  # parameter units
         self.weighted_residuals = None  # [-]
         self.y_runs = None
         self.sens = None
@@ -491,11 +493,13 @@ class ParameterEstimation:
             callback's parameter contract.
         out_array : bool, optional
             If True, return weighted residuals flattened in state-major order.
-            If False, return ``1/2 * residuals.T @ residuals``. The default is
-            False.
+            If False, return ``1/2 * weighted_residuals.T @
+            weighted_residuals``. The default is False.
         set_self : bool, optional
-            If True, store the latest model outputs, raw residuals, and
-            weighted residuals for downstream gradient and result assembly. The
+            If True, store the latest model outputs, raw residuals in model
+            units as ``residuals`` with shape ``(sum_times, n_measured)`` in
+            data-major order, and ``sigma_inv``-weighted dimensionless
+            residuals [-] flattened state-major as ``weighted_residuals``. The
             default is True.
 
         Returns
@@ -507,6 +511,7 @@ class ParameterEstimation:
 
         """
         # Store parameter values
+        params_in = np.asarray(params)  # parameter units
         if type(self.params_iter) is list:
             self.params_iter.append(params)
 
@@ -572,6 +577,7 @@ class ParameterEstimation:
             self.resid_runs = resid_runs
 
             self.residuals = residuals
+            self.params_residuals = np.array(params_in, copy=True)
             self.weighted_residuals = self.optimize_flag * residual_out
 
         # Return objective
@@ -654,6 +660,10 @@ class ParameterEstimation:
         if out_array:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
+            if (self.params_residuals is None or
+                    not np.array_equal(params, self.params_residuals)):
+                self.get_objective(params)
+
             res = self.weighted_residuals
             gradient = jacobian.T.dot(res)  # 1D
             return gradient
