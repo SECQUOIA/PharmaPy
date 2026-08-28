@@ -7,6 +7,8 @@ import pytest
 from PharmaPy.IntegratorBackends import AssimuloBackend
 from PharmaPy.Kinetics import RxnKinetics
 from PharmaPy.Phases import LiquidPhase
+from PharmaPy.ProcessControl_Refactor import (Controller,
+                                              DefaultContinuousVesselVolume)
 from PharmaPy.Reactors_refactor import (BatchReactor, ContinuousReactor,
                                         SemiBatchReactor)
 from PharmaPy.Streams import LiquidStream
@@ -84,10 +86,20 @@ def _build_reactor(reactor_cls, rate_constant=None, with_inlet=False,
     MultiPhaseVessel
         Vessel ready for a ``unit_model`` evaluation.
     """
+    # Each reactor class takes its controller from a mutable default argument,
+    # so vessels built without an explicit one share a single instance and
+    # leak latched state such as the target volume between tests. Build a
+    # fresh controller per vessel until that default is fixed.
+    controller = (
+        DefaultContinuousVesselVolume()
+        if reactor_cls is ContinuousReactor
+        else Controller()
+    )
     vessel = reactor_cls(
         integrator=AssimuloBackend(),
         h_conv=HEAT_TRANSFER_COEFF if with_utility else 0,
         diam=VESSEL_DIAMETER,
+        controller=controller,
     )
     vessel.Phases = LiquidPhase(
         DATA_PATH, mass=charge_mass, mass_frac=CHARGE_MASS_FRAC

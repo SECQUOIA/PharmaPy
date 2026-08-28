@@ -658,11 +658,18 @@ class Cake:
 
 
 class MixedPhase:
+
+    # Names that __getattr__ adds across the constituent phases. Everything
+    # else falls through to a mass-weighted average. This must stay a class
+    # attribute: to_stream() reassigns __class__ without running __init__, so
+    # a per-instance set would follow a phase into MixedStream and shadow the
+    # stream classification below.
+    EXTENSIVE_PROPERTIES = frozenset({"mass", "vol", "moles"})
+
     def __init__(self,phases=None):
         self._Phases = []
         if phases is not None:
             self.Phases = phases
-        self.EXTENSIVE_PROPERTIES = {"mass", "vol", "moles"}
     
     @property
     def Phases(self):
@@ -812,11 +819,15 @@ class MixedPhase:
         return mixedstream
 class MixedStream(MixedPhase):
 
-    EXTENSIVE_PROPERTIES = {
+    # Extends rather than replaces the phase classification: stream objects
+    # keep mass, vol and moles as aliases of their flow rates, so those names
+    # must keep adding too. Listing only the flow names would silently turn
+    # MixedStream.mass into a mass-weighted average.
+    EXTENSIVE_PROPERTIES = MixedPhase.EXTENSIVE_PROPERTIES | frozenset({
         "mass_flow",
         "vol_flow",
         "mole_flow",
-    }
+    })
     
     def __init__(self,Streams=None):
         super().__init__()
