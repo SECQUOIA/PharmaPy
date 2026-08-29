@@ -615,6 +615,11 @@ class ParameterEstimation:
 
         """
 
+        if not out_array and (
+                self.params_residuals is None or
+                not np.array_equal(params, self.params_residuals)):
+            self.get_objective(params)
+
         if self.sens_second is None:
             raw_sens = []
             for ind in range(self.num_datasets):
@@ -660,10 +665,6 @@ class ParameterEstimation:
         if out_array:
             return jacobian.T  # LM doesn't require (y - y_e)^T J
         else:
-            if (self.params_residuals is None or
-                    not np.array_equal(params, self.params_residuals)):
-                self.get_objective(params)
-
             res = self.weighted_residuals
             gradient = jacobian.T.dot(res)  # 1D
             return gradient

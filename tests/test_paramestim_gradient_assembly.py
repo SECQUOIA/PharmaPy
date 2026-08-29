@@ -148,6 +148,84 @@ def test_ipopt_gradient_recomputes_residuals_for_requested_params(monkeypatch):
                                rtol=0.0, atol=1e-12)
 
 
+def test_ipopt_gradient_recomputes_callback_sensitivities(monkeypatch):
+    """Scalar IPOPT gradients refresh parameter-dependent sensitivities."""
+    time_s = np.array([1.0, 2.0, 4.0])  # [s]
+    rate_mol_l_s = 2.0  # [mol/L/s]
+    acceleration_mol_l_s2 = 3.0  # [mol/L/s**2]
+    params = np.array([rate_mol_l_s, acceleration_mol_l_s2])  # [mol/L/s], [mol/L/s**2]
+    trial_params = params + np.array([0.5, 0.5])  # [mol/L/s], [mol/L/s**2]
+
+    model_conc_mol_l = np.column_stack(  # [mol/L]
+        (
+            rate_mol_l_s**2 * time_s,
+            acceleration_mol_l_s2**2 * time_s**2,
+        )
+    )
+    residuals_mol_l = np.array(  # [mol/L]
+        [
+            [6.0, -3.0],
+            [8.0, -6.0],
+            [10.0, -9.0],
+        ]
+    )
+    observed_conc_mol_l = model_conc_mol_l - residuals_mol_l  # [mol/L]
+    weight_matrix = np.diag([4.0, 9.0])  # [(mol/L)**2]
+
+    def two_state_model_with_sens(params_eval, x_data_s):
+        """Return concentration states [mol/L] and sensitivities."""
+        rate_eval_mol_l_s, accel_eval_mol_l_s2 = params_eval  # [mol/L/s], [mol/L/s**2]
+        states_mol_l = np.column_stack(  # [mol/L]
+            (
+                rate_eval_mol_l_s**2 * x_data_s,
+                accel_eval_mol_l_s2**2 * x_data_s**2,
+            )
+        )
+        sens_state_0 = np.column_stack(
+            (
+                2.0 * rate_eval_mol_l_s * x_data_s,
+                np.zeros_like(x_data_s),
+            )
+        )  # [s], [s**2]
+        sens_state_1 = np.column_stack(
+            (
+                np.zeros_like(x_data_s),
+                2.0 * accel_eval_mol_l_s2 * x_data_s**2,
+            )
+        )  # [s], [s**2]
+        sensitivities = np.vstack((sens_state_0, sens_state_1))  # [s], [s**2]
+        return states_mol_l, sensitivities
+
+    captured = {}
+
+    def fake_minimize_ipopt(objective, params_var, jac=None, bounds=None,
+                            options=None, kwargs=None):
+        """Mimic a trial objective before a scalar gradient callback."""
+        objective(trial_params, **(kwargs or {}))
+        captured["gradient"] = jac(params_var)
+        return {"x": params_var}
+
+    monkeypatch.setattr(ParamEstim, "have_cyipopt", True)
+    monkeypatch.setattr(ParamEstim, "minimize_ipopt", fake_minimize_ipopt,
+                        raising=False)
+
+    estimator = ParamEstim.ParameterEstimation(
+        two_state_model_with_sens,
+        param_seed=params,
+        x_data=time_s,
+        y_data=observed_conc_mol_l,
+        weight_matrix=weight_matrix,
+        name_params=["rate_mol_l_s", "acceleration_mol_l_s2"],
+        name_states=["linear_conc_mol_l", "quadratic_conc_mol_l"],
+    )
+
+    estimator.optimize_fn(method="IPOPT", verbose=False)
+
+    expected_gradient = np.array([62.0, -114.0])  # [s*L/mol], [s**2*L/mol]
+    np.testing.assert_allclose(captured["gradient"], expected_gradient,
+                               rtol=0.0, atol=1e-12)
+
+
 def test_ipopt_gradient_uses_weighted_state_major_residuals(monkeypatch):
     """The scalar IPOPT gradient matches weighted residual objective units."""
     time_s = np.array([1.0, 2.0, 4.0])  # [s]
