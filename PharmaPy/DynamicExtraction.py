@@ -159,6 +159,48 @@ class DynamicExtractor:
 
         return gamma_light / gamma_heavy  # K_i [-]
 
+    def _evaluate_distribution_coefficients(self, x_light, x_heavy, temp):
+        """Evaluate and broadcast distribution coefficients.
+
+        Parameters
+        ----------
+        x_light : ndarray
+            Stage light-phase liquid mole fractions [-].
+        x_heavy : ndarray
+            Stage heavy-phase liquid mole fractions [-].
+        temp : ndarray
+            Stage liquid temperatures [K].
+
+        Returns
+        -------
+        ndarray
+            Distribution coefficients broadcast to the stage/component layout
+            of ``x_light`` [-].
+
+        Raises
+        ------
+        ValueError
+            If ``k_fun`` returns coefficients that cannot broadcast to the
+            stage/component layout of ``x_light``.
+
+        Notes
+        -----
+        Component-wise callbacks returning ``(num_comp,)`` remain compatible by
+        broadcasting across stages. A stricter stage-wise callback contract is
+        tracked in #123.
+        """
+        k_i = np.asarray(self.k_fun(x_light, x_heavy, temp))  # K_i [-]
+        expected_shape = np.shape(x_light)
+
+        try:
+            return np.broadcast_to(k_i, expected_shape)  # K_i [-]
+        except ValueError as err:
+            raise ValueError(
+                "k_fun must return distribution coefficients broadcastable "
+                f"to the stage/component shape {expected_shape}; got "
+                f"shape {k_i.shape}."
+            ) from err
+
     def nomenclature(self):
         """Create dynamic extractor state metadata.
 
@@ -428,8 +470,8 @@ class DynamicExtractor:
         # Augmented mole fractions [-], temperatures [K], and flows [mol/s].
 
         # ---------- Equilibrium
-        # Stage-wise ``K_i`` callback support is tracked in #123.
-        k_ij = self.k_fun(x_i, y_i, temp)  # K_i [-]
+        k_ij = self._evaluate_distribution_coefficients(
+            x_i, y_i, temp)  # K_i [-]
         m_ij = k_ij / self.eff  # [-]
 
         # ---------- Differential block
@@ -450,10 +492,13 @@ class DynamicExtractor:
 
         # ---------- Modify outputs for stage two on
         if self.num_stages > 1:
-            deriv_term = holdup_heavy[0] * m_ij * (1 - self.eff) / div[1:] * \
-                dxij_dt[:-1]  # mole-fraction rate [1/s]
+            carry_coeff = holdup_heavy[1:, np.newaxis] * m_ij[1:] * \
+                (1 - self.eff) / div[1:]  # [-]
 
-            dxij_dt[1:] += deriv_term
+            # The stage closure couples dx_j/dt to dx_(j-1)/dt, so the staged
+            # system is lower bidiagonal and resolves by forward substitution.
+            for stage in range(1, self.num_stages):
+                dxij_dt[stage] += carry_coeff[stage - 1] * dxij_dt[stage - 1]
 
         if di_sdot is not None:
             dxij_dt = dxij_dt - di_sdot['x_i']  # [1/s]
@@ -629,16 +674,17 @@ class DynamicExtractor:
 
             x_eqns = (HR * xi + HE * yi - mol_i) / HR  # [-]
 
-            k_ij = self.k_fun(xi, yi, temp)  # K_i [-]
-
-            # Stage-wise ``K_i`` callback support is tracked in #123.
+            k_ij = self._evaluate_distribution_coefficients(
+                xi, yi, temp)  # K_i [-]
             m_ij = k_ij / self.eff  # [-]
 
             y_eqns = np.zeros_like(yi)  # equilibrium residuals [-]
-            y_eqns[0] = m_ij * xi[0] - yi[0]
+            y_eqns[0] = m_ij[0] * xi[0] - yi[0]
 
             if self.num_stages > 1:
-                y_eqns[1:] = m_ij * (xi[1:] - xi[:-1] * (1 - self.eff)) - yi[1:]
+                y_eqns[1:] = m_ij[1:] * (
+                    xi[1:] - xi[:-1] * (1 - self.eff)
+                ) - yi[1:]
 
             x_eqns[:, -1] = xi.sum(axis=1) - 1  # [-]
             y_eqns[:, -1] = yi.sum(axis=1) - 1  # [-]
