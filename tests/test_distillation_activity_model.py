@@ -13,6 +13,14 @@ strong positive deviation from ideality, so its activity coefficient is large
 enough to reverse the volatility ordering. An ideal fallback is therefore
 visible in the model outputs instead of hiding in the fourth decimal.
 
+The shortcut flow split needs a third species. ``global_material_bce`` assigns
+every non-key component wholly to one product, so in a binary -- where the two
+declared keys are the only species -- the split follows from the recovery
+specifications alone and cannot depend on the ranking. A separate three-species
+fixture adds one non-key component that crosses the keys between the two models
+while the declared key ordering itself is preserved, so the flows move for a
+physical reason and both product streams stay realizable.
+
 Expected K-values are assembled in this module from the fixture Antoine
 constants and ``getActivityCoeff`` rather than from ``getKeqVLE``, so the
 assertions do not restate the production expression under test.
@@ -97,22 +105,85 @@ MIN_TEMP_SEPARATION = 1.0  # [K]
 MIN_RESIDUAL_SEPARATION = 0.1  # [-]
 MIN_VAPOR_FRAC_SEPARATION = 0.05  # [-]
 
+# Three-species extension of the fixture above, used only by the shortcut
+# flow-split test. ``global_material_bce`` builds the bottoms flow from four
+# index sets -- the two declared keys, the species ranked above the light key,
+# and the species ranked below the heavy key -- so those sets must partition the
+# species for the balance to mean anything. A binary cannot exercise that: its
+# two keys are the only species, the outer sets are always empty, and the split
+# is fixed by the recovery specifications no matter how the feed is ranked.
+#
+# In this fixture the two keys carry zero mutual interaction energy and
+# identical interaction energies with the non-key, so rows and columns 0 and 1
+# of ``amk`` are exchange-symmetric and the UNIQUAC residual term returns
+# gamma_light == gamma_heavy at every composition. The light key therefore stays
+# above the heavy key and adjacent to it under both models -- the partition
+# holds -- while the dilute non-key's own activity coefficient of about 2.3 [-]
+# lifts it from the bottom of the ideal ranking to the top of the non-ideal one.
+NONKEY_SPECIES = "nonkey"
+TERNARY_SPECIES = ("light", "heavy", NONKEY_SPECIES)
+NONKEY_INDEX = TERNARY_SPECIES.index(NONKEY_SPECIES)
 
-def _thermo_file(tmp_path):
-    """Write the fixture thermodynamic database to a temporary file.
+THERMO_NONIDEAL_TERNARY = {
+    # The two keys are the same species as the binary fixture above.
+    "light": THERMO_NONIDEAL_BINARY["light"],
+    "heavy": THERMO_NONIDEAL_BINARY["heavy"],
+    NONKEY_SPECIES: {
+        "mw": 60.0,  # [g/mol]
+        "t_crit": 675.0,  # [K]
+        "rho_liq": 1000.0,  # [kg/m**3]
+        "cp_liq": [110.0],  # [J/mol/K]
+        # Antoine B lies 35 [K] above the heavy key's, so under ideal K-values
+        # the non-key is the least volatile of the three.
+        "p_vap": [9.0, 1760.0, -40.0],  # Antoine A [-], B [K], C [K]
+        "delta_hvap": {"value": 50000.0, "temp_ref": 350.0},  # [J/mol], [K]
+        "ri": 1.4311,  # [-], UNIQUAC volume parameter
+        "qi": 1.4320,  # [-], UNIQUAC surface parameter
+        "qip": 1.4320,  # [-], UNIQUAC residual surface parameter
+    },
+    # UNIQUAC binary interaction energies a_mk [J/mol], ordered
+    # (light, heavy, nonkey). The key-key entries are zero, which is what makes
+    # the two keys exchange-symmetric; the key/non-key pair reuses the positive,
+    # asymmetric energies of the binary fixture above.
+    "interaction": {
+        "amk": [
+            [0.0, 0.0, 2500.0],
+            [0.0, 0.0, 2500.0],
+            [500.0, 500.0, 0.0],
+        ],
+    },
+}
+
+# The non-key is dilute, so it perturbs the key pair only weakly, and it is the
+# single species that changes product between the two rankings: its feed flow is
+# exactly the difference between the two shortcut splits.
+TERNARY_FEED_MOLE_FRAC = np.array([0.55, 0.35, 0.10])  # [-]
+
+
+def _thermo_file(tmp_path, database=None, name="thermo_nonideal_binary.json"):
+    """Write a fixture thermodynamic database to a temporary file.
 
     Parameters
     ----------
     tmp_path : pathlib.Path
         Directory provided by the pytest ``tmp_path`` fixture.
+    database : dict, optional
+        Thermodynamic database to serialize. The default is the two-species
+        ``THERMO_NONIDEAL_BINARY`` fixture.
+    name : str, optional
+        File name to write inside ``tmp_path``. The default is the two-species
+        database file name.
 
     Returns
     -------
     str
-        Path to the two-species database file.
+        Path to the database file.
     """
-    path = tmp_path / "thermo_nonideal_binary.json"
-    path.write_text(json.dumps(THERMO_NONIDEAL_BINARY))
+    if database is None:
+        database = THERMO_NONIDEAL_BINARY
+
+    path = tmp_path / name
+    path.write_text(json.dumps(database))
 
     return str(path)
 
@@ -357,25 +428,99 @@ def test_volatility_diagnostic_reports_model_bubble_point(tmp_path, capsys):
     assert abs(expected_temp - ideal_temp) > MIN_TEMP_SEPARATION  # [K]
 
 
+def _ternary_shortcut_column(thermo_path, gamma_model):
+    """Build a shortcut-design column on the three-species fixture.
+
+    Parameters
+    ----------
+    thermo_path : str
+        Path to the three-species database file.
+    gamma_model : str
+        Activity-coefficient model name.
+
+    Returns
+    -------
+    DistillationColumn
+        Column whose ``Inlet`` is the three-species feed stream.
+    """
+    column = distillation.DistillationColumn(
+        pres=COLUMN_PRESSURE,  # [Pa]
+        q_feed=1.0,  # [-], saturated-liquid feed
+        LK="light",
+        HK="heavy",
+        perc_LK=95.0,  # [%]
+        perc_HK=5.0,  # [%]
+        gamma_model=gamma_model,
+    )
+    column.Inlet = LiquidStream(
+        thermo_path,
+        temp=FEED_TEMPERATURE,  # [K]
+        pres=COLUMN_PRESSURE,  # [Pa]
+        mole_frac=TERNARY_FEED_MOLE_FRAC,  # [-]
+        mole_flow=FEED_MOLE_FLOW,  # [mol/s]
+    )
+
+    return column
+
+
 def test_feed_volatility_order_changes_shortcut_flow_split(tmp_path):
     """The activity model reaches the shortcut distillate and bottoms flows.
 
-    Non-key components are assigned to the distillate or the bottoms from the
-    volatility ranking, so an ideal ranking for a non-ideal feed does not merely
-    mislabel the order: it moves the shortcut material balance itself.
+    ``global_material_bce`` sends every non-key component wholly to the
+    distillate or wholly to the bottoms according to where the volatility
+    ranking places it relative to the keys, so an ideal ranking of a non-ideal
+    feed does not merely mislabel the order: it moves the shortcut material
+    balance itself.
+
+    The three-species fixture keeps the declared light key above the heavy key
+    and adjacent to it under both models, so the index sets the balance is built
+    from remain a partition of the species and both product streams stay
+    physically realizable. Only the non-key crosses the keys, and it takes its
+    whole feed flow with it.
     """
-    thermo_path = _thermo_file(tmp_path)
+    thermo_path = _thermo_file(
+        tmp_path, THERMO_NONIDEAL_TERNARY, "thermo_nonideal_ternary.json")
 
-    _, _, dist_nonideal, bot_nonideal = _shortcut_column(
-        thermo_path, ACTIVITY_MODEL).global_material_bce()  # [mol/s]
-    _, _, dist_ideal, bot_ideal = _shortcut_column(
-        thermo_path, 'ideal').global_material_bce()  # [mol/s]
+    nonideal = _ternary_shortcut_column(thermo_path, ACTIVITY_MODEL)
+    (x_dist_nonideal, x_bot_nonideal,
+     dist_nonideal, bot_nonideal) = nonideal.global_material_bce()
 
-    # Whichever ordering is used, the overall balance must still close.
-    assert dist_nonideal + bot_nonideal == pytest.approx(FEED_MOLE_FLOW)
-    assert dist_ideal + bot_ideal == pytest.approx(FEED_MOLE_FLOW)
+    ideal = _ternary_shortcut_column(thermo_path, 'ideal')
+    (x_dist_ideal, x_bot_ideal,
+     dist_ideal, bot_ideal) = ideal.global_material_bce()
 
-    assert dist_nonideal != pytest.approx(dist_ideal)
+    # The declared keys stay adjacent in both rankings. The non-key sits above
+    # them under the configured model and below them under the ideal fallback.
+    assert nonideal.sorted_by_volatility == ["nonkey", "light", "heavy"]
+    assert ideal.sorted_by_volatility == ["light", "heavy", "nonkey"]
+
+    for x_dist, x_bot, dist_flow, bot_flow in (
+            (x_dist_nonideal, x_bot_nonideal, dist_nonideal, bot_nonideal),
+            (x_dist_ideal, x_bot_ideal, dist_ideal, bot_ideal)):
+        # Each product must carry a positive flow of a nonnegative, normalized
+        # composition. These are the assertions that a ranking which breaks the
+        # index partition fails, and it breaks it silently: the shortcut
+        # balance then reports a negative flow and unnormalized fractions
+        # rather than raising.
+        assert dist_flow > 0  # [mol/s]
+        assert bot_flow > 0  # [mol/s]
+
+        assert np.all(x_dist >= 0)  # [-]
+        assert np.all(x_bot >= 0)  # [-]
+        assert x_dist.sum() == pytest.approx(1.0)  # [-]
+        assert x_bot.sum() == pytest.approx(1.0)  # [-]
+
+    # The non-key leaves entirely in one product, and which one is the only
+    # thing the activity model changes here, so the two splits differ by its
+    # whole feed flow.
+    nonkey_flow = (
+        FEED_MOLE_FLOW * TERNARY_FEED_MOLE_FRAC[NONKEY_INDEX])  # [mol/s]
+
+    assert dist_nonideal * x_dist_nonideal[NONKEY_INDEX] == pytest.approx(
+        nonkey_flow)  # [mol/s]
+    assert bot_ideal * x_bot_ideal[NONKEY_INDEX] == pytest.approx(
+        nonkey_flow)  # [mol/s]
+    assert dist_nonideal - dist_ideal == pytest.approx(nonkey_flow)  # [mol/s]
 
 
 def test_relative_volatility_uses_activity_model_bubble_point(tmp_path):
@@ -571,13 +716,22 @@ def test_dynamic_vapor_profiles_use_configured_activity_model(tmp_path):
     assert np.max(np.abs(ideal_y - expected_y)) > MIN_VAPOR_FRAC_SEPARATION
 
 
-def test_dynamic_startup_temperature_uses_configured_activity_model(tmp_path):
+def test_dynamic_startup_temperature_uses_configured_activity_model(
+        tmp_path, monkeypatch):
     """Initial plate temperatures use the configured activity model.
 
     ``solve_unit`` seeds every plate at the bubble point of the initial liquid
     holdup. Seeding a non-ideal column at its ideal bubble point starts the DAE
     off the equilibrium manifold its own algebraic residuals enforce, so this is
     a consistent-initialization failure rather than a small offset.
+
+    ``PharmaPy._assimulo`` exports lazy factories, so importing ``Distillation``
+    no longer imports Assimulo. ``solve_unit`` still calls ``Implicit_Problem``
+    and ``IDA``, though, and each call imports it, so patching those two names
+    is what keeps this test in the Assimulo-free core lane. The doubles also
+    capture the initial state handed to the DAE, which is the quantity under
+    test and is not recoverable from a completed solve. This is the same seam
+    ``tests/test_deliquoring_particle_size_units.py`` patches.
     """
     thermo_path = _thermo_file(tmp_path)
 
@@ -709,13 +863,10 @@ def test_dynamic_startup_temperature_uses_configured_activity_model(tmp_path):
     column.Inlet = _feed_stream(thermo_path)
     column.Phases = _holdup_phase(thermo_path)
 
-    monkey = pytest.MonkeyPatch()
-    monkey.setattr(distillation, 'Implicit_Problem', FakeProblem)
-    monkey.setattr(distillation, 'IDA', FakeSolver)
-    try:
-        column.solve_unit(runtime=10.0)  # [s]
-    finally:
-        monkey.undo()
+    monkeypatch.setattr(distillation, 'Implicit_Problem', FakeProblem)
+    monkeypatch.setattr(distillation, 'IDA', FakeSolver)
+
+    column.solve_unit(runtime=10.0)  # [s]
 
     holdup_frac = column.Liquid_1.mole_frac  # [-]
     expected_temp = _expected_bubble_temp(column.Liquid_1, holdup_frac)  # [K]
