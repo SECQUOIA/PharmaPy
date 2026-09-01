@@ -386,7 +386,10 @@ class DeliquoringStep:
         Wakeman deliquoring model.
         The first-order upwind finite-volume balance uses the same liquid flux
         at each face for saturation and every mobile-liquid species. This makes
-        the discrete liquid-held solute inventory conservative.
+        the discrete liquid-held solute inventory conservative at each right-
+        hand-side evaluation. The integrated trajectory advances reduced
+        saturation and concentration rather than solute holdup, so trajectory-
+        level conservation remains subject to the integrator error tolerance.
         """
 
         lambd = 5
@@ -404,7 +407,10 @@ class DeliquoringStep:
         sinf = self.sat_inf  # [-]
         saturation = sat_star * (1 - sinf) + sinf  # [-]
 
-        conc_bound = conc_star[0]  # upwind inlet-face concentration [-]
+        # Inlet-face concentration [-]. Inert while the inlet liquid flux is
+        # pinned to zero above, since flux_conc[0] = 0 * conc_bound; an
+        # inlet-solute boundary condition has to change both.
+        conc_bound = conc_star[0]
 
         flux_sat = upwind_fvm(q_liq, boundary_cond=0)  # [-]
         conc_faces = upwind_fvm(conc_star, boundary_cond=conc_bound)  # [-]

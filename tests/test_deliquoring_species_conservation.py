@@ -146,3 +146,42 @@ def test_deliquoring_solute_inventory_matches_boundary_efflux():
     expected_rate = -liquid_efflux * conc_star[-1]  # [-] per non-dim. time
 
     np.testing.assert_allclose(inventory_rate, expected_rate, rtol=1e-10, atol=1e-14)
+
+
+def test_deliquoring_concentration_derivative_uses_upwind_face_flux():
+    """Per-cell concentration rates use the upstream liquid concentration.
+
+    Eliminating ``dS/dtheta`` between the conservative solute and saturation
+    balances leaves a local closed form involving the liquid flux at each
+    cell's left face. Those face fluxes are recovered cumulatively from the
+    returned saturation derivative, independently of the production flux
+    assembly, so the assertion pins the donor cell at every interior face.
+    """
+    unit = _build_deliquoring_step()
+    sat_star, conc_star = _cake_state()
+
+    states = np.column_stack((sat_star, conc_star)).ravel()  # [-]
+    theta = 0.35  # non-dimensional deliquoring time [-] (autonomous RHS)
+    derivatives = unit.unit_model(theta, states).reshape(NUM_NODES, NUM_SPECIES + 1)
+
+    dsat_star_dtheta = derivatives[:, 0]  # [-] per non-dimensional time
+    dconc_dtheta = derivatives[:, 1:]  # [-] per non-dimensional time
+
+    saturation = sat_star * (1 - SAT_INF) + SAT_INF  # [-]
+    cell_width = unit.delta_z  # [-]
+
+    # Liquid flux on the left face of every cell, recovered from the returned
+    # saturation balance: q_left[0] = 0 and q_right = q_left - dS*/dtheta*dz.
+    face_flux = np.concatenate(
+        ([0.0], np.cumsum(-dsat_star_dtheta * cell_width))
+    )[:-1]  # [-]
+    conc_upwind = np.vstack((conc_star[0], conc_star[:-1]))  # [-]
+
+    expected_rate = (
+        -(1 - SAT_INF)
+        * face_flux[:, np.newaxis]
+        * (conc_star - conc_upwind)
+        / (saturation[:, np.newaxis] * cell_width[:, np.newaxis])
+    )  # [-] per non-dimensional time
+
+    np.testing.assert_allclose(dconc_dtheta, expected_rate, rtol=1e-10, atol=1e-14)
