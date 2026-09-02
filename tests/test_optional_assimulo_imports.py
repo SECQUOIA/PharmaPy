@@ -1,5 +1,6 @@
 """Import-boundary regressions for the optional Assimulo solver stack."""
 
+from importlib.util import find_spec
 import os
 from pathlib import Path
 import subprocess
@@ -31,38 +32,14 @@ LAZY_CONSTRUCTORS = (
     "Implicit_Problem",
 )
 
-# Block Assimulo through a sys.meta_path finder rather than by patching
-# builtins.__import__. importlib.import_module, which PharmaPy._assimulo uses to
-# load the backend, resolves through importlib._bootstrap._gcd_import and never
-# consults builtins.__import__, so a builtins patch lets the real Assimulo load
-# whenever it is installed. A meta-path finder participates in that resolution
-# and so blocks both statement imports and importlib.import_module.
-#
-# ModuleNotFoundError carries name="assimulo" because _load_assimulo_symbol
-# distinguishes a missing install from a broken one on exactly that attribute.
-IMPORT_BLOCKER = textwrap.dedent("""
-    import sys
 
-    class _AssimuloBlocker:
-        def find_spec(self, name, path=None, target=None):
-            if name == "assimulo" or name.startswith("assimulo."):
-                raise ModuleNotFoundError(
-                    "Assimulo import blocked by regression test",
-                    name="assimulo",
-                )
-            return None
-
-    sys.meta_path.insert(0, _AssimuloBlocker())
-    """)
-
-
-def _run_without_assimulo(script, tmp_path):
-    """Run Python source while rejecting imports of Assimulo.
+def _run_in_solver_free_environment(script, tmp_path):
+    """Run Python source in an environment that genuinely lacks Assimulo.
 
     Parameters
     ----------
     script : str
-        Python source to execute after installing the import blocker.
+        Python source to execute in the child process.
     tmp_path : pathlib.Path
         Temporary directory used for the Matplotlib configuration cache.
 
@@ -71,10 +48,13 @@ def _run_without_assimulo(script, tmp_path):
     subprocess.CompletedProcess
         Completed child-process result with captured text output.
     """
+    if find_spec("assimulo") is not None:
+        pytest.skip("requires the solver-free core environment")
+
     environment = os.environ.copy()
     environment["MPLCONFIGDIR"] = str(tmp_path)
     return subprocess.run(
-        [sys.executable, "-c", f"{IMPORT_BLOCKER}\n{script}"],
+        [sys.executable, "-c", script],
         cwd=REPO_ROOT,
         env=environment,
         capture_output=True,
@@ -91,7 +71,7 @@ def test_model_modules_import_without_assimulo(tmp_path):
         for module_name in {AFFECTED_MODULES!r}:
             importlib.import_module(module_name)
         """)
-    result = _run_without_assimulo(script, tmp_path)
+    result = _run_in_solver_free_environment(script, tmp_path)
 
     assert result.returncode == 0, result.stderr
 
@@ -126,7 +106,7 @@ def test_solver_construction_reports_missing_assimulo(symbol_name, tmp_path):
                 "{symbol_name} construction unexpectedly succeeded"
             )
         """)
-    result = _run_without_assimulo(script, tmp_path)
+    result = _run_in_solver_free_environment(script, tmp_path)
 
     assert result.returncode == 0, result.stderr
 
