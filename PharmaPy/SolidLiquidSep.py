@@ -13,7 +13,7 @@ See repository-level REFERENCES.md for the full citation.
 
 import numpy as np
 from PharmaPy._assimulo import CVode, Explicit_Problem
-from PharmaPy.Commons import trapezoidal_rule, series_erfc
+from PharmaPy.Commons import high_resolution_fvm, trapezoidal_rule, series_erfc
 from PharmaPy.Phases import classify_phases
 from PharmaPy.MixedPhases import Slurry, Cake
 from PharmaPy.general_interpolation import define_initial_state
@@ -35,66 +35,6 @@ from scipy.special import erfc
 
 eps = np.finfo(float).eps * 1.1
 grav = 9.8  # m/s**2
-
-
-def high_resolution_fvm(
-        f: np.ndarray, boundary_cond,
-        limiter_type: str = 'Van Leer') -> np.ndarray:
-    """Calculate limited finite-volume face values.
-
-    Parameters
-    ----------
-    f : numpy.ndarray
-        Cell-centered scalar or vector values. Units follow the transported
-        state.
-    boundary_cond : float or numpy.ndarray
-        Inlet ghost-cell value in the same units and trailing shape as ``f``.
-    limiter_type : {'Van Leer'}, optional
-        Total-variation-diminishing flux limiter.
-
-    Returns
-    -------
-    numpy.ndarray
-        Limited face values with one more axial entry than ``f``. Units follow
-        ``f``.
-
-    Raises
-    ------
-    ValueError
-        If no cells are supplied or the limiter is unsupported.
-
-    Notes
-    -----
-    Ghost cells follow LeVeque (2002), Chapter 9. With one physical cell there
-    is no outlet slope to extrapolate, so the outlet ghost cell uses the
-    zero-gradient value of that cell.
-    """
-    f = np.asarray(f)
-    if f.shape[0] == 0:
-        raise ValueError("high_resolution_fvm requires at least one cell")
-
-    # Ghost cells -1, 0 and N + 1 (LeVeque 2002, Chapter 9).
-    if f.shape[0] == 1:
-        f_extrap = f[-1]
-    else:
-        f_extrap = 2*f[-1] - f[-2]
-    f_aug = np.concatenate(([boundary_cond]*2, f, [f_extrap]))
-
-    f_diff = np.diff(f_aug, axis=0)
-
-    theta = (f_diff[:-1]) / (f_diff[1:] + eps)
-
-    if limiter_type == 'Van Leer':
-        limiter = (np.abs(theta) + theta) / (1 + np.abs(theta))
-    else:
-        raise ValueError(
-            "high_resolution_fvm supports only the 'Van Leer' limiter; "
-            f"got {limiter_type!r}"
-        )
-
-    fluxes = f_aug[1:-1] + 0.5 * f_diff[1:] * limiter
-
-    return fluxes
 
 
 def upwind_fvm(f, boundary_cond):

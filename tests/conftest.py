@@ -16,34 +16,34 @@ REPO_ROOT = TESTS_ROOT.parent
 # the path under test.
 DRYING_THERMO_DATA = {
     "water": {
-        "mw": 18.0,  # [g/mol]
-        "t_crit": 650.0,  # [K]
-        "rho_liq": 1000.0,  # [kg/m**3]
-        "rho_solid": 1000.0,  # [kg/m**3]
-        "cp_liq": [75.0],  # [J/mol/K]
-        "cp_vapor": [35.0],  # [J/mol/K]
-        "cp_solid": [700.0],  # [J/kg/K]
+        "mw": 18.0,  # [g/mol], rounded test value
+        "t_crit": 650.0,  # [K], rounded test value
+        "rho_liq": 1000.0,  # [kg/m**3], rounded test value
+        "rho_solid": 1000.0,  # [kg/m**3], construction-only fallback
+        "cp_liq": [75.0],  # [J/mol/K], rounded constant test value
+        "cp_vapor": [35.0],  # [J/mol/K], synthetic constant test value
+        "cp_solid": [700.0],  # [J/kg/K], construction-only fallback
         "visc_liq": [0.0, 0.0, 0.0, 0.0],  # log-correlation coefficients [-]
-        "visc_gas": 1.8e-5,  # [Pa*s]
-        "p_vap": [8.0, 1500.0, -40.0],  # [-], [K], [K]
-        "delta_hvap": 40000.0,  # [J/mol]
-        "tref_hvap": 350.0,  # [K]
-        "surf_tension": 0.072,  # [N/m]
+        "visc_gas": 1.8e-5,  # [Pa*s], constant test value
+        "p_vap": [8.0, 1500.0, -40.0],  # [-], [K], [K], synthetic coefficients
+        "delta_hvap": 40000.0,  # [J/mol], rounded test value
+        "tref_hvap": 350.0,  # [K], test correlation reference
+        "surf_tension": 0.072,  # [N/m], rounded test value
     },
     "ethanol": {
-        "mw": 46.0,  # [g/mol]
-        "t_crit": 700.0,  # [K]
-        "rho_liq": 800.0,  # [kg/m**3]
-        "rho_solid": 900.0,  # [kg/m**3]
-        "cp_liq": [110.0],  # [J/mol/K]
-        "cp_vapor": [60.0],  # [J/mol/K]
-        "cp_solid": [700.0],  # [J/kg/K]
+        "mw": 46.0,  # [g/mol], rounded test value
+        "t_crit": 700.0,  # [K], chosen to keep the test species subcritical
+        "rho_liq": 800.0,  # [kg/m**3], rounded test value
+        "rho_solid": 900.0,  # [kg/m**3], construction-only fallback
+        "cp_liq": [110.0],  # [J/mol/K], rounded constant test value
+        "cp_vapor": [60.0],  # [J/mol/K], synthetic constant test value
+        "cp_solid": [700.0],  # [J/kg/K], construction-only fallback
         "visc_liq": [0.0, 0.0, 0.0, 0.0],  # log-correlation coefficients [-]
-        "visc_gas": 1.2e-5,  # [Pa*s]
-        "p_vap": [8.0, 1800.0, -40.0],  # [-], [K], [K]
-        "delta_hvap": 50000.0,  # [J/mol]
-        "tref_hvap": 350.0,  # [K]
-        "surf_tension": 0.022,  # [N/m]
+        "visc_gas": 1.2e-5,  # [Pa*s], constant test value
+        "p_vap": [8.0, 1800.0, -40.0],  # [-], [K], [K], synthetic coefficients
+        "delta_hvap": 50000.0,  # [J/mol], rounded test value
+        "tref_hvap": 350.0,  # [K], test correlation reference
+        "surf_tension": 0.022,  # [N/m], rounded test value
     },
     "nitrogen": {
         "mw": 28.0,  # [g/mol]
@@ -65,7 +65,7 @@ DRYING_THERMO_DATA = {
 DRYING_SIZE_GRID_UM = np.array([50.0, 100.0, 150.0])  # [um]
 DRYING_CSD_NUMBER = np.array([1.0, 2.0, 1.0])  # [#/um], total basis
 DRYING_LIQUID_MASS_FRACTION = np.array([0.45, 0.45, 0.10])  # [-]
-DRYING_GAS_MASS_FRACTION = np.array([0.01, 0.01, 0.98])  # [-]
+DRYING_GAS_MASS_FRACTION = np.array([1e-6, 1e-6, 0.999998])  # [-]
 
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))

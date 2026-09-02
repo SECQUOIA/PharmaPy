@@ -62,18 +62,12 @@ def _expected_gas_density():
     )
 
 
-@pytest.mark.assimulo
 def test_unit_model_gas_density_uses_mixture_molar_mass(
         drying_unit_factory):
     """The real RHS exposes ideal-gas density with reciprocal-sum MW."""
-    pytest.importorskip("assimulo")
     dryer = drying_unit_factory(number_nodes=3)
-    _, states = dryer.solve_unit(
-        deltaP=5.0e4,
-        runtime=1.0e-8,  # [s]
-        verbose=False,
-    )
-    probe_state = np.asarray(states[0]).copy()  # [-] and [K]
+    probe_state = dryer.initialize_states(
+        deltaP=5.0e4).ravel()  # [-] and [K]
     state_width = 3 + dryer.Liquid_1.num_species + dryer.num_volatiles  # [-]
     states_by_node = probe_state.reshape(dryer.num_nodes, state_width)
     states_by_node[:, 0] = SATURATION

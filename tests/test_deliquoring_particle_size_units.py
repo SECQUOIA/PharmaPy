@@ -127,14 +127,26 @@ def test_deliquoring_setup_converts_micrometer_grid_to_meter_diameters(
 
     unit.solve_unit(deltaP=5.0e4, runtime=1.0e-3, verbose=False)  # [Pa], [s]
 
-    # Frozen from the documented synthetic property case. Removing the exact
-    # micrometer-to-meter conversion changes this capillary result by orders of
-    # magnitude while leaving the stored solid grid unchanged.
-    expected_irreducible_saturation = 0.15522598732874093  # [-]
-    np.testing.assert_allclose(unit.Solid_1.x_distrib, SIZE_GRID_UM)
-    assert unit.sat_inf == pytest.approx(
-        expected_irreducible_saturation, rel=1e-10
+    delta_p = 5.0e4  # [Pa]
+    correlation_inputs = (
+        unit.Solid_1.distrib,
+        delta_p,
+        unit.Solid_1.getPorosity(),
+        unit.cake_height,
+        unit.Solid_1.moments[0],
+        (
+            np.mean(unit.Liquid_1.getSurfTension()),
+            np.mean(unit.Liquid_1.getDensity()),
+        ),
     )
+    expected_saturation = solid_liquid_sep.get_sat_inf(
+        SIZE_GRID_UM * 1e-6, *correlation_inputs)  # [-]
+    micrometer_basis = solid_liquid_sep.get_sat_inf(
+        SIZE_GRID_UM, *correlation_inputs)  # [-]
+
+    np.testing.assert_allclose(unit.Solid_1.x_distrib, SIZE_GRID_UM)
+    assert unit.sat_inf == pytest.approx(expected_saturation, rel=1e-12)
+    assert unit.sat_inf != pytest.approx(micrometer_basis, rel=1e-10)
 
 
 @pytest.mark.assimulo
@@ -220,27 +232,6 @@ def test_get_sat_inf_clips_micronized_aggregate_roundoff():
     assert sat_inf <= 1.0
 
 
-def test_high_resolution_flux_supports_one_real_drying_cell():
-    """Use a zero-gradient outlet ghost value for one physical cell."""
-    cell_temperature = np.array([300.0])  # [K]
-
-    face_temperature = solid_liquid_sep.high_resolution_fvm(
-        cell_temperature, boundary_cond=295.0
-    )  # [K]
-
-    np.testing.assert_allclose(face_temperature, [295.0, 300.0])
-
-
-def test_high_resolution_flux_rejects_unknown_limiter():
-    """Reject an unsupported finite-volume limiter explicitly."""
-    with pytest.raises(ValueError, match="supports only the 'Van Leer'"):
-        solid_liquid_sep.high_resolution_fvm(
-            np.array([1.0, 2.0]),  # [-]
-            boundary_cond=0.0,
-            limiter_type="unknown",
-        )
-
-
 def test_deliquoring_rejects_singular_micronized_irreducible_saturation(
         drying_cake_factory):
     """Real deliquoring setup rejects an undefined reduced saturation."""
@@ -272,7 +263,9 @@ def test_drying_setup_converts_micrometer_grid_before_saturation(
         verbose=False,
     )
 
-    expected_irreducible_saturation = 0.16975758937005744  # [-]
+    # [-], frozen synthetic setup value. Removing the meter conversion changes
+    # this value by 8.7%; rel=1e-10 keeps that unit-basis regression visible.
+    expected_irreducible_saturation = 0.16975758937005744
     assert len(time) == np.shape(states)[0]
     np.testing.assert_allclose(dryer.Solid_1.x_distrib, SIZE_GRID_UM)
     assert dryer.s_inf == pytest.approx(

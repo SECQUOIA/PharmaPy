@@ -6,6 +6,8 @@ import pytest
 
 pytestmark = pytest.mark.unit
 
+SPECIES_MOLAR_MASS_KG = np.array([18.0, 46.0, 28.0]) / 1000.0  # [kg/mol]
+
 
 def test_drying_rate_mass_basis_converts_component_rates(
         drying_unit_factory):
@@ -68,18 +70,12 @@ def test_material_balance_uses_mass_drying_rate_for_saturation(
     np.testing.assert_allclose(dsat_dt, expected_dsat_dt)
 
 
-@pytest.mark.assimulo
 def test_unit_model_hands_mass_rates_to_real_balance_path(
         drying_unit_factory):
     """The real RHS stores mass rates converted from its molar correlation."""
-    pytest.importorskip("assimulo")
     dryer = drying_unit_factory(number_nodes=2)
-    _, states = dryer.solve_unit(
-        deltaP=5.0e4,
-        runtime=1.0e-8,  # [s]
-        verbose=False,
-    )
-    initial_state = np.asarray(states[0]).copy()  # [-] and [K]
+    initial_state = dryer.initialize_states(
+        deltaP=5.0e4).ravel()  # [-] and [K]
 
     state_width = 3 + dryer.Liquid_1.num_species + dryer.num_volatiles  # [-]
     states_by_node = initial_state.reshape(dryer.num_nodes, state_width)
@@ -88,19 +84,21 @@ def test_unit_model_hands_mass_rates_to_real_balance_path(
         :, 1 + dryer.Liquid_1.num_species:
         1 + dryer.Liquid_1.num_species + dryer.num_volatiles
     ].copy()  # [-]
-    x_liq[:, -2] = 0.0  # [-], established legacy RHS state reset
+    # [-], mirrors the #42 defect that zeroes the first volatile column;
+    # remove this line and re-derive the expectation once #42 is fixed.
+    x_liq[:, -2] = 0.0
     temp_cond = states_by_node[:, -1]  # [K]
     molar_rate = dryer.get_drying_rate(
         x_liq, temp_cond, y_gas, dryer.pres_gas
     )  # [mol/m**3/s]
-    expected_mass_rate = dryer._drying_rate_mass_basis(
-        molar_rate
-    )  # [kg/m**3/s]
+    expected_mass_rate = (
+        molar_rate * SPECIES_MOLAR_MASS_KG)  # [kg/m**3/s]
 
     model_equations = dryer.unit_model(0.0, initial_state.copy())
 
     assert model_equations.shape == initial_state.shape
     assert np.all(np.isfinite(model_equations))
+    assert np.any(expected_mass_rate > 0)
     np.testing.assert_allclose(dryer.dry_rate, expected_mass_rate)
 
 

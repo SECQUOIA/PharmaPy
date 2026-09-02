@@ -7,18 +7,12 @@ import pytest
 pytestmark = pytest.mark.unit
 
 
-@pytest.mark.assimulo
 def test_unit_model_uses_relative_permeability_for_gas_velocity(
         drying_unit_factory):
     """Darcy velocity exposes the clipped relative-permeability result."""
-    pytest.importorskip("assimulo")
     dryer = drying_unit_factory(number_nodes=3)
-    _, states = dryer.solve_unit(
-        deltaP=5.0e4,
-        runtime=1.0e-8,  # [s]
-        verbose=False,
-    )
-    probe_state = np.asarray(states[0]).copy()  # [-] and [K]
+    probe_state = dryer.initialize_states(
+        deltaP=5.0e4).ravel()  # [-] and [K]
     state_width = 3 + dryer.Liquid_1.num_species + dryer.num_volatiles  # [-]
     states_by_node = probe_state.reshape(dryer.num_nodes, state_width)
     states_by_node[:, 0] = np.array([1.0, dryer.s_inf, 1.2])  # [-]
