@@ -16,6 +16,7 @@ from PharmaPy.Connections import get_inputs_new
 from PharmaPy.Plotting import plot_function, plot_distrib
 from PharmaPy.Results import DynamicResult
 from PharmaPy.CheckModule import check_modeling_objects
+from PharmaPy.jac_module import numerical_jac_central
 
 import numpy as np
 # from numpy.core.umath_tests import inner1d
@@ -26,74 +27,13 @@ from matplotlib.animation import FFMpegWriter
 
 import copy
 from itertools import cycle
-from typing import Callable, Optional, Sequence, Tuple
+from typing import Optional, Sequence, Tuple
 
 linestyles = cycle(['-', '--', '-.', ':'])
 
 gas_ct = 8.314  # J/mol/K
 eps = np.finfo(float).eps
 _CENTRAL_DIFFERENCE_REL_STEP = np.cbrt(eps)  # [-], optimal for O(h**2) error
-
-
-def _finite_difference_jacobian(
-        func: Callable[..., np.ndarray], values: np.ndarray, args: tuple = (),
-        num_nonnegative: int = 0) -> np.ndarray:
-    """Approximate a vector-valued Jacobian with finite differences.
-
-    Parameters
-    ----------
-    func : callable
-        Function mapping ``values`` to a one-dimensional model-rate vector.
-    values : array-like
-        Differentiated coordinates [coordinate-dependent units].
-    args : tuple, optional
-        Additional arguments passed to ``func`` [argument-dependent units].
-    num_nonnegative : int, optional
-        Number of leading coordinates constrained to be nonnegative [-].
-
-    Returns
-    -------
-    numpy.ndarray
-        Jacobian with rows in output-rate order and columns in coordinate
-        order [output-rate units / coordinate units].
-
-    Notes
-    -----
-    Interior coordinates use the centered second-order formula. The relative
-    step is ``machine_epsilon**(1/3)``, which balances its second-order
-    truncation error against floating-point roundoff. Leading nonnegative
-    coordinates use the second-order forward formula when a centered step
-    would cross zero.
-    """
-    coordinates = np.asarray(
-        values, dtype=float)  # [units of each differentiated coordinate]
-    steps = _CENTRAL_DIFFERENCE_REL_STEP * np.maximum(
-        1.0, np.abs(coordinates))  # [units of each differentiated coordinate]
-    base_rates = np.atleast_1d(func(coordinates, *args))  # [mixed rate units]
-    jacobian = np.empty(
-        (base_rates.size, coordinates.size))  # [mixed rate/coordinate units]
-
-    for index, step in enumerate(steps):  # step [coordinate-dependent units]
-        perturbation = np.zeros_like(coordinates)  # [coordinate-dependent units]
-        perturbation[index] = step
-
-        if index < num_nonnegative and coordinates[index] < step:
-            rate_plus = np.atleast_1d(
-                func(coordinates + perturbation, *args))  # [mixed rate units]
-            rate_plus_twice = np.atleast_1d(
-                func(coordinates + 2 * perturbation, *args)
-            )  # [mixed rate units]
-            jacobian[:, index] = (
-                -3 * base_rates + 4 * rate_plus - rate_plus_twice
-            ) / (2 * step)
-        else:
-            rate_plus = np.atleast_1d(
-                func(coordinates + perturbation, *args))  # [mixed rate units]
-            rate_minus = np.atleast_1d(
-                func(coordinates - perturbation, *args))  # [mixed rate units]
-            jacobian[:, index] = (rate_plus - rate_minus) / (2 * step)
-
-    return jacobian
 
 
 def check_stoichiometry(stoich, mws):
@@ -610,9 +550,13 @@ class _BaseReactor:
             state_args = (
                 time, parameter_values, sw, False
             )  # [s; parameter-dependent units; -; -]
-            jac_states = _finite_difference_jacobian(
+            state_steps = _CENTRAL_DIFFERENCE_REL_STEP * np.maximum(
+                1.0, np.abs(state_values)
+            )  # [mol/L for species; K for temperatures]
+            jac_states = numerical_jac_central(
                 self._evaluate_balances_for_jacobian,
                 state_values,
+                dx=state_steps,
                 args=state_args,
                 num_nonnegative=self.Kinetics.num_species,
             )  # [mixed balance-rate/state units]
@@ -621,9 +565,14 @@ class _BaseReactor:
                 parameter_args = (
                     time, state_values, sw, True
                 )  # [s; mol/L and K; -; -]
-                jac_params = _finite_difference_jacobian(
+                parameter_steps = (
+                    _CENTRAL_DIFFERENCE_REL_STEP
+                    * np.maximum(1.0, np.abs(parameter_values))
+                )  # [parameter-dependent units]
+                jac_params = numerical_jac_central(
                     self._evaluate_balances_for_jacobian,
                     parameter_values,
+                    dx=parameter_steps,
                     args=parameter_args,
                 )  # [mixed balance-rate/parameter units]
             else:
@@ -653,7 +602,10 @@ class _BaseReactor:
             Current state sensitivities [state units / parameter units].
             Required when ``wrt_states`` is False.
         params : array-like
-            Kinetic parameters [parameter-dependent units].
+            Kinetic parameters [parameter-dependent units]. The
+            non-isothermal finite-difference path evaluates these values. The
+            legacy isothermal analytic path uses the parameters already stored
+            by ``self.Kinetics``; in-tree callers synchronize them first.
         wrt_states : bool, optional
             If True, return ``df/dy``. Otherwise return
             ``df/dy * sens + df/dtheta``. The default is True [-].
@@ -673,12 +625,7 @@ class _BaseReactor:
         if not wrt_states and sens is None:
             raise ValueError("sens must be provided when wrt_states is False")
 
-        # ---------- w.r.t. states
-        if self.isothermal:
-            num_species = self.Kinetics.num_species
-            conc = states[:num_species]
-            temp = self.Liquid_1.temp
-        else:
+        if not self.isothermal:
             jac_states, jac_params = self._get_nonisothermal_jacobians(
                 time, states, sw, params, include_params=not wrt_states)
 
@@ -686,6 +633,10 @@ class _BaseReactor:
                 return jac_states
 
             return jac_states.dot(sens) + jac_params
+
+        num_species = self.Kinetics.num_species
+        conc = states[:num_species]
+        temp = self.Liquid_1.temp
 
         if self.Kinetics.keq_params is None:
             deltah_rxn = None
@@ -697,8 +648,7 @@ class _BaseReactor:
         jac_r_kin = self.Kinetics.derivatives(
             conc, temp, delta_hrxn=deltah_rxn)
 
-        if self.isothermal:
-            jac_states = jac_r_kin
+        jac_states = jac_r_kin
 
         if wrt_states:
             return jac_states

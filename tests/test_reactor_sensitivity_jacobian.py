@@ -6,7 +6,6 @@ solver backend is installed.
 """
 
 import importlib.util
-from unittest.mock import Mock
 
 import numpy as np
 import pytest
@@ -19,6 +18,7 @@ from PharmaPy.Utilities import CoolingWater
 
 HAS_ASSIMULO = importlib.util.find_spec("assimulo") is not None
 _FIVE_POINT_REL_STEP = np.finfo(float).eps ** (1 / 5)  # [-], O(h**4) optimum
+_JACOBIAN_SCALED_ATOL = 1e-7  # [-], validated against five-point differences
 
 
 def _build_nonisothermal_reactor(data_path):
@@ -250,7 +250,7 @@ def _assert_jacobians_agree(actual, expected):
         1.0, np.maximum(np.abs(actual), np.abs(expected))
     )  # [units of each Jacobian entry]
     scaled_error = np.abs(actual - expected) / scale  # [-]
-    assert np.max(scaled_error) < _FIVE_POINT_REL_STEP
+    assert np.max(scaled_error) < _JACOBIAN_SCALED_ATOL
 
 
 @pytest.mark.unit
@@ -356,31 +356,63 @@ def test_nonisothermal_sensitivity_rhs_couples_state_jacobian(data_path):
 @pytest.mark.unit
 def test_nonisothermal_state_jacobian_stays_in_concentration_domain(
         data_path):
-    """Exercise the one-sided boundary through the shipped kinetic model."""
+    """Match the second-order one-sided derivative at zero concentration."""
     reactor, states, params = _build_nonisothermal_reactor(data_path)
     fractional_order = 1.5  # [-]
     params[-2] = fractional_order
     reactor.Kinetics.set_params(params)
-    production_model = reactor.Kinetics.kinetic_model
-    recording_model = Mock(wraps=production_model)
-    reactor.Kinetics.kinetic_model = recording_model
+    reactor.Kinetics.kinetic_model = _unclipped_power_law
     states[0] = 0.0  # [mol/L], depleted reactant boundary
     time = 0.0  # [s]
 
     jacobian = reactor.get_jacobians(
         time, states, None, None, params, wrt_states=True
     )  # [mixed rate/state units]
+    step = np.cbrt(np.finfo(float).eps)  # [mol/L]
+    perturbation = np.zeros_like(states)  # [mol/L for species; K for temperatures]
+    perturbation[0] = step
+    rate_at_boundary = np.asarray(
+        reactor.unit_model(time, states, params=params)
+    )  # [mol/L/s; K/s]
+    rate_at_one_step = np.asarray(
+        reactor.unit_model(time, states + perturbation, params=params)
+    )  # [mol/L/s; K/s]
+    rate_at_two_steps = np.asarray(
+        reactor.unit_model(time, states + 2 * perturbation, params=params)
+    )  # [mol/L/s; K/s]
+    expected_column = (
+        -3 * rate_at_boundary + 4 * rate_at_one_step - rate_at_two_steps
+    ) / (2 * step)  # [mixed rate/concentration units]
 
-    evaluated_concentrations = [
-        np.asarray(call.args[0]) for call in recording_model.call_args_list
-    ]  # [mol/L]
-    minimum_valid_concentration = 0.0  # [mol/L]
-    assert evaluated_concentrations
-    assert all(
-        np.all(concentrations >= minimum_valid_concentration)
-        for concentrations in evaluated_concentrations
-    )
     assert np.all(np.isfinite(jacobian))
+    np.testing.assert_allclose(
+        jacobian[:, 0], expected_column, rtol=0.0, atol=1e-12)
+
+
+@pytest.mark.unit
+def test_nonisothermal_jacobians_restore_nominal_model_state(data_path):
+    """Leave kinetics, phase temperature, and balances at nominal values."""
+    reactor, states, params = _build_nonisothermal_reactor(data_path)
+    time = 0.0  # [s]
+    nominal_rates = np.asarray(
+        reactor.unit_model(time, states, params=params)
+    ).copy()  # [mol/L/s; K/s]
+    nominal_params = reactor.Kinetics.concat_params().copy(
+    )  # [parameter-dependent units]
+    nominal_temp = np.atleast_1d(reactor.Liquid_1.temp).copy()  # [K]
+    sensitivities = np.zeros(
+        (states.size, params.size))  # [state units / parameter units]
+
+    for sensitivity, wrt_states in ((None, True), (sensitivities, False)):
+        reactor.get_jacobians(
+            time, states, None, sensitivity, params,
+            wrt_states=wrt_states)
+
+        np.testing.assert_array_equal(
+            reactor.Kinetics.concat_params(), nominal_params)
+        np.testing.assert_array_equal(
+            np.atleast_1d(reactor.Liquid_1.temp), nominal_temp)
+        np.testing.assert_array_equal(reactor.derivatives, nominal_rates)
 
 
 @pytest.mark.unit
