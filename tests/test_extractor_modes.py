@@ -34,17 +34,30 @@ def test_continuous_extractor_uses_mole_flow_and_stream_outlets(data_path):
     assert extractor.oper_mode == "Continuous"
     assert extractor.in_flow == pytest.approx(inlet_flow)
 
+    phase_fraction = 0.25  # [-], deliberately chosen rather than solved equilibrium
+    # Components A and B form the binary split; the trailing C, D, and solvent
+    # entries remain absent from both deliberately chosen outlet compositions.
+    liquid_a_mole_fraction = np.array([0.4, 0.6, 0.0, 0.0, 0.0])  # [-]
+    liquid_b_mole_fraction = np.array([0.1, 0.9, 0.0, 0.0, 0.0])  # [-]
     extractor.retrieve_results((
-        0.25,  # phase fraction [-]
-        np.array([0.4, 0.6, 0.0, 0.0, 0.0]),  # liquid-a mole fractions [-]
-        np.array([0.1, 0.9, 0.0, 0.0, 0.0]),  # liquid-b mole fractions [-]
+        phase_fraction,
+        liquid_a_mole_fraction,
+        liquid_b_mole_fraction,
         {"error": 0.0, "num_iter": 1},
     ))
 
     outlets = [extractor.Liquid_2, extractor.Liquid_3]
     assert all(type(outlet) is LiquidStream for outlet in outlets)
-    stream_flows = sorted(outlet.mole_flow for outlet in outlets)
-    assert stream_flows == pytest.approx([2.0, 6.0])
+    expected_heavy_flow = phase_fraction * inlet_flow  # [mol/s]
+    expected_light_flow = inlet_flow - expected_heavy_flow  # [mol/s]
+    assert extractor.Liquid_2.mole_flow == pytest.approx(expected_heavy_flow)
+    assert extractor.Liquid_3.mole_flow == pytest.approx(expected_light_flow)
+    assert extractor.Liquid_2.getDensity(basis="mole") > (
+        extractor.Liquid_3.getDensity(basis="mole")
+    )
+    assert sum(outlet.mole_flow for outlet in outlets) == pytest.approx(
+        inlet_flow
+    )
 
 
 def test_batch_extractor_keeps_batch_amount_semantics(data_path):
