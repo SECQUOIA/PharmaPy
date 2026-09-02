@@ -1,8 +1,6 @@
 """Regression tests for MetaModeler-generated unit-operation templates."""
 
 from importlib import util
-import sys
-from types import ModuleType
 
 import numpy as np
 import pytest
@@ -13,41 +11,13 @@ from PharmaPy.MetaModeler import MetaModelingClass
 pytestmark = pytest.mark.unit
 
 
-def _install_fake_assimulo(monkeypatch):
-    """Install minimal Assimulo modules needed to import generated templates.
-
-    Parameters
-    ----------
-    monkeypatch : pytest.MonkeyPatch
-        Active pytest monkeypatch fixture used to restore ``sys.modules``.
-
-    Returns
-    -------
-    None
-    """
-    assimulo = ModuleType("assimulo")
-    problem = ModuleType("assimulo.problem")
-    solvers = ModuleType("assimulo.solvers")
-
-    problem.Explicit_Problem = object
-    problem.Implicit_Problem = object
-    solvers.CVode = object
-    solvers.IDA = object
-
-    monkeypatch.setitem(sys.modules, "assimulo", assimulo)
-    monkeypatch.setitem(sys.modules, "assimulo.problem", problem)
-    monkeypatch.setitem(sys.modules, "assimulo.solvers", solvers)
-
-
-def _generated_class(tmp_path, monkeypatch, model_type, has_stages=False):
+def _generated_class(tmp_path, model_type, has_stages=False):
     """Generate and import a template class for one model type.
 
     Parameters
     ----------
     tmp_path : pathlib.Path
         Temporary directory where the generated Python module is written.
-    monkeypatch : pytest.MonkeyPatch
-        Active pytest monkeypatch fixture used to install fake imports.
     model_type : {"ODE", "DAE", "PDE"}
         Template model type emitted by :class:`MetaModelingClass`.
     has_stages : bool, default=False
@@ -58,8 +28,6 @@ def _generated_class(tmp_path, monkeypatch, model_type, has_stages=False):
     type
         Generated unit-operation class.
     """
-    _install_fake_assimulo(monkeypatch)
-
     module_path = tmp_path / f"generated_{model_type.lower()}.py"
     generator = MetaModelingClass(
         module_path,
@@ -80,8 +48,8 @@ def _generated_class(tmp_path, monkeypatch, model_type, has_stages=False):
 
 @pytest.mark.parametrize("model_type", ["ODE", "DAE", "PDE"])
 def test_generated_unit_model_concatenates_material_and_energy_rates(
-        tmp_path, monkeypatch, model_type):
-    generated_class = _generated_class(tmp_path, monkeypatch, model_type)
+        tmp_path, model_type):
+    generated_class = _generated_class(tmp_path, model_type)
 
     if model_type == "PDE":
         unit = generated_class(num_nodes=3)
@@ -165,8 +133,8 @@ def test_generated_unit_model_concatenates_material_and_energy_rates(
 
 @pytest.mark.parametrize("model_type", ["ODE", "DAE"])
 def test_generated_staged_unit_model_flattens_stage_rate_blocks(
-        tmp_path, monkeypatch, model_type):
-    generated_class = _generated_class(tmp_path, monkeypatch, model_type,
+        tmp_path, model_type):
+    generated_class = _generated_class(tmp_path, model_type,
                                        has_stages=True)
     unit = generated_class(num_stages=3)
     unit.len_states_orig = np.array([1, 1])  # [-]
@@ -235,8 +203,8 @@ def test_generated_staged_unit_model_flattens_stage_rate_blocks(
 
 
 def test_generated_solve_model_declares_cumulative_lengths_for_helpers(
-        tmp_path, monkeypatch):
-    generated_class = _generated_class(tmp_path, monkeypatch, "ODE")
+        tmp_path):
+    generated_class = _generated_class(tmp_path, "ODE")
     unit = generated_class()
 
     with pytest.raises(ValueError, match="need at least one array"):
@@ -249,8 +217,8 @@ def test_generated_solve_model_declares_cumulative_lengths_for_helpers(
 
 @pytest.mark.parametrize("model_type", ["ODE", "DAE"])
 def test_generated_retrieve_results_splits_states_by_instance_lengths(
-        tmp_path, monkeypatch, model_type):
-    generated_class = _generated_class(tmp_path, monkeypatch, model_type)
+        tmp_path, model_type):
+    generated_class = _generated_class(tmp_path, model_type)
     unit = generated_class()
     unit.acum_len = np.array([2])  # [-]
     states_by_time = np.array([
@@ -267,8 +235,8 @@ def test_generated_retrieve_results_splits_states_by_instance_lengths(
 
 
 def test_generated_pde_retrieve_results_returns_reordered_outputs(
-        tmp_path, monkeypatch):
-    generated_class = _generated_class(tmp_path, monkeypatch, "PDE")
+        tmp_path):
+    generated_class = _generated_class(tmp_path, "PDE")
     unit = generated_class(num_nodes=2)
     unit.len_states = np.array([2, 1])  # [-]
     states_by_time = np.array([
