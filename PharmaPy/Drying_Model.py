@@ -361,10 +361,12 @@ class Drying:
         sat_red = np.clip(sat_red, 0, 1)  # [-]
         k_ra = (1 - sat_red)**2 * (1 - sat_red**1.4)  # [-]
         vel_gas = self.k_perm * k_ra * self.dPg_dz / visc_gas  # [m/s]
+        self.gas_velocity = vel_gas  # [m/s]
 
         # ---------- Drying rate term
         mw_avg_gas = self._gas_mixture_molar_mass(y_gas)  # [g/mol]
         rho_gas = self.pres_gas / gas_ct / temp_gas * mw_avg_gas / 1000  # [kg/m**3]
+        self.rho_gas = rho_gas  # [kg/m**3]
         rho_liq_ = self.Liquid_1.rho_liq[self.idx_volatiles]  # [kg/m**3]
         self.rho_liq =  1 / np.sum((x_liq/ rho_liq_), axis=1)  # [kg/m**3]
         # Dry correction
