@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 import numpy as np
 import pytest
 
@@ -10,6 +8,8 @@ from PharmaPy.Connections import (
     get_remaining_states,
     interpolate_inputs,
 )
+from PharmaPy.MixedPhases import Slurry
+from PharmaPy.Phases import LiquidPhase, SolidPhase
 
 
 pytestmark = pytest.mark.unit
@@ -86,17 +86,29 @@ def test_interpolate_inputs_evaluates_vector_times_without_solver_stack():
     np.testing.assert_allclose(result, [[0.5, 5.0], [1.5, 15.0]])
 
 
-def test_get_remaining_states_uses_stream_values_and_zero_defaults():
-    stream = SimpleNamespace(
-        mole_conc=np.array([1.0, 2.0]),
-        temp=300.0,
-        Solid=SimpleNamespace(mu_n=None),
+def test_get_remaining_states_uses_stream_values_and_zero_defaults(data_path):
+    thermo_path = str(data_path["integration"] / "pfr_test_pure_comp.json")
+    liquid = LiquidPhase(
+        thermo_path,
+        temp=300.0,  # [K]
+        mass=1.0,  # [kg]
+        mass_frac=np.array([0.2, 0.3, 0.0, 0.5]),  # [-]
+        verbose=False,
     )
+    solid = SolidPhase(
+        thermo_path,
+        temp=300.0,  # [K]
+        moments=np.array([1.0, 0.0, 0.0, 1.0e-6]),  # [m**n]
+        mass_frac=np.array([1.0, 0.0, 0.0, 0.0]),  # [-]
+    )
+    stream = Slurry()
+    stream.Phases = [liquid, solid]
+
     state_dimensions = {
-        "Inlet": {"mole_conc": 2, "temp": 1, "mass": 1},
-        "Solid": {"mu_n": 3},
+        "Inlet": {"mass_slurry": 1, "temp": 1, "missing": 2},
+        "Solid_1": {"mu_n": 3},
     }
-    existing_inlets = {"Inlet": {"temp": 305.0}, "Solid": {}}
+    existing_inlets = {"Inlet": {"temp": 305.0}, "Solid_1": {}}
 
     result = get_remaining_states(
         state_dimensions,
@@ -106,8 +118,10 @@ def test_get_remaining_states_uses_stream_values_and_zero_defaults():
     )
 
     np.testing.assert_allclose(
-        result["Inlet"]["mole_conc"],
-        [[1.0, 2.0], [1.0, 2.0]],
+        result["Inlet"]["mass_slurry"],
+        [stream.mass_slurry, stream.mass_slurry],  # [kg]
     )
-    np.testing.assert_allclose(result["Inlet"]["mass"], [0.0, 0.0])
-    np.testing.assert_allclose(result["Solid"]["mu_n"], np.zeros((2, 3)))
+    np.testing.assert_allclose(result["Inlet"]["missing"], np.zeros((2, 2)))
+    np.testing.assert_allclose(
+        result["Solid_1"]["mu_n"], np.zeros((2, 3))
+    )
