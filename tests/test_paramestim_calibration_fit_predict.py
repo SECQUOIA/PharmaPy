@@ -14,7 +14,29 @@ from PharmaPy.Calibration import PCR_calibration
 pytestmark = pytest.mark.unit
 
 
-def test_parameter_estimation_ipopt_result_contract_uses_set_self_keyword():
+def test_parameter_estimation_reports_missing_cyipopt():
+    """The solver-free core lane reports how to enable IPOPT fitting."""
+    time_s = np.array([0.0, 1.0])  # [s]
+    observed_concentration_mol_l = np.array([0.0, 1.0])  # [mol/L]
+
+    def linear_model(params, x_data_s):
+        """Return concentration [mol/L] from rate [mol/L/s] and time [s]."""
+        return params[0] * x_data_s
+
+    estimator = ParamEstim.ParameterEstimation(
+        linear_model,
+        param_seed=np.array([1.0]),  # [mol/L/s]
+        x_data=time_s,
+        y_data=observed_concentration_mol_l,
+        name_params=["rate_mol_l_s"],
+    )
+
+    assert ParamEstim.have_cyipopt is False
+    with pytest.raises(ImportError, match="cyipopt is an optional import"):
+        estimator.optimize_fn(method="IPOPT", verbose=False)
+
+
+def test_parameter_estimation_assembles_ipopt_result_info():
     """Exercise the solver-independent IPOPT post-solve result contract.
 
     The test calls the real objective, gradient, and covariance methods in the
@@ -46,15 +68,11 @@ def test_parameter_estimation_ipopt_result_contract_uses_set_self_keyword():
     )
 
     opt_par_mol_l_s = np.array([rate_mol_l_s])  # [mol/L/s]
-    # Match the real IPOPT callback followed by its solver-independent result
-    # assembly. The regression in issue #78 was the invalid keyword at this
-    # exact objective call, not behavior inside the optional solver.
+    # Match the real IPOPT callback followed by the production,
+    # solver-independent result assembly. Issue #78 used the invalid ``base``
+    # keyword inside this helper's objective call.
     estimator.get_objective(opt_par_mol_l_s)
-    residuals = estimator.get_objective(
-        opt_par_mol_l_s, out_array=True, set_self=False
-    )
-    jacobian = estimator.get_gradient(opt_par_mol_l_s, out_array=True)
-    info = {"fun": residuals, "jac": jacobian}
+    info = estimator.assemble_solver_info(opt_par_mol_l_s)
     estimator.info_opt = info
     covar_rate = estimator.get_covariance()
     y_model_mol_l_actual = estimator.resid_runs[0] + estimator.y_data[0]
