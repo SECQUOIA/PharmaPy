@@ -659,6 +659,12 @@ class Cake:
         numpy.floating
             Specific cake resistance on a solid-mass basis [m/kg].
 
+        Raises
+        ------
+        ValueError
+            If the solid phase's volumetric shape factor is not a finite,
+            positive scalar.
+
         Notes
         -----
         Crystal sizes are stored in micrometres and converted to metres for
@@ -688,6 +694,21 @@ class Cake:
         micrometer_to_meter = 1e-6  # [m/um], exact unit conversion
         size_grid = self.Solid_1.x_distrib * micrometer_to_meter  # [m]
         shape_factor = self.Solid_1.kv  # [-]
+
+        try:
+            shape_factor_is_valid = (
+                np.isscalar(shape_factor)
+                and np.isfinite(shape_factor)
+                and shape_factor > 0
+            )
+        except TypeError:
+            shape_factor_is_valid = False
+
+        if not shape_factor_is_valid:
+            raise ValueError(
+                "Solid-phase shape factor 'kv' must be a finite, positive "
+                "scalar."
+            )
 
         bin_widths = np.diff(size_grid)  # [m]
         node_sizes = (size_grid[:-1] + size_grid[1:]) / 2  # [m]

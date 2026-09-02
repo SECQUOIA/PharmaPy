@@ -165,6 +165,17 @@ Prioritize, in order:
 - Prefer existing project abstractions and NumPy/SciPy operations over duplicate
   helpers. Add a dependency only when the benefit justifies the maintenance cost.
 
+## AI-assisted contributions
+
+- AI tools may help draft code, tests, documentation, and commit messages, but
+  the human contributor remains responsible for the correctness, security,
+  licensing, and maintainability of every changed line. Contributors must
+  personally review the change and be able to explain its design and evidence.
+- Pull requests must disclose how AI tools were used and identify any
+  uncertainty or area where focused reviewer attention is requested. Generated
+  output is not verification; independently inspect the relevant source,
+  execute the applicable tests, and validate scientific claims before handoff.
+
 ## Testing and verification
 
 - Add or update tests for every behavior change and bug fix. Demonstrate a
@@ -191,9 +202,18 @@ Prioritize, in order:
 - Give each test module a concise docstring covering its scope and noteworthy
   fixtures, backends, or cost. Document individual tests only when their names
   and bodies are not self-explanatory.
-- Prefer representative real collaborators. Use monkeypatches and stubs only at
-  narrow optional, expensive, or external boundaries, and assert the actual
-  handoff. Link the blocker when stable end-to-end coverage must be deferred.
+- Do not use general-purpose mock objects or frameworks such as
+  `unittest.mock`, the `mock` backport, `pytest-mock`, `Mock`, `MagicMock`, or
+  `PropertyMock`. They make it too easy to verify configured return values
+  instead of the PharmaPy behavior users rely on. Prefer deterministic tests
+  through public APIs with representative real collaborators.
+- A narrow `monkeypatch` or explicit hand-written boundary substitute is
+  acceptable only when the real path requires an unavailable optional or
+  licensed dependency, an external service, or disproportionate cost. Document
+  why the substitute is necessary, the exact handoff contract it verifies, and
+  which test lane covers the real collaborator. Do not describe such a test as
+  end-to-end coverage. Link the blocker when stable real-collaborator coverage
+  must be deferred.
 - When expected behavior depends on an unfixed defect elsewhere, identify the
   blocking issue in the test docstring or adjacent comment, state the
   provisional expectation and what must change after the fix, and repeat that

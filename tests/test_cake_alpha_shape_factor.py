@@ -6,8 +6,6 @@ therefore be independent of any positive scalar ``kv``, while the method must
 still obtain that factor from its attached solid phase rather than a literal.
 """
 
-from unittest.mock import PropertyMock, patch
-
 import numpy as np
 import pytest
 
@@ -118,23 +116,28 @@ def test_cake_alpha_is_invariant_to_real_phase_shape_factor(thermo_path):
     )
 
 
-def test_cake_alpha_reads_shape_factor_from_solid_phase(thermo_path):
-    """Verify ``alpha`` reads ``kv`` from the attached solid phase.
+@pytest.mark.parametrize(
+    "invalid_shape_factor",
+    (0.0, -0.5, np.nan, np.inf),
+)
+def test_cake_alpha_rejects_invalid_solid_phase_shape_factor(
+    thermo_path,
+    invalid_shape_factor,
+):
+    """Verify ``alpha`` validates ``kv`` from the attached solid phase.
 
     Parameters
     ----------
     thermo_path : str
         Path to the pure-component thermodynamic database.
+    invalid_shape_factor : float
+        Nonpositive or nonfinite volumetric shape factor [-].
     """
     cake = _make_cake(thermo_path, LEGACY_SHAPE_FACTOR)
+    cake.Solid_1.kv = invalid_shape_factor  # [-]
 
-    with patch.object(
-        type(cake.Solid_1),
-        "kv",
-        new_callable=PropertyMock,
-        create=True,
-        return_value=LEGACY_SHAPE_FACTOR,
-    ) as phase_shape_factor:
+    with pytest.raises(
+        ValueError,
+        match="shape factor 'kv' must be a finite, positive scalar",
+    ):
         cake.get_alpha()
-
-    phase_shape_factor.assert_called_once_with()
