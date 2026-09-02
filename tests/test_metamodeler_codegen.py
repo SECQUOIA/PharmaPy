@@ -11,6 +11,42 @@ from PharmaPy.MetaModeler import MetaModelingClass
 pytestmark = pytest.mark.unit
 
 
+@pytest.mark.parametrize(
+    ("model_type", "expected_import"),
+    [
+        ("ODE", "from PharmaPy.solvers import Explicit_Problem, CVode"),
+        ("DAE", "from PharmaPy.solvers import Implicit_Problem, IDA"),
+    ],
+)
+def test_generated_templates_import_public_solver_boundary(
+    tmp_path, model_type, expected_import
+):
+    """Generated modules use the supported public lazy-solver import.
+
+    Parameters
+    ----------
+    tmp_path : pathlib.Path
+        Temporary directory where the generated Python module is written.
+    model_type : {"ODE", "DAE"}
+        Generated model type selecting the solver and problem constructors.
+    expected_import : str
+        Exact public import expected in the generated source.
+    """
+    module_path = tmp_path / f"generated_{model_type.lower()}.py"
+    generator = MetaModelingClass(
+        module_path,
+        f"Generated{model_type}",
+        model_type=model_type,
+        name_states=["material", "energy"],
+    )
+
+    generator.CreatePharmaPyTemplate()
+    generated_source = module_path.read_text(encoding="utf-8")
+
+    assert expected_import in generated_source
+    assert "PharmaPy._assimulo" not in generated_source
+
+
 def _generated_class(tmp_path, model_type, has_stages=False):
     """Generate and import a template class for one model type.
 
