@@ -145,9 +145,16 @@ def test_stream_handoff_follows_graph_edges_not_execution_order(data_path):
     assert len(flowsheet.C.Inlets) == 2
     assert len(flowsheet.D.Inlets) == 1
     source_masses = np.array([3.0, 6.0])  # [kg]
-    np.testing.assert_allclose(
-        [inlet.mass for inlet in flowsheet.C.Inlets], source_masses
+    destination_inlets = sorted(
+        flowsheet.C.Inlets, key=lambda inlet: inlet.mass
     )
+    expected_sources = [flowsheet.A.Outlet, flowsheet.B.Outlet]
+    np.testing.assert_allclose(
+        [inlet.mass for inlet in destination_inlets], source_masses
+    )
+    for inlet, source in zip(destination_inlets, expected_sources):
+        np.testing.assert_allclose(inlet.mass_frac, source.mass_frac)
+        assert inlet.temp == pytest.approx(source.temp)
     assert flowsheet.D.Inlets[0].mass == pytest.approx(source_masses.sum())
     np.testing.assert_allclose(
         flowsheet.D.Inlets[0].mass_frac, flowsheet.C.Outlet.mass_frac
