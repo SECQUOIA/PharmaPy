@@ -2,7 +2,9 @@
 
 The crystallizer fallback test uses the real Assimulo problem in the optional
 backend lane. Warning-attribution cases construct production crystallizers in
-the core lane because they do not invoke a solver boundary.
+the core lane because they do not invoke a solver boundary. Bootstrap exception
+tests inject failures at the user-model callback because this small linear fit
+does not naturally construct a singular Levenberg--Marquardt system.
 """
 
 import inspect
@@ -61,7 +63,10 @@ def _statistics_with_failing_model(error):
         return params[0] * time
 
     time = np.array([0.0, 1.0, 2.0])  # [s]
+    # The deliberately imperfect fit gives residual bootstrapping a nonzero
+    # error distribution instead of a degenerate all-zero sample.
     observed_concentration = np.array([0.1, 1.0, 2.1])  # [mol/L]
+    fit_evaluation_cap = 5  # [-], sufficient for this one-parameter linear fit
     estimator = ParameterEstimation(
         linear_model,
         param_seed=np.array([1.0]),  # [mol/L/s]
@@ -71,7 +76,9 @@ def _statistics_with_failing_model(error):
         name_states=["concentration_mol_l"],
     )
     estimator.optimize_fn(
-        method="LM", verbose=False, optim_options={"max_fun_eval": 5}
+        method="LM",
+        verbose=False,
+        optim_options={"max_fun_eval": fit_evaluation_cap},
     )
     statistics = StatisticsClass(estimator)
     failure_state["enabled"] = True
@@ -164,7 +171,7 @@ def test_parse_database_propagates_malformed_nested_values(tmp_path):
 
 
 def test_bootstrap_params_records_nan_rows_for_linear_algebra_failures():
-    """Singular optimizer systems warn and produce NaN parameter rows."""
+    """User-model linear-algebra failures warn and produce NaN rows."""
     stats = _statistics_with_failing_model(
         np.linalg.LinAlgError("singular bootstrap Hessian")
     )
@@ -180,7 +187,7 @@ def test_bootstrap_params_records_nan_rows_for_linear_algebra_failures():
 
 
 def test_bootstrap_params_propagates_programming_errors():
-    """Unrelated optimizer programming errors are not converted to NaNs."""
+    """User-model programming errors are not converted to NaN rows."""
     stats = _statistics_with_failing_model(
         AttributeError("missing optimizer state")
     )
