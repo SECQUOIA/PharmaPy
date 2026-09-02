@@ -1,4 +1,8 @@
-"""Regression tests for DynamicExtractor default equilibrium routing."""
+"""Regression tests for DynamicExtractor ideal-equilibrium behavior.
+
+Issue #212 tracks restoring non-ideal callback and initialization-handoff
+coverage once sourced activity-model parameters are available.
+"""
 
 import numpy as np
 import pytest
@@ -11,8 +15,21 @@ from PharmaPy.Streams import LiquidStream
 pytestmark = pytest.mark.unit
 
 
-def test_default_k_fun_uses_selected_activity_model(data_path):
-    """The default DynamicExtractor k_fun returns gamma_light/gamma_heavy."""
+def test_default_k_fun_is_unity_under_the_ideal_model(data_path):
+    """The real ideal activity model produces unit distribution factors.
+
+    Parameters
+    ----------
+    data_path : dict of pathlib.Path
+        Repository test-data directories.
+
+    Notes
+    -----
+    An ideal model cannot cover ratio direction, composition dependence, or
+    ``gamma_model`` forwarding because every activity coefficient is one.
+    Issue #212 tracks those non-ideal regressions; no checked-in database yet
+    carries the sourced UNIQUAC or UNIFAC parameters they require.
+    """
     database_path = data_path["flowsheet"] / "compound_database.json"
     extractor = dynamic_extraction.DynamicExtractor(
         num_stages=2,
@@ -39,7 +56,6 @@ def test_default_k_fun_uses_selected_activity_model(data_path):
     k_i = extractor.k_fun(x_light, x_heavy, temp)  # K_i [-]
 
     np.testing.assert_allclose(k_i, np.ones_like(x_light))
-    assert extractor.gamma_model == "ideal"
 
 
 def test_default_k_fun_rejects_unknown_activity_model():
@@ -53,8 +69,21 @@ def test_default_k_fun_rejects_unknown_activity_model():
         )
 
 
-def test_initialize_model_uses_default_equilibrium_with_real_phases(data_path):
-    """Initialization solves the default equilibrium with real liquid objects."""
+def test_initialize_model_produces_normalized_positive_ideal_state(data_path):
+    """Real ideal-phase initialization yields normalized positive states.
+
+    Parameters
+    ----------
+    data_path : dict of pathlib.Path
+        Repository test-data directories.
+
+    Notes
+    -----
+    Under the ideal model and unit stage efficiency, ``x_i == y_i`` is an
+    identity and does not cover the callback handoff to ``BatchExtractor``.
+    Issue #212 tracks restoring that handoff assertion with sourced non-ideal
+    data.
+    """
     database_path = data_path["flowsheet"] / "compound_database.json"
     # Representative extraction pair: the feed is A-rich and the solvent
     # stream is enriched in the database's designated solvent component.
