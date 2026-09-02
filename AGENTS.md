@@ -207,13 +207,13 @@ Prioritize, in order:
   `PropertyMock`. They make it too easy to verify configured return values
   instead of the PharmaPy behavior users rely on. Prefer deterministic tests
   through public APIs with representative real collaborators.
-- A narrow `monkeypatch` or explicit hand-written boundary substitute is
-  acceptable only when the real path requires an unavailable optional or
-  licensed dependency, an external service, or disproportionate cost. Document
-  why the substitute is necessary, the exact handoff contract it verifies, and
-  which test lane covers the real collaborator. Do not describe such a test as
-  end-to-end coverage. Link the blocker when stable real-collaborator coverage
-  must be deferred.
+- In new or modified tests, a narrow `monkeypatch` or explicit hand-written
+  boundary substitute is acceptable only when the real path requires an
+  unavailable optional or licensed dependency, an external service, or
+  disproportionate cost. Document why the substitute is necessary, the exact
+  handoff contract it verifies, and which test lane covers the real
+  collaborator. Do not describe such a test as end-to-end coverage. Link the
+  blocker when stable real-collaborator coverage must be deferred.
 - When expected behavior depends on an unfixed defect elsewhere, identify the
   blocking issue in the test docstring or adjacent comment, state the
   provisional expectation and what must change after the fix, and repeat that

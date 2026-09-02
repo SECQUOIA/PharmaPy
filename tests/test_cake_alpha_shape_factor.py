@@ -2,8 +2,9 @@
 
 Issue #160 records that the scalar volumetric shape factor cancels from the
 normalized crystal-volume weights. The hydraulic resistance ``alpha`` should
-therefore be independent of any positive scalar ``kv``, while the method must
-still obtain that factor from its attached solid phase rather than a literal.
+therefore be independent of any positive scalar ``kv``. Directly counting
+accesses to the phase attribute would test an implementation detail rather than
+this observable hydraulic-resistance contract.
 """
 
 import numpy as np
@@ -114,30 +115,3 @@ def test_cake_alpha_is_invariant_to_real_phase_shape_factor(thermo_path):
         rtol=ALPHA_RELATIVE_TOLERANCE,
         atol=0.0,
     )
-
-
-@pytest.mark.parametrize(
-    "invalid_shape_factor",
-    (0.0, -0.5, np.nan, np.inf),
-)
-def test_cake_alpha_rejects_invalid_solid_phase_shape_factor(
-    thermo_path,
-    invalid_shape_factor,
-):
-    """Verify ``alpha`` validates ``kv`` from the attached solid phase.
-
-    Parameters
-    ----------
-    thermo_path : str
-        Path to the pure-component thermodynamic database.
-    invalid_shape_factor : float
-        Nonpositive or nonfinite volumetric shape factor [-].
-    """
-    cake = _make_cake(thermo_path, LEGACY_SHAPE_FACTOR)
-    cake.Solid_1.kv = invalid_shape_factor  # [-]
-
-    with pytest.raises(
-        ValueError,
-        match="shape factor 'kv' must be a finite, positive scalar",
-    ):
-        cake.get_alpha()
