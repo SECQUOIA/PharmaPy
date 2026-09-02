@@ -236,10 +236,13 @@ Prioritize, in order:
 - Exercise missing-optional-dependency fallbacks explicitly, either by blocking
   the import in a focused boundary test or in an environment where the
   dependency is genuinely absent; a green rich environment proves only the
-  installed path. Tests that import an optional-backend module must apply the
-  matching marker and `pytest.importorskip` before that import. Inventory every
-  optional import performed during module loading so the minimal CI lane
-  remains dependency independent.
+  installed path. Perform import blocking in an isolated subprocess, as shown
+  in `tests/test_optional_assimulo_imports.py`, so the test process does not
+  replace its own imports, modules, attributes, or environment state. Tests
+  that import an optional-backend module must apply the matching marker and
+  `pytest.importorskip` before that import. Inventory every optional import
+  performed during module loading so the minimal CI lane remains dependency
+  independent.
 - Run the narrowest relevant tests while developing, then run the locked core
   task before handoff:
 

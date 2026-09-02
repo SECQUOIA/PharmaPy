@@ -1,8 +1,11 @@
 """Repository policy checks for prohibited test substitutes."""
 
+from __future__ import annotations
+
 import ast
 import hashlib
 from pathlib import Path
+from typing import Mapping
 
 import pytest
 
@@ -269,6 +272,37 @@ def _mock_policy_violations(
     return violations
 
 
+def _legacy_exemption_failures(
+    file_violations: Mapping[str, list[str]],
+    legacy_digests: Mapping[str, str],
+) -> list[str]:
+    """Find legacy exemption rows that no longer describe live debt.
+
+    Parameters
+    ----------
+    file_violations : mapping of str to list of str
+        Prohibited substitute diagnostics keyed by repository-relative path.
+    legacy_digests : mapping of str to str
+        Exact source digests temporarily exempted under issue #202.
+
+    Returns
+    -------
+    list[str]
+        Diagnostics for missing or already-migrated legacy files.
+    """
+    failures = []
+    for relative_path in legacy_digests:
+        if relative_path not in file_violations:
+            failures.append(
+                f"{relative_path}: remove the exemption for the missing file"
+            )
+        elif not file_violations[relative_path]:
+            failures.append(
+                f"{relative_path}: remove the obsolete exemption after migration"
+            )
+    return failures
+
+
 @pytest.mark.parametrize(
     ("source", "expected"),
     [
@@ -322,18 +356,43 @@ def test_policy_detects_prohibited_substitute_apis(
     assert any(expected in violation for violation in violations)
 
 
+def test_policy_rejects_retired_legacy_exemptions() -> None:
+    """Require missing and migrated files to remove obsolete digest rows."""
+    relative_path = "tests/test_migrated.py"
+
+    migrated_failures = _legacy_exemption_failures(
+        {relative_path: []}, {relative_path: "retired-digest"}
+    )
+    missing_failures = _legacy_exemption_failures(
+        {}, {relative_path: "missing-digest"}
+    )
+
+    assert migrated_failures == [
+        f"{relative_path}: remove the obsolete exemption after migration"
+    ]
+    assert missing_failures == [
+        f"{relative_path}: remove the exemption for the missing file"
+    ]
+
+
 def test_tests_do_not_use_prohibited_substitutes() -> None:
     """Keep new mock and monkeypatch APIs out of the PharmaPy test suite."""
     test_files = sorted(TESTS_ROOT.rglob("*.py"))
     assert test_files, "No Python tests were discovered for the policy check"
 
-    violations = []
+    file_violations = {}
     for test_file in test_files:
-        file_violations = _mock_policy_violations(test_file)
-        if not file_violations:
+        relative_path = test_file.relative_to(TESTS_ROOT.parent).as_posix()
+        file_violations[relative_path] = _mock_policy_violations(test_file)
+
+    violations = _legacy_exemption_failures(
+        file_violations, LEGACY_MONKEYPATCH_FILE_DIGESTS
+    )
+    for relative_path, path_violations in file_violations.items():
+        if not path_violations:
             continue
 
-        relative_path = test_file.relative_to(TESTS_ROOT.parent).as_posix()
+        test_file = TESTS_ROOT.parent / relative_path
         legacy_digest = LEGACY_MONKEYPATCH_FILE_DIGESTS.get(relative_path)
         normalized_source = test_file.read_text(encoding="utf-8")
         current_digest = hashlib.sha256(
@@ -342,7 +401,7 @@ def test_tests_do_not_use_prohibited_substitutes() -> None:
         if current_digest == legacy_digest:
             continue
 
-        violations.extend(file_violations)
+        violations.extend(path_violations)
 
     message = (
         "Prohibited test substitutes found. Legacy files are grandfathered "
