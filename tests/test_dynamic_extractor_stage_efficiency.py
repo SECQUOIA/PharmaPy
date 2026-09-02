@@ -295,9 +295,21 @@ def test_initialize_model_solves_componentwise_distribution_coefficients(
         - x_heavy[1:]
     )  # [-]
     equilibrium_residuals[:, -1] = x_heavy.sum(axis=1) - 1  # [-]
+    component_moles = np.tile(
+        extractor.Liquid_1.moles * holdup_mole_fraction,
+        (extractor.num_stages, 1),
+    )  # [mol]
 
+    assert extractor.target_states["light_phase"] == "solvent"
+    assert extractor.target_states["heavy_phase"] == "feed"
     assert np.all(x_light > 0.0)
     assert np.all(x_heavy > 0.0)
     np.testing.assert_allclose(x_light.sum(axis=1), 1.0, atol=1e-12)
     np.testing.assert_allclose(x_heavy.sum(axis=1), 1.0, atol=1e-12)
     np.testing.assert_allclose(equilibrium_residuals, 0.0, atol=1e-12)
+    np.testing.assert_allclose(
+        extractor.fixed_vals["H_R"] * x_light
+        + extractor.fixed_vals["H_E"] * x_heavy,
+        component_moles,
+        atol=1e-12,
+    )

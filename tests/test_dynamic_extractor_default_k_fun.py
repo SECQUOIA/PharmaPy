@@ -89,9 +89,11 @@ def test_initialize_model_produces_normalized_positive_ideal_state(data_path):
     # stream is enriched in the database's designated solvent component.
     feed_mole_fraction = np.array([0.35, 0.20, 0.15, 0.15, 0.15])  # [-]
     solvent_mole_fraction = np.array([0.05, 0.20, 0.25, 0.25, 0.25])  # [-]
-    holdup_mole_fraction = (
-        feed_mole_fraction + solvent_mole_fraction
-    ) / 2  # [-]
+    # Non-uniform holdup makes the ideal-model identity composition-specific
+    # instead of permutation-invariant.
+    holdup_mole_fraction = np.array(
+        [0.30, 0.25, 0.20, 0.15, 0.10]
+    )  # [-]
     extractor = dynamic_extraction.DynamicExtractor(
         num_stages=1,
         gamma_model="ideal",
@@ -125,5 +127,9 @@ def test_initialize_model_produces_normalized_positive_ideal_state(data_path):
     np.testing.assert_allclose(initial_states["x_i"].sum(axis=1), 1.0)
     np.testing.assert_allclose(initial_states["y_i"].sum(axis=1), 1.0)
     np.testing.assert_allclose(initial_states["x_i"], initial_states["y_i"])
+    expected_holdup = np.tile(
+        holdup_mole_fraction, (extractor.num_stages, 1)
+    )  # [-]
+    np.testing.assert_allclose(initial_states["x_i"], expected_holdup)
     assert extractor.fixed_vals["H_R"] > 0.0  # [mol]
     assert extractor.fixed_vals["H_E"] > 0.0  # [mol]
