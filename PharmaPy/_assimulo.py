@@ -8,10 +8,9 @@ imports without loading Assimulo.
 
 Notes
 -----
-MetaModeler-generated templates import ``CVode``, ``IDA``,
-``Explicit_Problem``, and ``Implicit_Problem`` from this module. Renaming the
-module or those factories would break previously generated files and therefore
-requires a compatibility shim.
+Previously generated MetaModeler templates may import ``CVode``, ``IDA``,
+``Explicit_Problem``, and ``Implicit_Problem`` from this module. Keep these
+private compatibility exports while new templates use :mod:`PharmaPy.solvers`.
 """
 
 from importlib import import_module

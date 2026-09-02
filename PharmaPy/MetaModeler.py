@@ -193,7 +193,7 @@ class MetaModelingClass:
 
         Notes
         -----
-        Generated solver constructors come from :mod:`PharmaPy._assimulo`, so
+        Generated solver constructors come from :mod:`PharmaPy.solvers`, so
         importing a template does not require the optional Assimulo backend.
         Assimulo is loaded only when the generated ``solve_model`` method is
         called.
@@ -215,7 +215,7 @@ class MetaModelingClass:
 
         packages = [
             'import numpy as np\n',
-            'from PharmaPy._assimulo import %s, %s\n' % (
+            'from PharmaPy.solvers import %s, %s\n' % (
                 self.problem, self.solver),
             'from PharmaPy.Phases import classify_phases\n',
             '\n']
