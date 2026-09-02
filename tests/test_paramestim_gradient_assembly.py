@@ -58,10 +58,18 @@ def test_lm_optimization_reconstructs_fixed_parameters(
     # roundoff, while the LM parameter solve also carries convergence slack.
     parameter_atol = 1e-7  # [mol/L/s] or [mol/L]
     jacobian_atol = 1e-10  # [s] or [-]
+    response_atol = 1e-7  # [mol/L]
     np.testing.assert_allclose(optimized_params, expected_params, rtol=0.0,
                                atol=parameter_atol)
     np.testing.assert_allclose(info["jac"], expected_jacobian, rtol=0.0,
                                atol=jacobian_atol)
+    # optimize_fn rebuilds the fitted response as residual plus data. This
+    # affine fixture is exactly representable, so the stored profile matches
+    # the observations to LM convergence slack.
+    np.testing.assert_allclose(
+        estimator.y_model[0].ravel(), observed_conc_mol_l,
+        rtol=0.0, atol=response_atol,
+    )
     assert covar_params.shape == (1, 1)
 
 

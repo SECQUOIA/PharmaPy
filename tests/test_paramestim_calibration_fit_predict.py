@@ -14,6 +14,13 @@ from PharmaPy.Calibration import PCR_calibration
 pytestmark = pytest.mark.unit
 
 
+@pytest.mark.skipif(
+    ParamEstim.have_cyipopt,
+    reason=(
+        "covers the absent-cyipopt path; CI's 'Verify optional backends are "
+        "absent from the core lane' step keeps this from silently skipping"
+    ),
+)
 def test_parameter_estimation_reports_missing_cyipopt():
     """The solver-free core lane reports how to enable IPOPT fitting."""
     time_s = np.array([0.0, 1.0])  # [s]
@@ -31,7 +38,6 @@ def test_parameter_estimation_reports_missing_cyipopt():
         name_params=["rate_mol_l_s"],
     )
 
-    assert ParamEstim.have_cyipopt is False
     with pytest.raises(ImportError, match="cyipopt is an optional import"):
         estimator.optimize_fn(method="IPOPT", verbose=False)
 
