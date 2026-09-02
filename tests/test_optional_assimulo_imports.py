@@ -5,7 +5,6 @@ from pathlib import Path
 import subprocess
 import sys
 import textwrap
-from types import ModuleType
 
 import pytest
 
@@ -132,39 +131,35 @@ def test_solver_construction_reports_missing_assimulo(symbol_name, tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_missing_assimulo_symbol_reports_qualified_name(monkeypatch):
-    """An incompatible install identifies the missing constructor."""
-    stub_module = ModuleType("assimulo.solvers")
-
-    def load_stub(module_name):
-        assert module_name == "assimulo.solvers"
-        return stub_module
-
-    monkeypatch.setattr(assimulo_backend, "import_module", load_stub)
+@pytest.mark.assimulo
+def test_missing_assimulo_symbol_reports_qualified_name():
+    """The real backend identifies a requested constructor it lacks."""
+    pytest.importorskip("assimulo.solvers")
+    missing_symbol = "ConstructorThatAssimuloMustNotProvide"
 
     with pytest.raises(
         ImportError,
-        match=r"assimulo\.solvers\.CVode",
+        match=rf"assimulo\.solvers\.{missing_symbol}",
     ) as exc_info:
-        assimulo_backend.CVode()
+        assimulo_backend._load_assimulo_symbol(
+            "assimulo.solvers", missing_symbol
+        )
 
     assert isinstance(exc_info.value.__cause__, AttributeError)
 
 
-def test_broken_assimulo_install_has_distinct_error(monkeypatch):
-    """A backend loader failure is not misreported as a missing install."""
+def test_broken_assimulo_install_has_distinct_error():
+    """Loader failures classify as broken rather than missing installs."""
     loader_error = "SUNDIALS shared library could not be loaded"
-
-    def fail_import(module_name):
-        assert module_name == "assimulo.solvers"
-        raise ImportError(loader_error)
-
-    monkeypatch.setattr(assimulo_backend, "import_module", fail_import)
+    original_error = ImportError(loader_error)
 
     with pytest.raises(
         ImportError,
         match="Assimulo is installed but could not be imported",
     ) as exc_info:
-        assimulo_backend.CVode()
+        assimulo_backend._raise_assimulo_import_error(
+            "assimulo.solvers", original_error
+        )
 
-    assert loader_error in str(exc_info.value.__cause__)
+    assert "assimulo.solvers" in str(exc_info.value)
+    assert exc_info.value.__cause__ is original_error
