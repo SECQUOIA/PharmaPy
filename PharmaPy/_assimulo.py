@@ -5,6 +5,13 @@ therefore are not suitable for ``isinstance`` checks or subclassing.
 Module-level lazy attributes were rejected because ``from ... import`` would
 resolve them eagerly at the existing model call sites; factories preserve those
 imports without loading Assimulo.
+
+Notes
+-----
+MetaModeler-generated templates import ``CVode``, ``IDA``,
+``Explicit_Problem``, and ``Implicit_Problem`` from this module. Renaming the
+module or those factories would break previously generated files and therefore
+requires a compatibility shim.
 """
 
 from importlib import import_module

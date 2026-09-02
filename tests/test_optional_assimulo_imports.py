@@ -47,6 +47,12 @@ def _run_in_solver_free_environment(script, tmp_path):
     -------
     subprocess.CompletedProcess
         Completed child-process result with captured text output.
+
+    Notes
+    -----
+    This helper skips the calling test when Assimulo is installed. The locked
+    solver-free core environment is therefore the lane that executes these
+    tests.
     """
     if find_spec("assimulo") is not None:
         pytest.skip("requires the solver-free core environment")
