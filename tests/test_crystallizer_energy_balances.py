@@ -177,13 +177,26 @@ def test_semibatch_jacket_uses_utility_inputs(data_path):
 
 
 def test_liquid_feed_enthalpy_is_volumetric_in_msmpr_flow_term(data_path):
-    """A real liquid feed contributes volumetric enthalpy in [J/m**3]."""
+    """The public MSMPR path passes liquid-feed enthalpy in [J/m**3]."""
     crystallizer = _build_crystallizer(data_path, adiabatic=True)
-    energy_arguments = _energy_arguments(crystallizer)
-    heat_components = crystallizer.energy_balances(
-        temp_ht=None,
-        heat_prof=True,
-        **energy_arguments,
+    # A real upstream transfer supplies the liquid-phase concentration field;
+    # static stream attributes supply inlet temperature and volumetric flow.
+    crystallizer.Inlet.y_upstream = {"mass_conc": True}
+    crystallizer.Inlet.y_inlet = {
+        "mass_conc": crystallizer.Inlet.mass_conc.copy()
+    }  # [kg/m**3]
+    raw_moments = SPECIFIC_MOMENTS * (1.0e6) ** np.arange(4)  # [um**n/m**3]
+    states = np.concatenate((
+        raw_moments,
+        crystallizer.Liquid_1.mass_conc,  # [kg/m**3]
+        [TEMPERATURE],  # [K]
+    ))
+
+    heat_components = crystallizer.unit_model(
+        0.0,
+        states,
+        params=None,
+        enrgy_bce=True,
     )  # [J/s]
 
     inlet_temperature = crystallizer.Inlet.temp  # [K]
