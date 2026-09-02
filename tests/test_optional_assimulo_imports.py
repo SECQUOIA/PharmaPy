@@ -1,4 +1,9 @@
-"""Import-boundary regressions for the optional Assimulo solver stack."""
+"""Import-boundary regressions for the optional Assimulo solver stack.
+
+The core CI lane asserts that Assimulo is genuinely absent before collection,
+so its solver-free cases cannot disappear behind skips. Assimulo-marked cases
+exercise the installed backend's malformed-module and missing-symbol paths.
+"""
 
 from importlib.util import find_spec
 import os
@@ -47,6 +52,12 @@ def _run_in_solver_free_environment(script, tmp_path):
     -------
     subprocess.CompletedProcess
         Completed child-process result with captured text output.
+
+    Notes
+    -----
+    This helper skips the calling test when Assimulo is installed. The locked
+    solver-free core environment is therefore the lane that executes these
+    tests.
     """
     if find_spec("assimulo") is not None:
         pytest.skip("requires the solver-free core environment")
@@ -121,25 +132,26 @@ def test_missing_assimulo_symbol_reports_qualified_name():
         ImportError,
         match=rf"assimulo\.solvers\.{missing_symbol}",
     ) as exc_info:
-        assimulo_backend._load_assimulo_symbol(
+        assimulo_backend._construct_assimulo_object(
             "assimulo.solvers", missing_symbol
         )
 
     assert isinstance(exc_info.value.__cause__, AttributeError)
 
 
+@pytest.mark.assimulo
 def test_broken_assimulo_install_has_distinct_error():
     """Loader failures classify as broken rather than missing installs."""
-    loader_error = "SUNDIALS shared library could not be loaded"
-    original_error = ImportError(loader_error)
+    pytest.importorskip("assimulo.solvers")
+    missing_module = "assimulo.solvers.no_such_submodule"
 
     with pytest.raises(
         ImportError,
         match="Assimulo is installed but could not be imported",
     ) as exc_info:
-        assimulo_backend._raise_assimulo_import_error(
-            "assimulo.solvers", original_error
+        assimulo_backend._load_assimulo_symbol(
+            missing_module, "CVode"
         )
 
-    assert "assimulo.solvers" in str(exc_info.value)
-    assert exc_info.value.__cause__ is original_error
+    assert missing_module in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, ModuleNotFoundError)

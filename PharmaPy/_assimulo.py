@@ -5,6 +5,12 @@ therefore are not suitable for ``isinstance`` checks or subclassing.
 Module-level lazy attributes were rejected because ``from ... import`` would
 resolve them eagerly at the existing model call sites; factories preserve those
 imports without loading Assimulo.
+
+Notes
+-----
+Previously generated MetaModeler templates may import ``CVode``, ``IDA``,
+``Explicit_Problem``, and ``Implicit_Problem`` from this module. Keep these
+private compatibility exports while new templates use :mod:`PharmaPy.solvers`.
 """
 
 from importlib import import_module
