@@ -204,16 +204,21 @@ Prioritize, in order:
   and bodies are not self-explanatory.
 - Do not use general-purpose mock objects or frameworks such as
   `unittest.mock`, the `mock` backport, `pytest-mock`, `Mock`, `MagicMock`, or
-  `PropertyMock`. They make it too easy to verify configured return values
-  instead of the PharmaPy behavior users rely on. Prefer deterministic tests
-  through public APIs with representative real collaborators.
-- In new or modified tests, a narrow `monkeypatch` or explicit hand-written
-  boundary substitute is acceptable only when the real path requires an
-  unavailable optional or licensed dependency, an external service, or
-  disproportionate cost. Document why the substitute is necessary, the exact
-  handoff contract it verifies, and which test lane covers the real
-  collaborator. Do not describe such a test as end-to-end coverage. Link the
-  blocker when stable real-collaborator coverage must be deferred.
+  `PropertyMock`. Do not use pytest's `monkeypatch` fixture or
+  `pytest.MonkeyPatch`, runtime replacement of imports, modules, attributes, or
+  environment state. These techniques make it too easy to verify configured
+  substitutes instead of the PharmaPy behavior users rely on.
+- Exercise deterministic behavior through public APIs with representative real
+  collaborators. For optional, licensed, external, or expensive boundaries,
+  run the real collaborator in its marked environment, test a deterministic
+  solver-independent contract directly, or refactor that contract behind a
+  production helper when doing so is a coherent design improvement. A small,
+  hand-written boundary contract object is acceptable only when those
+  alternatives are impractical: document its necessity, the exact handoff it
+  verifies, and the lane that exercises the real collaborator. It must not be
+  a configurable mock or stand in for a cheap PharmaPy collaborator. Otherwise,
+  link a focused blocker and defer the coverage instead of introducing a
+  substitute.
 - When expected behavior depends on an unfixed defect elsewhere, identify the
   blocking issue in the test docstring or adjacent comment, state the
   provisional expectation and what must change after the fix, and repeat that
@@ -225,13 +230,12 @@ Prioritize, in order:
   the check itself is wrong.
 - Use the markers defined in `pytest.ini`: `unit`, `integration`, `slow`, and
   `assimulo`. Do not make core tests depend on the optional Assimulo stack.
-- Exercise missing-optional-dependency fallbacks explicitly, either by blocking
-  the import in a focused test or in an environment where the dependency is
-  genuinely absent; a green rich environment proves only the installed path.
-  Tests that import an optional-backend module must apply the matching marker
-  and `pytest.importorskip` before that import. Inventory every optional import
-  performed during module loading so the minimal CI lane remains dependency
-  independent.
+- Exercise missing-optional-dependency fallbacks explicitly in an environment
+  where the dependency is genuinely absent; a green rich environment proves
+  only the installed path. Tests that import an optional-backend module must
+  apply the matching marker and `pytest.importorskip` before that import.
+  Inventory every optional import performed during module loading so the
+  minimal CI lane remains dependency independent.
 - Run the narrowest relevant tests while developing, then run the locked core
   task before handoff:
 
