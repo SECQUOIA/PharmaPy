@@ -1114,8 +1114,9 @@ class DynamicCollector:
         fig_size : tuple of float, optional
             Matplotlib figure size [in].
         time_div : float, optional
-            Liquid-mixer time-axis divisor [s per displayed time unit]. The
-            crystallizer plotter uses its stored time axis directly.
+            Liquid-mixer time-axis divisor [s per displayed time unit]. This
+            option is ignored for crystallizer plots, which always use their
+            stored time axis directly.
         pick_comp : sequence of int, optional
             Liquid-mixer component indices to plot [-].
         kwargs : dict, optional

@@ -250,6 +250,31 @@ def test_crystallizer_collector_delegates_plotting(slurry_inlet):
 
 
 @pytest.mark.assimulo
+def test_crystallizer_plot_forwards_figure_size(slurry_inlet):
+    """Delegated crystallizer plots honour the collector figure size [in].
+
+    Parameters
+    ----------
+    slurry_inlet : SlurryStream
+        Real crystallizing inlet with composition [-], flow [m**3/s],
+        temperature [K], and distribution [#/m**3/um] states.
+    """
+    pytest.importorskip("assimulo")
+    collector = _configured_crystallizing_collector(slurry_inlet)
+    collector.solve_unit(
+        runtime=CRYST_RUNTIME,
+        time_grid=np.array([0.0, CRYST_RUNTIME]),  # [s]
+        verbose=False,
+    )
+
+    requested_figure_size = (9.0, 7.0)  # [in]
+    fig, _ = collector.plot_profiles(fig_size=requested_figure_size)
+
+    np.testing.assert_allclose(fig.get_size_inches(), requested_figure_size)
+    plt.close(fig)
+
+
+@pytest.mark.assimulo
 def test_crystallizer_results_skip_liquid_profile_slicing(slurry_inlet):
     """Crystallizer retrieval must not overwrite liquid-profile attributes.
 
