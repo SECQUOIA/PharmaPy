@@ -10,9 +10,10 @@ transfer rate.
 Fixture values use the crystallizer solver's units: raw moments in
 [um**n/m**3], moments on a metre basis in [m**n/m**3], mass concentrations in
 [kg/m**3], densities in [kg/m**3], growth rate in [um/s], volumetric flow in
-[m**3/s], and slurry volume in [m**3]. The two densities are deliberately
-unequal (1000 vs 1500 [kg/m**3]) so that substituting one for the other is
-visible in the asserted values. The target and second species carry different
+[m**3/s], and slurry volume in [m**3]. The real database densities at 300 K
+are deliberately unequal (about 996 for the liquid and 1230 [kg/m**3] for the
+solid), so substituting one for the other is visible in the asserted values.
+The target and second species carry different
 concentrations, while two database padding species remain at zero, so a
 component mix-up cannot pass.
 """
@@ -145,7 +146,8 @@ def test_msmpr_transfer_term_uses_liquid_density(data_path):
 
     # Crystal mass transfer keeps the *solid* density:
     # transf = rho_sol * kv * 3 * growth * mu_2_raw * 1e-18
-    #        = 1500 * 0.5 * 3 * 20 * 2.0e12 * 1e-18 = 0.09 [kg/m**3/s].
+    # All factors below come from the real solid phase and stated kinetic
+    # fixture, so the result follows the database density at 300 K.
     expected_transf = (
         solid_density * crystallizer.Solid_1.kv * 3.0
         * 20.0 * TANK_MOMENTS_RAW[2] * 1.0e-18
@@ -160,11 +162,12 @@ def test_msmpr_transfer_term_uses_liquid_density(data_path):
     # Hand-computed liquid-phase balance, all terms in [kg/m**3/s]:
     #   flow_term    = 0.01 * (250*0.95 - 200*0.9,  60*0.95 - 50*0.9)
     #                = (0.575, 0.12)
-    #   transf_term  = 0.09 * (1 - 200/1000, 0 - 50/1000) = (0.072, -0.0045)
+    #   transf_term  = expected_transf
+    #                  * (1 - 200/liquid_density,
+    #                     0 - 50/liquid_density)
     #   dcomp_dt     = (flow_term - transf_term) / 0.9
-    #                = (0.503, 0.1245) / 0.9
-    # Using the solid density (1500) in transf_term instead would give
-    # (0.5522222..., 0.1366666...), about 1.2 % low on both components.
+    # Using ``solid_density`` in the concentration correction instead would
+    # change both component rates; the assertion below pins the liquid basis.
     flow_term = (
         INLET_VOL_FLOW / SLURRY_VOL
         * (INLET_CONC * INLET_PHI[0] - TANK_CONC * 0.9)

@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from PharmaPy.Containers import DynamicCollector
+from PharmaPy.Commons import trapezoidal_rule
 from PharmaPy.MixedPhases import SlurryStream
 from PharmaPy.Phases import LiquidPhase
 from PharmaPy.ProcessControl import DynamicInput
@@ -183,9 +184,9 @@ def _slurry_stream(data_path):
     )
     particle_size = np.array([1.0, 2.0, 3.0, 4.0])  # [um]
     distribution_shape = np.array([1.0, 2.0, 2.0, 1.0])  # [-]
-    unscaled_third_moment = np.trapezoid(
-        distribution_shape * particle_size**3,
+    unscaled_third_moment = trapezoidal_rule(
         particle_size,
+        distribution_shape * particle_size**3,
     ) * (1.0e-6)**3  # [m**3]
     target_solid_volume_fraction = 0.25  # [-]
     distribution = (

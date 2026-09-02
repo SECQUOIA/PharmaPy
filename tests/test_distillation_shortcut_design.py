@@ -5,6 +5,7 @@ import pytest
 from scipy.optimize import brentq
 
 import PharmaPy.Distillation as distillation
+from PharmaPy.ProcessControl import DynamicInput
 from PharmaPy.Streams import LiquidStream
 
 
@@ -177,6 +178,31 @@ def test_column_startup_accepts_deprecated_time_heuristics_keyword(data_path):
         data_path,
         column_type=distillation.DynamicDistillation,
     )
+    dynamic_inlet = DynamicInput()
+
+    def mole_fraction_at_time(time_s):
+        """Return a time-varying binary feed composition [-].
+
+        Parameters
+        ----------
+        time_s : float
+            Shortcut-design evaluation time [s].
+
+        Returns
+        -------
+        numpy.ndarray
+            Four-species feed mole fractions [-].
+        """
+        light_key_fraction = 0.40 - 0.01 * time_s  # [-]
+        heavy_key_fraction = 1.0 - light_key_fraction  # [-]
+        return np.array(
+            [light_key_fraction, heavy_key_fraction, 0.0, 0.0]
+        )  # [-]
+
+    dynamic_inlet.add_variable("mole_frac", mole_fraction_at_time)
+    column.Inlet.DynamicInlet = dynamic_inlet
+    expected_at_12_s = column.calculate_shortcut_design(12.0)
+    static_design = column.calculate_shortcut_design()
 
     with pytest.warns(DeprecationWarning, match="time_heuristics is deprecated"):
         column.column_startup(time_heuristics=12.0)  # [s]
@@ -186,3 +212,11 @@ def test_column_startup_accepts_deprecated_time_heuristics_keyword(data_path):
     assert column.num_plates == int(shortcut["num_plates"])
     assert column.num_feed == int(shortcut["num_feed"])
     assert column.reflux == pytest.approx(shortcut["reflux"])
+    np.testing.assert_allclose(
+        shortcut["material_balances"]["x_dist"],
+        expected_at_12_s["material_balances"]["x_dist"],
+    )
+    assert not np.allclose(
+        shortcut["material_balances"]["x_dist"],
+        static_design["material_balances"]["x_dist"],
+    )

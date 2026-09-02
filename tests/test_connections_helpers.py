@@ -1,3 +1,5 @@
+"""Solver-free tests for connection state-shape and interpolation helpers."""
+
 import numpy as np
 import pytest
 
@@ -87,6 +89,13 @@ def test_interpolate_inputs_evaluates_vector_times_without_solver_stack():
 
 
 def test_get_remaining_states_uses_stream_values_and_zero_defaults(data_path):
+    """Broadcast real scalar/vector stream states and fill missing values.
+
+    Parameters
+    ----------
+    data_path : dict of pathlib.Path
+        Repository test-data directories.
+    """
     thermo_path = str(data_path["integration"] / "pfr_test_pure_comp.json")
     liquid = LiquidPhase(
         thermo_path,
@@ -105,7 +114,12 @@ def test_get_remaining_states_uses_stream_values_and_zero_defaults(data_path):
     stream.Phases = [liquid, solid]
 
     state_dimensions = {
-        "Inlet": {"mass_slurry": 1, "temp": 1, "missing": 2},
+        "Inlet": {
+            "moments": 4,
+            "mass_slurry": 1,
+            "temp": 1,
+            "missing": 2,
+        },
         "Solid_1": {"mu_n": 3},
     }
     existing_inlets = {"Inlet": {"temp": 305.0}, "Solid_1": {}}
@@ -117,6 +131,10 @@ def test_get_remaining_states_uses_stream_values_and_zero_defaults(data_path):
         time=np.array([0.0, 1.0]),
     )
 
+    np.testing.assert_allclose(
+        result["Inlet"]["moments"],
+        np.tile(stream.moments, (2, 1)),  # [m**n]
+    )
     np.testing.assert_allclose(
         result["Inlet"]["mass_slurry"],
         [stream.mass_slurry, stream.mass_slurry],  # [kg]
