@@ -6,6 +6,8 @@ crystallizer paths run against the installed Assimulo backend; pre-solver input
 validation remains in the core lane.
 """
 
+import warnings
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
@@ -66,7 +68,15 @@ def test_liquid_mixer_result_labels_match_state_vector(data_path):
     collector = DynamicCollector()
     collector.Inlet = inlet
 
-    time, _ = collector.solve_unit(runtime=RUNTIME, verbose=False)
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "error",
+            message=(
+                "The 'mass', 'moles' and 'vol' are all set to zero"
+            ),
+            category=RuntimeWarning,
+        )
+        time, _ = collector.solve_unit(runtime=RUNTIME, verbose=False)
     step = time[-1] - time[0]  # [s]
 
     result = collector.result
@@ -137,10 +147,10 @@ def _configured_crystallizing_collector(slurry_inlet):
     # [kg/m**3], [kg/m**3/K], [kg/m**3/K**2], empirical test correlation
     kinetics = CrystKinetics(
         solubility_coefficients,
-        nucl_prim=(3e8, 0.0, 3.0),  # [#/m**3/s], [K], [-]
-        nucl_sec=(4.46e10, 0.0, 2.0, 1e-5),  # [#/m**3/s], [K], [-], [-]
-        growth=(5.0, 0.0, 1.32),  # [um/s], [K], [-]
-        dissolution=(1.0, 0.0, 1.0),  # [um/s], [K], [-]
+        nucl_prim=(3e8, 0.0, 3.0),  # [#/m**3/s], [J/mol], [-]
+        nucl_sec=(4.46e10, 0.0, 2.0, 1e-5),  # [#/m**3/s], [J/mol], [-], [-]
+        growth=(5.0, 0.0, 1.32),  # [um/s], [J/mol], [-]
+        dissolution=(1.0, 0.0, 1.0),  # [um/s], [J/mol], [-]
     )
     collector = DynamicCollector()
     collector.Inlet = slurry_inlet
@@ -242,7 +252,13 @@ def test_crystallizer_collector_delegates_plotting(slurry_inlet):
     assert collector.model_type == 'crystallizer'
     assert isinstance(collector.CrystInst, SemibatchCryst)
 
-    fig, axes = collector.plot_profiles()
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "error",
+            message="No artists with labels found to put in legend",
+            category=UserWarning,
+        )
+        fig, axes = collector.plot_profiles()
 
     assert fig is not None
     assert np.asarray(axes).shape == (3, 2)
@@ -268,9 +284,23 @@ def test_crystallizer_plot_forwards_figure_size(slurry_inlet):
     )
 
     requested_figure_size = (9.0, 7.0)  # [in]
-    fig, _ = collector.plot_profiles(fig_size=requested_figure_size)
+    plot_kwargs = {}
+    fig, _ = collector.plot_profiles(
+        fig_size=requested_figure_size, kwargs=plot_kwargs
+    )
 
     np.testing.assert_allclose(fig.get_size_inches(), requested_figure_size)
+    assert plot_kwargs == {}
+    plt.close(fig)
+
+    explicit_figure_size = (8.0, 6.0)  # [in]
+    explicit_kwargs = {"figsize": explicit_figure_size}
+    fig, _ = collector.plot_profiles(
+        fig_size=requested_figure_size, kwargs=explicit_kwargs
+    )
+
+    np.testing.assert_allclose(fig.get_size_inches(), explicit_figure_size)
+    assert explicit_kwargs == {"figsize": explicit_figure_size}
     plt.close(fig)
 
 

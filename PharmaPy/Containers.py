@@ -1121,7 +1121,8 @@ class DynamicCollector:
             Liquid-mixer component indices to plot [-].
         kwargs : dict, optional
             Additional Matplotlib subplot keyword arguments for a delegated
-            crystallizer plot.
+            crystallizer plot. The mapping is copied before use. An explicit
+            ``kwargs['figsize']`` takes precedence over ``fig_size``.
 
         Returns
         -------
@@ -1130,13 +1131,12 @@ class DynamicCollector:
         numpy.ndarray
             Matplotlib axes returned by the active model plotter.
         """
-        if kwargs is None:
-            kwargs = {}
+        plot_kwargs = {} if kwargs is None else dict(kwargs)
 
         if self.is_cryst:
             if fig_size is not None:
-                kwargs.setdefault('figsize', fig_size)
-            fig, axes = self.CrystInst.plot_profiles(**kwargs)
+                plot_kwargs.setdefault('figsize', fig_size)
+            fig, axes = self.CrystInst.plot_profiles(**plot_kwargs)
         else:
             fig, axes = self.plot_local(fig_size, time_div, pick_comp)
 
