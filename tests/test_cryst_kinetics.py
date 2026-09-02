@@ -5,6 +5,9 @@ import pytest
 
 from PharmaPy.Crystallizers import MSMPR
 from PharmaPy.Kinetics import CrystKinetics
+from PharmaPy.MixedPhases import Slurry, SlurryStream
+from PharmaPy.Phases import LiquidPhase, SolidPhase
+from PharmaPy.Streams import LiquidStream, SolidStream
 
 
 pytestmark = pytest.mark.unit
@@ -95,48 +98,63 @@ def test_get_kinetics_uses_secondary_parameters_from_vector_update():
     np.testing.assert_allclose(dissol, [0.0, 0.0])
 
 
-def test_msmpr_steady_state_accepts_scalar_seed():
+def test_msmpr_steady_state_accepts_scalar_seed(data_path):
     """MSMPR steady-state solve accepts a scalar seed fraction."""
+    thermo_path = str(data_path["integration"] / "pfr_test_pure_comp.json")
+    size_grid = np.array([0.0, 1.0])  # [um]
+    distribution = np.zeros(2)  # [#/um]
+    liquid_mass_fraction = np.array([0.5, 0.5, 0.0, 0.0])  # [-]
+    solid_mass_fraction = np.array([1.0, 0.0, 0.0, 0.0])  # [-]
 
-    crystallizer = MSMPR.__new__(MSMPR)
-    crystallizer.vol_slurry = 1.0  # [m**3]
-    crystallizer.target_ind = 0  # [-]
-    crystallizer._Kinetics = _primary_growth_kinetics()
+    liquid = LiquidPhase(
+        thermo_path,
+        temp=298.15,  # [K]
+        vol=1.0,  # [m**3]
+        mass_frac=liquid_mass_fraction,
+        verbose=False,
+    )
+    solid = SolidPhase(
+        thermo_path,
+        temp=298.15,  # [K]
+        x_distrib=size_grid,
+        distrib=distribution,
+        mass_frac=solid_mass_fraction,
+        kv=0.0,  # [-], isolates the scalar root contract
+    )
+    slurry = Slurry(vol=1.0, x_distrib=size_grid, distrib=distribution)
+    slurry.Phases = [liquid, solid]
 
-    class Solid:
-        """Solid-phase fixture for MSMPR steady-state solve."""
+    inlet_liquid = LiquidStream(
+        thermo_path,
+        temp=298.15,  # [K]
+        mass_frac=liquid_mass_fraction,
+        verbose=False,
+    )
+    inlet_solid = SolidStream(
+        thermo_path,
+        temp=298.15,  # [K]
+        x_distrib=size_grid,
+        distrib=distribution,
+        mass_frac=solid_mass_fraction,
+        kv=0.0,  # [-]
+    )
+    inlet = SlurryStream(
+        vol_flow=1.0,  # [m**3/s]
+        x_distrib=size_grid,
+        distrib=distribution,
+    )
+    inlet.Phases = [inlet_liquid, inlet_solid]
 
-        x_distrib = np.array([0.0, 1.0])  # [um]
-        kv = 0.0  # [-]
-
-        def getDensity(self, temp):
-            """Return a constant solid density.
-
-            Parameters
-            ----------
-            temp : float
-                Temperature [K].
-
-            Returns
-            -------
-            float
-                Solid density [kg/m**3].
-            """
-            return 1.0  # [kg/m**3]
-
-    class Liquid:
-        """Liquid-phase fixture with one mass fraction."""
-
-        mass_frac = np.array([0.5])  # [-]
-
-    class Inlet:
-        """Inlet fixture for the MSMPR steady-state solve."""
-
-        vol_flow = 1.0  # [m**3/s]
-        Liquid_1 = Liquid()
-
-    crystallizer.Solid_1 = Solid()
-    crystallizer._Inlet = Inlet()
+    crystallizer = MSMPR(
+        "A",
+        method="1D-FVM",
+        vol_tank=1.0,  # [m**3]
+        adiabatic=True,
+    )
+    crystallizer.Phases = slurry
+    crystallizer.Kinetics = _primary_growth_kinetics()
+    crystallizer.Kinetics.target_idx = crystallizer.target_ind
+    crystallizer.Inlet = inlet
 
     x_vec, f_convg, w_convg, info, final_fn = crystallizer.solve_steady_state(
         0.3, 298.15)  # [um], [#/m**3/um], [-], [-], [-]
