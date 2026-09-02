@@ -202,12 +202,15 @@ Prioritize, in order:
 - Give each test module a concise docstring covering its scope and noteworthy
   fixtures, backends, or cost. Document individual tests only when their names
   and bodies are not self-explanatory.
-- Do not use general-purpose mock objects or frameworks such as
+- Do not introduce general-purpose mock objects or frameworks such as
   `unittest.mock`, the `mock` backport, `pytest-mock`, `Mock`, `MagicMock`, or
-  `PropertyMock`. Do not use pytest's `monkeypatch` fixture or
+  `PropertyMock`. Do not introduce pytest's `monkeypatch` fixture or
   `pytest.MonkeyPatch`, runtime replacement of imports, modules, attributes, or
   environment state. These techniques make it too easy to verify configured
-  substitutes instead of the PharmaPy behavior users rely on.
+  substitutes instead of the PharmaPy behavior users rely on. The exact legacy
+  files listed by digest in `tests/test_mock_policy.py` are temporarily
+  grandfathered under #202; changing one invalidates its exemption and requires
+  removing every prohibited substitute from that file.
 - Exercise deterministic behavior through public APIs with representative real
   collaborators. For optional, licensed, external, or expensive boundaries,
   run the real collaborator in its marked environment, test a deterministic
@@ -230,12 +233,13 @@ Prioritize, in order:
   the check itself is wrong.
 - Use the markers defined in `pytest.ini`: `unit`, `integration`, `slow`, and
   `assimulo`. Do not make core tests depend on the optional Assimulo stack.
-- Exercise missing-optional-dependency fallbacks explicitly in an environment
-  where the dependency is genuinely absent; a green rich environment proves
-  only the installed path. Tests that import an optional-backend module must
-  apply the matching marker and `pytest.importorskip` before that import.
-  Inventory every optional import performed during module loading so the
-  minimal CI lane remains dependency independent.
+- Exercise missing-optional-dependency fallbacks explicitly, either by blocking
+  the import in a focused boundary test or in an environment where the
+  dependency is genuinely absent; a green rich environment proves only the
+  installed path. Tests that import an optional-backend module must apply the
+  matching marker and `pytest.importorskip` before that import. Inventory every
+  optional import performed during module loading so the minimal CI lane
+  remains dependency independent.
 - Run the narrowest relevant tests while developing, then run the locked core
   task before handoff:
 

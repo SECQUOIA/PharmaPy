@@ -25,6 +25,9 @@ FORBIDDEN_CONSTRUCTORS = frozenset(
     }
 )
 FORBIDDEN_FIXTURES = frozenset({"mocker", "monkeypatch"})
+FORBIDDEN_SYS_MODULE_METHODS = frozenset(
+    {"__setitem__", "clear", "pop", "popitem", "setdefault", "update"}
+)
 
 # Issue #202 removes these exact legacy files in focused PRs. The content
 # digests form a ratchet: any edit to a file that still uses monkeypatch makes
@@ -33,6 +36,9 @@ FORBIDDEN_FIXTURES = frozenset({"mocker", "monkeypatch"})
 LEGACY_MONKEYPATCH_FILE_DIGESTS = {
     "tests/test_batch_cryst_concentration_jacobian.py": (
         "df111caf9baee2bd10a3f983ef8f90d902f2b678505328125fa30c62331db0f2"
+    ),
+    "tests/test_crystallizer_energy_balances.py": (
+        "b48a7902a1046f06472e9a39a041826267fdd3f302589dbf64ae894e2eb2551b"
     ),
     "tests/test_deliquoring_particle_size_units.py": (
         "e9dc7ce86a1361c3f4b486586678d7f0f801aff3ad7bceab01ee9eed913a12d6"
@@ -111,6 +117,48 @@ def _is_forbidden_module(module_name: str) -> bool:
     )
 
 
+def _attribute_path(node: ast.AST) -> str | None:
+    """Return the dotted path represented by a name or attribute node.
+
+    Parameters
+    ----------
+    node : ast.AST
+        Syntax node that may represent a dotted attribute lookup.
+
+    Returns
+    -------
+    str or None
+        Dotted attribute path, or ``None`` for another expression type.
+    """
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = _attribute_path(node.value)
+        if prefix is not None:
+            return f"{prefix}.{node.attr}"
+    return None
+
+
+def _target_mutates_sys_modules(node: ast.AST) -> bool:
+    """Return whether an assignment target replaces ``sys.modules`` state.
+
+    Parameters
+    ----------
+    node : ast.AST
+        Assignment or deletion target to inspect.
+
+    Returns
+    -------
+    bool
+        ``True`` when the target contains a ``sys.modules[...]`` lookup.
+    """
+    return any(
+        isinstance(candidate, ast.Subscript)
+        and _attribute_path(candidate.value) == "sys.modules"
+        for candidate in ast.walk(node)
+    )
+
+
 def _mock_policy_violations(
     test_file: Path, display_path: Path | None = None
 ) -> list[str]:
@@ -169,7 +217,43 @@ def _mock_policy_violations(
             violations.append(
                 f"{relative_path}:{node.lineno}: pytest.MonkeyPatch annotation"
             )
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            if any(_target_mutates_sys_modules(target) for target in targets):
+                violations.append(
+                    f"{relative_path}:{node.lineno}: sys.modules replacement"
+                )
+        elif isinstance(node, ast.Delete):
+            if any(_target_mutates_sys_modules(target) for target in node.targets):
+                violations.append(
+                    f"{relative_path}:{node.lineno}: sys.modules replacement"
+                )
         elif isinstance(node, ast.Call):
+            call_path = _attribute_path(node.func)
+            if call_path == "pytest.MonkeyPatch.context":
+                violations.append(
+                    f"{relative_path}:{node.lineno}: pytest.MonkeyPatch.context(...)"
+                )
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "getfixturevalue"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value in FORBIDDEN_FIXTURES
+            ):
+                violations.append(
+                    f"{relative_path}:{node.lineno}: prohibited dynamic fixture "
+                    f"'{node.args[0].value}'"
+                )
+            if (
+                isinstance(node.func, ast.Attribute)
+                and _attribute_path(node.func.value) == "sys.modules"
+                and node.func.attr in FORBIDDEN_SYS_MODULE_METHODS
+            ):
+                violations.append(
+                    f"{relative_path}:{node.lineno}: sys.modules replacement"
+                )
+
             if isinstance(node.func, ast.Name):
                 constructor_name = node.func.id
             elif isinstance(node.func, ast.Attribute):
@@ -198,6 +282,19 @@ def _mock_policy_violations(
         (
             "def test_example(patcher: pytest.MonkeyPatch):\n    pass\n",
             "pytest.MonkeyPatch annotation",
+        ),
+        (
+            "with pytest.MonkeyPatch.context() as patcher:\n    pass\n",
+            "pytest.MonkeyPatch.context",
+        ),
+        (
+            "def test_example(request):\n"
+            "    request.getfixturevalue('monkeypatch')\n",
+            "prohibited dynamic fixture 'monkeypatch'",
+        ),
+        (
+            "import sys\nsys.modules['assimulo'] = object()\n",
+            "sys.modules replacement",
         ),
     ],
 )
@@ -247,6 +344,10 @@ def test_tests_do_not_use_prohibited_substitutes() -> None:
 
         violations.extend(file_violations)
 
-    assert not violations, "Prohibited test substitutes found:\n" + "\n".join(
-        violations
+    message = (
+        "Prohibited test substitutes found. Legacy files are grandfathered "
+        "only at the exact digests in LEGACY_MONKEYPATCH_FILE_DIGESTS; remove "
+        "all prohibited substitutes whenever one of those files changes:\n"
+        + "\n".join(violations)
     )
+    assert not violations, message
