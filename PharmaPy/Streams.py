@@ -342,8 +342,3 @@ class VaporStream(VaporPhase):
             inputs = self.DynamicInlet.evaluate_inputs(time)
 
         return inputs
-
-
-if __name__ == '__main__':
-    path = '../../data/evaporator/compounds_evap.json'
-    stream_liq = LiquidStream(path)
